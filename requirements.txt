@@ -13,7 +13,7 @@ alembic==1.12.1
 python-telegram-bot==20.7
 
 # AI - Anthropic Claude
-anthropic==0.8.0
+anthropic>=0.40.0
 
 # Image Processing
 Pillow==10.1.0
