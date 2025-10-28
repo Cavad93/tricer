@@ -2,7 +2,7 @@
 Сервис для работы с Anthropic Claude API
 """
 import anthropic
-from anthropic import Anthropic
+from anthropic import Anthropic, AsyncAnthropic
 import base64
 import json
 from typing import Dict, List, Optional
@@ -17,6 +17,7 @@ class ClaudeAIService:
     def __init__(self):
         """Инициализация клиента Claude"""
         self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        self.async_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.CLAUDE_MODEL
 
     async def analyze_food_photo(
@@ -83,8 +84,8 @@ class ClaudeAIService:
 
             logger.info("Sending request to Claude API for food recognition")
 
-            # Отправка запроса к Claude API
-            response = self.client.messages.create(
+            # Отправка запроса к Claude API (асинхронно)
+            response = await self.async_client.messages.create(
                 model=self.model,
                 max_tokens=2000,
                 messages=[
@@ -197,8 +198,8 @@ class ClaudeAIService:
 
             logger.info(f"Sending chat request to Claude API")
 
-            # Отправка запроса к Claude API
-            response = self.client.messages.create(
+            # Отправка запроса к Claude API (асинхронно)
+            response = await self.async_client.messages.create(
                 model=self.model,
                 max_tokens=1500,
                 system=system_prompt,
