@@ -175,7 +175,8 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
             pdf_plan_path = await PDFGeneratorService.generate_meal_plan_pdf(
                 meal_plan,
                 days_data,
-                user.preferred_name or user.first_name
+                user.preferred_name or user.first_name,
+                user.city
             )
 
             # PDF со списком покупок
@@ -184,7 +185,8 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
                 shopping_list,
                 items,
                 meal_plan,
-                user.preferred_name or user.first_name
+                user.preferred_name or user.first_name,
+                user.city
             )
 
             # Сохраняем пути к PDF

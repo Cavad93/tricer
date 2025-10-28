@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from typing import List
 from io import BytesIO
+import pytz
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -26,22 +27,113 @@ class PDFGeneratorService:
     # Путь для хранения PDF файлов
     PDF_STORAGE_PATH = "storage/pdfs"
 
+    # Словарь городов и их часовых поясов
+    CITY_TIMEZONES = {
+        "Москва": "Europe/Moscow",
+        "Санкт-Петербург": "Europe/Moscow",
+        "Казань": "Europe/Moscow",
+        "Новосибирск": "Asia/Novosibirsk",
+        "Екатеринбург": "Asia/Yekaterinburg",
+        "Владивосток": "Asia/Vladivostok",
+        "Алматы": "Asia/Almaty",
+        "Астана": "Asia/Almaty",
+        "Киев": "Europe/Kiev",
+        "Минск": "Europe/Minsk",
+        "Ташкент": "Asia/Tashkent",
+        "Баку": "Asia/Baku",
+        "Ереван": "Asia/Yerevan",
+        "Тбилиси": "Asia/Tbilisi",
+    }
+
+    @staticmethod
+    def _get_local_time(city: str = None) -> datetime:
+        """
+        Получить местное время для города
+
+        Args:
+            city: Название города
+
+        Returns:
+            datetime: Местное время
+        """
+        # Определяем часовой пояс
+        timezone_name = PDFGeneratorService.CITY_TIMEZONES.get(city, "Europe/Moscow")
+
+        try:
+            tz = pytz.timezone(timezone_name)
+            return datetime.now(tz)
+        except Exception as e:
+            logger.warning(f"Could not get timezone for {city}: {e}, using UTC")
+            return datetime.now(pytz.UTC)
+
     @staticmethod
     def _setup_fonts():
         """Настройка русских шрифтов"""
         try:
-            # Пытаемся зарегистрировать шрифты DejaVu (они поддерживают кириллицу)
-            # В production нужно добавить файлы шрифтов
-            # pdfmetrics.registerFont(TTFont('DejaVuSans', 'DejaVuSans.ttf'))
-            # pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', 'DejaVuSans-Bold.ttf'))
-            pass
+            # Пытаемся найти и зарегистрировать шрифты DejaVu (они поддерживают кириллицу)
+            # Возможные пути к шрифтам в разных ОС
+            font_paths = [
+                # Linux
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+                # MacOS
+                "/Library/Fonts/DejaVuSans.ttf",
+                "/System/Library/Fonts/Supplemental/DejaVuSans.ttf",
+                # Относительный путь (если шрифт скопирован в проект)
+                "fonts/DejaVuSans.ttf",
+            ]
+
+            font_bold_paths = [
+                # Linux
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                # MacOS
+                "/Library/Fonts/DejaVuSans-Bold.ttf",
+                "/System/Library/Fonts/Supplemental/DejaVuSans-Bold.ttf",
+                # Относительный путь
+                "fonts/DejaVuSans-Bold.ttf",
+            ]
+
+            # Ищем основной шрифт
+            regular_font_found = False
+            for font_path in font_paths:
+                if os.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont('DejaVuSans', font_path))
+                    regular_font_found = True
+                    logger.info(f"Registered DejaVuSans font from {font_path}")
+                    break
+
+            # Ищем жирный шрифт
+            bold_font_found = False
+            for font_path in font_bold_paths:
+                if os.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont('DejaVuSans-Bold', font_path))
+                    bold_font_found = True
+                    logger.info(f"Registered DejaVuSans-Bold font from {font_path}")
+                    break
+
+            if not regular_font_found:
+                logger.warning("DejaVu fonts not found. Cyrillic text may not display correctly.")
+                logger.warning("Please install DejaVu fonts: sudo apt-get install fonts-dejavu")
+
         except Exception as e:
-            logger.warning(f"Could not register custom fonts: {e}")
+            logger.error(f"Could not register custom fonts: {e}")
 
     @staticmethod
     def _get_styles():
         """Получить стили для документа"""
         styles = getSampleStyleSheet()
+
+        # Проверяем, зарегистрирован ли DejaVu шрифт
+        try:
+            pdfmetrics.getFont('DejaVuSans')
+            regular_font = 'DejaVuSans'
+            bold_font = 'DejaVuSans-Bold'
+        except:
+            # Fallback на стандартные шрифты (кириллица не будет работать)
+            regular_font = 'Helvetica'
+            bold_font = 'Helvetica-Bold'
+            logger.warning("Using Helvetica font - Cyrillic may not display correctly")
 
         # Заголовок
         styles.add(ParagraphStyle(
@@ -51,7 +143,7 @@ class PDFGeneratorService:
             textColor=colors.HexColor('#2C3E50'),
             spaceAfter=30,
             alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
+            fontName=bold_font
         ))
 
         # Подзаголовок
@@ -62,7 +154,7 @@ class PDFGeneratorService:
             textColor=colors.HexColor('#34495E'),
             spaceAfter=12,
             spaceBefore=12,
-            fontName='Helvetica-Bold'
+            fontName=bold_font
         ))
 
         # Обычный текст
@@ -73,7 +165,7 @@ class PDFGeneratorService:
             textColor=colors.HexColor('#2C3E50'),
             spaceAfter=6,
             alignment=TA_JUSTIFY,
-            fontName='Helvetica'
+            fontName=regular_font
         ))
 
         # Мелкий текст
@@ -83,7 +175,7 @@ class PDFGeneratorService:
             fontSize=9,
             textColor=colors.HexColor('#7F8C8D'),
             spaceAfter=6,
-            fontName='Helvetica'
+            fontName=regular_font
         ))
 
         return styles
@@ -92,7 +184,8 @@ class PDFGeneratorService:
     async def generate_meal_plan_pdf(
         meal_plan: MealPlan,
         days_data: List,
-        user_name: str = "Пользователь"
+        user_name: str = "Пользователь",
+        user_city: str = None
     ) -> str:
         """
         Генерация PDF с планом питания
@@ -101,6 +194,7 @@ class PDFGeneratorService:
             meal_plan: План питания
             days_data: Данные о днях плана [(day, [meals])]
             user_name: Имя пользователя
+            user_city: Город пользователя для определения местного времени
 
         Returns:
             str: Путь к созданному PDF файлу
@@ -108,8 +202,11 @@ class PDFGeneratorService:
         # Создаем директорию для хранения если её нет
         os.makedirs(PDFGeneratorService.PDF_STORAGE_PATH, exist_ok=True)
 
+        # Получаем местное время
+        local_time = PDFGeneratorService._get_local_time(user_city)
+        timestamp = local_time.strftime("%Y%m%d_%H%M%S")
+
         # Генерируем имя файла
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"meal_plan_{meal_plan.id}_{timestamp}.pdf"
         filepath = os.path.join(PDFGeneratorService.PDF_STORAGE_PATH, filename)
 
@@ -257,7 +354,8 @@ class PDFGeneratorService:
         shopping_list: ShoppingList,
         items: List,
         meal_plan: MealPlan,
-        user_name: str = "Пользователь"
+        user_name: str = "Пользователь",
+        user_city: str = None
     ) -> str:
         """
         Генерация PDF со списком покупок
@@ -267,6 +365,7 @@ class PDFGeneratorService:
             items: Элементы списка
             meal_plan: План питания
             user_name: Имя пользователя
+            user_city: Город пользователя для определения местного времени
 
         Returns:
             str: Путь к созданному PDF файлу
@@ -274,8 +373,11 @@ class PDFGeneratorService:
         # Создаем директорию для хранения если её нет
         os.makedirs(PDFGeneratorService.PDF_STORAGE_PATH, exist_ok=True)
 
+        # Получаем местное время
+        local_time = PDFGeneratorService._get_local_time(user_city)
+        timestamp = local_time.strftime("%Y%m%d_%H%M%S")
+
         # Генерируем имя файла
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"shopping_list_{shopping_list.id}_{timestamp}.pdf"
         filepath = os.path.join(PDFGeneratorService.PDF_STORAGE_PATH, filename)
 
