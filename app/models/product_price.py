@@ -4,7 +4,7 @@
 """
 from sqlalchemy import Column, Integer, String, Float, DateTime, Index
 from datetime import datetime
-from app.db.base import Base
+from app.db.session import Base
 
 
 class ProductPrice(Base):
