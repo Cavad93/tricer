@@ -12,11 +12,14 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📊 Дневник", callback_data="diary"),
         ],
         [
+            InlineKeyboardButton("🍽 Рацион", callback_data="meal_plan"),
             InlineKeyboardButton("💬 AI-чат", callback_data="ai_chat"),
-            InlineKeyboardButton("👤 Профиль", callback_data="profile"),
         ],
         [
+            InlineKeyboardButton("👤 Профиль", callback_data="profile"),
             InlineKeyboardButton("📈 Статистика", callback_data="stats"),
+        ],
+        [
             InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
     ]
@@ -64,6 +67,16 @@ def diet_type_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🥗 Вегетарианец", callback_data="diet_vegetarian")],
         [InlineKeyboardButton("🌱 Веган", callback_data="diet_vegan")],
         [InlineKeyboardButton("🐟 Пескетарианец (рыба)", callback_data="diet_pescatarian")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def budget_category_keyboard() -> InlineKeyboardMarkup:
+    """Выбор бюджетной категории"""
+    keyboard = [
+        [InlineKeyboardButton("💰 Эконом", callback_data="budget_economy")],
+        [InlineKeyboardButton("💵 Норм", callback_data="budget_normal")],
+        [InlineKeyboardButton("💎 Премиум", callback_data="budget_premium")],
     ]
     return InlineKeyboardMarkup(keyboard)
 

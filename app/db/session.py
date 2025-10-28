@@ -43,6 +43,8 @@ async def init_db():
     from app.models.chat import ChatMessage  # noqa
     from app.models.usage import DailyUsage  # noqa
     from app.models.meal import Meal, MealFood  # noqa
+    from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal  # noqa
+    from app.models.shopping_list import ShoppingList, ShoppingItem  # noqa
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

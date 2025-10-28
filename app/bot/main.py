@@ -24,8 +24,16 @@ from app.bot.handlers.chat import (
     chat_stats_command
 )
 from app.bot.handlers.diary import diary_callback, delete_meal_callback
+from app.bot.handlers.meal_plan import (
+    meal_plan_start,
+    meal_plan_period_selected,
+    view_meal_plan,
+    view_shopping_list,
+    create_new_plan_callback,
+    cancel_meal_plan
+)
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
-from app.bot.states import FoodAddStates
+from app.bot.states import FoodAddStates, MealPlanStates
 
 
 # Настройка логирования
@@ -303,9 +311,25 @@ def main():
         per_message=False
     )
 
+    # ConversationHandler для создания плана питания
+    meal_plan_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(meal_plan_start, pattern="^meal_plan$|^create_new_plan$")],
+        states={
+            MealPlanStates.WAITING_PERIOD: [
+                CallbackQueryHandler(meal_plan_period_selected, pattern="^plan_period_"),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+        ],
+        per_message=False
+    )
+
     # Добавляем обработчики
     application.add_handler(onboarding_conversation)
     application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler
+    application.add_handler(meal_plan_conversation)  # Обработчик плана питания
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))
@@ -321,6 +345,10 @@ def main():
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
     application.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats$"))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
+
+    # Callback handlers для плана питания
+    application.add_handler(CallbackQueryHandler(view_meal_plan, pattern="^view_plan_"))
+    application.add_handler(CallbackQueryHandler(view_shopping_list, pattern="^shopping_list_"))
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))

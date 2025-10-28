@@ -39,6 +39,13 @@ class DietType(str, enum.Enum):
     PESCATARIAN = "pescatarian"  # Пескетарианец
 
 
+class BudgetCategory(str, enum.Enum):
+    """Бюджетная категория"""
+    ECONOMY = "economy"  # Эконом
+    NORMAL = "normal"  # Норм
+    PREMIUM = "premium"  # Премиум
+
+
 class SubscriptionType(str, enum.Enum):
     """Тип подписки"""
     FREE = "free"
@@ -77,6 +84,7 @@ class User(Base):
     diet_type = Column(SQLEnum(DietType), default=DietType.OMNIVORE)
     allergies = Column(JSON, default=list)  # Список аллергий
     dislikes = Column(JSON, default=list)  # Список нелюбимых продуктов
+    budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
 
     # Подписка
     subscription_type = Column(SQLEnum(SubscriptionType), default=SubscriptionType.FREE)
@@ -131,6 +139,7 @@ class User(Base):
             "target_fats": self.target_fats,
             "target_carbs": self.target_carbs,
             "diet_type": self.diet_type.value if self.diet_type else None,
+            "budget_category": self.budget_category.value if self.budget_category else None,
             "subscription_type": self.subscription_type.value,
             "is_premium": self.is_premium,
             "onboarding_completed": self.onboarding_completed,

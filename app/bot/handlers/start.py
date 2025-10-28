@@ -17,11 +17,12 @@ from app.bot.keyboards import (
     goal_keyboard,
     activity_level_keyboard,
     diet_type_keyboard,
+    budget_category_keyboard,
     skip_keyboard,
     main_menu_keyboard,
 )
 from app.bot.states import OnboardingStates
-from app.models.user import Gender, Goal, ActivityLevel, DietType
+from app.models.user import Gender, Goal, ActivityLevel, DietType, BudgetCategory
 from app.services.nutrition_calc import NutritionCalculator
 from loguru import logger
 
@@ -289,6 +290,36 @@ async def diet_type_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await query.edit_message_text(
         "✅ Тип питания сохранен\n\n"
+        "Какой у тебя бюджет на питание?\n\n"
+        "Это поможет мне составлять планы питания с учетом твоих финансовых возможностей:",
+        reply_markup=budget_category_keyboard()
+    )
+
+    return OnboardingStates.BUDGET_CATEGORY
+
+
+async def budget_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора бюджетной категории"""
+    query = update.callback_query
+    await query.answer()
+
+    budget_map = {
+        "budget_economy": BudgetCategory.ECONOMY,
+        "budget_normal": BudgetCategory.NORMAL,
+        "budget_premium": BudgetCategory.PREMIUM,
+    }
+
+    budget = budget_map.get(query.data)
+    context.user_data["budget_category"] = budget
+
+    budget_text = {
+        BudgetCategory.ECONOMY: "Эконом",
+        BudgetCategory.NORMAL: "Норм",
+        BudgetCategory.PREMIUM: "Премиум",
+    }[budget]
+
+    await query.edit_message_text(
+        f"✅ Бюджет: {budget_text}\n\n"
         "Есть ли у тебя аллергии или продукты, которые ты не ешь?\n\n"
         "Напиши их через запятую или нажми 'Пропустить':",
         reply_markup=skip_keyboard("allergies")
@@ -390,6 +421,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 user.target_fats = nutrition_targets.fats
                 user.target_carbs = nutrition_targets.carbs
                 user.diet_type = user_data["diet_type"]
+                user.budget_category = user_data.get("budget_category", BudgetCategory.NORMAL)
                 user.allergies = user_data.get("allergies", [])
                 user.onboarding_completed = True
                 user.updated_at = datetime.utcnow()
@@ -415,6 +447,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     target_fats=nutrition_targets.fats,
                     target_carbs=nutrition_targets.carbs,
                     diet_type=user_data["diet_type"],
+                    budget_category=user_data.get("budget_category", BudgetCategory.NORMAL),
                     allergies=user_data.get("allergies", []),
                     onboarding_completed=True,
                 )
@@ -490,6 +523,9 @@ onboarding_conversation = ConversationHandler(
         ],
         OnboardingStates.DIET_TYPE: [
             CallbackQueryHandler(diet_type_callback, pattern="^diet_")
+        ],
+        OnboardingStates.BUDGET_CATEGORY: [
+            CallbackQueryHandler(budget_category_callback, pattern="^budget_")
         ],
         OnboardingStates.ALLERGIES: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, allergies_handler),
