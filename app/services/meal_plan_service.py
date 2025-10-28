@@ -63,7 +63,7 @@ class MealPlanService:
         ai_service = ClaudeAIService()
         try:
             ai_response = await ai_service.async_client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-3-5-sonnet-20240620",
                 max_tokens=16000,
                 temperature=0.8,
                 messages=[{
