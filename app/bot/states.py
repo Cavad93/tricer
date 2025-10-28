@@ -17,3 +17,8 @@ class OnboardingStates(IntEnum):
     DIET_TYPE = auto()
     ALLERGIES = auto()
     CALCULATING = auto()
+
+
+class FoodAddStates(IntEnum):
+    """Состояния добавления еды"""
+    WAITING_MEAL_TYPE = auto()  # Ожидание выбора типа приема пищи

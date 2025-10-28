@@ -102,6 +102,7 @@ class ChatService:
     ) -> Dict:
         """
         Получить контекст пользователя для персонализации ответов
+        Включает реальные данные из дневника питания за сегодня
 
         Args:
             session: Сессия БД
@@ -110,6 +111,9 @@ class ChatService:
         Returns:
             Словарь с данными пользователя
         """
+        from datetime import date
+        from app.services.meal_service import MealService
+
         result = await session.execute(
             select(User).where(User.id == user_id)
         )
@@ -117,6 +121,9 @@ class ChatService:
 
         if not user:
             return {}
+
+        # Получаем реальные данные из дневника питания за сегодня
+        today_totals = await MealService.get_daily_totals(session, user_id, date.today())
 
         return {
             "preferred_name": user.preferred_name or user.first_name or "друг",
@@ -132,11 +139,11 @@ class ChatService:
             "target_carbs": user.target_carbs,
             "diet_type": user.diet_type.value if user.diet_type else None,
             "allergies": user.allergies or [],
-            # Дневная статистика (пока заглушка, будет из дневника питания)
-            "today_calories": 0,
-            "today_proteins": 0,
-            "today_fats": 0,
-            "today_carbs": 0
+            # Дневная статистика из РЕАЛЬНОГО дневника питания
+            "today_calories": today_totals["calories"],
+            "today_proteins": round(today_totals["proteins"], 1),
+            "today_fats": round(today_totals["fats"], 1),
+            "today_carbs": round(today_totals["carbs"], 1)
         }
 
     @staticmethod

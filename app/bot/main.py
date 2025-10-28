@@ -7,6 +7,7 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     CallbackQueryHandler,
+    ConversationHandler,
     filters,
     ContextTypes,
 )
@@ -16,13 +17,15 @@ import sys
 from app.config import settings
 from app.db.session import async_session_maker
 from app.bot.handlers.start import onboarding_conversation
-from app.bot.handlers.photo import photo_handler
+from app.bot.handlers.photo import photo_handler, meal_type_selected, cancel_food_add
 from app.bot.handlers.chat import (
     chat_message_handler,
     clear_chat_command,
     chat_stats_command
 )
+from app.bot.handlers.diary import diary_callback, delete_meal_callback
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
+from app.bot.states import FoodAddStates
 
 
 # Настройка логирования
@@ -133,21 +136,7 @@ async def add_food_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def diary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатия на кнопку 'Дневник'"""
-    query = update.callback_query
-    await query.answer()
-
-    await query.edit_message_text(
-        "📊 *Дневник питания*\n\n"
-        "Эта функция будет доступна в следующей версии!\n"
-        "Здесь ты сможешь:\n"
-        "• Просматривать все приемы пищи\n"
-        "• Видеть прогресс по калориям и БЖУ\n"
-        "• Анализировать статистику за неделю/месяц",
-        parse_mode="Markdown",
-        reply_markup=back_to_menu_keyboard()
-    )
+# diary_callback теперь импортируется из app.bot.handlers.diary
 
 
 async def ai_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -299,8 +288,24 @@ def main():
     # Создаем приложение с post_init hook для инициализации БД
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
+    # ConversationHandler для добавления еды по фото
+    food_add_conversation = ConversationHandler(
+        entry_points=[MessageHandler(filters.PHOTO, photo_handler)],
+        states={
+            FoodAddStates.WAITING_MEAL_TYPE: [
+                CallbackQueryHandler(meal_type_selected, pattern="^meal_type_"),
+                CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
+        ],
+        per_message=False
+    )
+
     # Добавляем обработчики
     application.add_handler(onboarding_conversation)
+    application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))
@@ -311,6 +316,7 @@ def main():
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
     application.add_handler(CallbackQueryHandler(add_food_callback, pattern="^add_food$"))
     application.add_handler(CallbackQueryHandler(diary_callback, pattern="^diary$"))
+    application.add_handler(CallbackQueryHandler(delete_meal_callback, pattern="^delete_meal_"))
     application.add_handler(CallbackQueryHandler(ai_chat_callback, pattern="^ai_chat$"))
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
     application.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats$"))
@@ -318,7 +324,6 @@ def main():
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))
-    application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
     # Обработчик ошибок
     application.add_error_handler(error_handler)

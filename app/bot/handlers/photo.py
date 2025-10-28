@@ -2,20 +2,27 @@
 Обработчик фото для распознавания еды
 """
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, ConversationHandler
 from loguru import logger
 import io
+from datetime import datetime, date
 
 from app.services.claude_ai import claude_service
-from app.bot.keyboards import back_to_menu_keyboard
+from app.services.meal_service import MealService
+from app.services.usage_service import UsageService
+from app.bot.keyboards import meal_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
+from app.bot.states import FoodAddStates
+from app.models.meal import MealType
+from app.models.user import User
+from app.db.session import async_session_maker
+from sqlalchemy import select
 
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Обработчик фото еды
+    Обработчик фото еды - распознавание и предложение добавить в дневник
     """
     user = update.effective_user
-    photo = update.message.photo[-1]  # Самое большое разрешение
 
     logger.info(f"User {user.id} sent a photo for food recognition")
 
@@ -25,72 +32,265 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        # Скачивание фото
-        file = await context.bot.get_file(photo.file_id)
-        image_bytes_io = io.BytesIO()
-        await file.download_to_memory(image_bytes_io)
-        image_bytes = image_bytes_io.getvalue()
+        # Проверка лимитов
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
 
-        logger.info(f"Photo downloaded, size: {len(image_bytes)} bytes")
+            if not db_user:
+                await processing_msg.edit_text(
+                    "❌ Пользователь не найден.\nИспользуйте /start для регистрации.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
 
-        # Распознавание через Claude API
-        result = await claude_service.analyze_food_photo(
-            image_bytes=image_bytes,
-            additional_context=""
-        )
+            # Проверяем лимит на распознавание фото
+            # TODO: implement photo limit check via UsageService
 
-        # Формирование ответа
-        if result and "dishes" in result and len(result["dishes"]) > 0:
-            dish = result["dishes"][0]
-            nutrition = dish["nutrition"]
+            # Скачивание фото
+            photo = update.message.photo[-1]  # Самое большое разрешение
+            file = await context.bot.get_file(photo.file_id)
+            image_bytes_io = io.BytesIO()
+            await file.download_to_memory(image_bytes_io)
+            image_bytes = image_bytes_io.getvalue()
 
-            response_text = (
-                f"✅ *Распознано!*\n\n"
-                f"🍽 *{dish['name']}*\n\n"
-                f"📊 *Пищевая ценность:*\n"
-                f"Порция: ~{dish['portion_size_grams']}г\n"
-                f"🔥 Калории: {nutrition['calories']} ккал\n"
-                f"🥩 Белки: {nutrition['proteins']}г\n"
-                f"🧈 Жиры: {nutrition['fats']}г\n"
-                f"🍞 Углеводы: {nutrition['carbs']}г\n\n"
-                f"📝 *Ингредиенты:*\n"
-                f"{', '.join(dish['ingredients'])}\n\n"
-                f"Способ приготовления: {dish['cooking_method']}"
+            logger.info(f"Photo downloaded, size: {len(image_bytes)} bytes")
+
+            # Распознавание через Claude API
+            result = await claude_service.analyze_food_photo(
+                image_bytes=image_bytes,
+                additional_context=f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"
             )
 
-            if dish.get("confidence", 1.0) < 0.7:
-                response_text += "\n\n⚠️ Уверенность в распознавании ниже 70%. Проверьте данные."
+            # Формирование ответа
+            if result and "dishes" in result and len(result["dishes"]) > 0:
+                dishes = result["dishes"]
 
-            await processing_msg.edit_text(
-                response_text,
-                parse_mode="Markdown",
-                reply_markup=back_to_menu_keyboard()
-            )
+                # Сохраняем результат в контекст для последующего добавления
+                context.user_data["recognized_food"] = {
+                    "dishes": dishes,
+                    "total_nutrition": result.get("total_nutrition", {}),
+                    "photo_file_id": photo.file_id
+                }
 
-            logger.info(f"Food recognition successful for user {user.id}: {dish['name']}")
+                # Формируем текст с результатами
+                response_text = "✅ *Распознано!*\n\n"
 
-        else:
-            await processing_msg.edit_text(
-                "❌ Не удалось распознать еду на фото.\n\n"
-                "Попробуйте:\n"
-                "• Сделать фото при лучшем освещении\n"
-                "• Сфотографировать блюдо ближе\n"
-                "• Убрать лишние предметы из кадра\n\n"
-                "Или опишите блюдо текстом!",
-                reply_markup=back_to_menu_keyboard()
-            )
+                for i, dish in enumerate(dishes, 1):
+                    nutrition = dish["nutrition"]
+                    portion_desc = dish.get("portion_description", f"~{dish['portion_size_grams']}г")
 
-            logger.warning(f"Failed to recognize food for user {user.id}")
+                    response_text += (
+                        f"{'🍽' if i == 1 else '➕'} *{dish['name']}*\n"
+                        f"Порция: {portion_desc}\n"
+                        f"🔥 {nutrition['calories']} ккал | "
+                        f"🥩 Б: {nutrition['proteins']}г | "
+                        f"🧈 Ж: {nutrition['fats']}г | "
+                        f"🍞 У: {nutrition['carbs']}г\n"
+                    )
+
+                    if dish.get("confidence", 1.0) < 0.7:
+                        response_text += "⚠️ Низкая уверенность\n"
+
+                    response_text += "\n"
+
+                # Итого если несколько блюд
+                if len(dishes) > 1:
+                    total = result.get("total_nutrition", {})
+                    response_text += (
+                        f"📊 *Всего:*\n"
+                        f"🔥 {total.get('calories', 0)} ккал | "
+                        f"Б: {total.get('proteins', 0)}г | "
+                        f"Ж: {total.get('fats', 0)}г | "
+                        f"У: {total.get('carbs', 0)}г\n\n"
+                    )
+
+                response_text += "Хотите добавить в дневник питания?"
+
+                await processing_msg.edit_text(
+                    response_text,
+                    parse_mode="Markdown",
+                    reply_markup=meal_type_keyboard()
+                )
+
+                logger.info(f"Food recognition successful for user {user.id}: {len(dishes)} dish(es)")
+
+                return FoodAddStates.WAITING_MEAL_TYPE
+
+            else:
+                await processing_msg.edit_text(
+                    "❌ Не удалось распознать еду на фото.\n\n"
+                    "Попробуйте:\n"
+                    "• Сделать фото при лучшем освещении\n"
+                    "• Сфотографировать блюдо ближе\n"
+                    "• Убрать лишние предметы из кадра",
+                    reply_markup=back_to_menu_keyboard()
+                )
+
+                logger.warning(f"Failed to recognize food for user {user.id}")
+                return ConversationHandler.END
 
     except Exception as e:
         logger.error(f"Error in photo recognition for user {user.id}: {e}")
 
         await processing_msg.edit_text(
             "❌ Произошла ошибка при обработке фото.\n\n"
-            "Пожалуйста, попробуйте:\n"
-            "• Отправить фото заново\n"
-            "• Убедиться в хорошем качестве фото\n"
-            "• Описать блюдо текстом\n\n"
-            "Если проблема повторяется, обратитесь в поддержку.",
+            "Пожалуйста, попробуйте отправить фото заново.",
             reply_markup=back_to_menu_keyboard()
         )
+
+        return ConversationHandler.END
+
+
+async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик выбора типа приема пищи - добавление в дневник
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    meal_type_str = query.data.replace("meal_type_", "")
+
+    # Маппинг строки в enum
+    meal_type_map = {
+        "breakfast": MealType.BREAKFAST,
+        "lunch": MealType.LUNCH,
+        "dinner": MealType.DINNER,
+        "snack": MealType.SNACK
+    }
+
+    meal_type = meal_type_map.get(meal_type_str)
+    if not meal_type:
+        await query.edit_message_text(
+            "❌ Неверный тип приема пищи",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+    # Получаем распознанную еду из контекста
+    recognized_food = context.user_data.get("recognized_food")
+    if not recognized_food:
+        await query.edit_message_text(
+            "❌ Данные о еде потеряны. Отправьте фото заново.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+    # Сохраняем в дневник
+    try:
+        async with async_session_maker() as session:
+            # Получаем пользователя
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Подготавливаем данные о блюдах
+            foods_data = []
+            for dish in recognized_food["dishes"]:
+                foods_data.append({
+                    "name": dish["name"],
+                    "portion_size": dish["portion_size_grams"],
+                    "portion_description": dish.get("portion_description"),
+                    "calories": dish["nutrition"]["calories"],
+                    "proteins": dish["nutrition"]["proteins"],
+                    "fats": dish["nutrition"]["fats"],
+                    "carbs": dish["nutrition"]["carbs"],
+                    "ingredients": dish.get("ingredients", []),
+                    "confidence_score": dish.get("confidence")
+                })
+
+            # Создаем прием пищи
+            meal = await MealService.create_meal_with_foods(
+                session=session,
+                user_id=db_user.id,
+                meal_type=meal_type,
+                meal_date=date.today(),
+                meal_time=datetime.now(),
+                foods_data=foods_data,
+                photo_url=recognized_food.get("photo_file_id")  # Сохраняем file_id фото
+            )
+
+            # Получаем прогресс за день
+            progress = await MealService.get_nutrition_progress(
+                session=session,
+                user_id=db_user.id,
+                target_date=date.today()
+            )
+
+            # Формируем сообщение об успехе
+            meal_type_names = {
+                MealType.BREAKFAST: "Завтрак",
+                MealType.LUNCH: "Обед",
+                MealType.DINNER: "Ужин",
+                MealType.SNACK: "Перекус"
+            }
+
+            current = progress["current"]
+            target = progress["target"]
+            remaining = progress["remaining"]
+
+            success_text = (
+                f"✅ Добавлено в *{meal_type_names[meal_type]}*!\n\n"
+                f"📊 *Прогресс за сегодня:*\n"
+                f"🔥 Калории: {current['calories']}/{target['calories']} ккал "
+                f"(осталось {remaining['calories']})\n"
+                f"🥩 Белки: {current['proteins']:.0f}/{target['proteins']}г "
+                f"(осталось {remaining['proteins']:.0f}г)\n"
+                f"🧈 Жиры: {current['fats']:.0f}/{target['fats']}г\n"
+                f"🍞 Углеводы: {current['carbs']:.0f}/{target['carbs']}г\n\n"
+            )
+
+            # Предупреждения
+            if current['calories'] > target['calories']:
+                success_text += "⚠️ Вы превысили дневную норму калорий\n"
+            elif remaining['calories'] < 300:
+                success_text += f"💡 Осталось всего {remaining['calories']} ккал на сегодня\n"
+
+            await query.edit_message_text(
+                success_text,
+                parse_mode="Markdown",
+                reply_markup=main_menu_keyboard()
+            )
+
+            # Очищаем контекст
+            context.user_data.pop("recognized_food", None)
+
+            logger.info(f"Meal added successfully for user {user.id}, meal_id: {meal.id}")
+
+            return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error adding meal for user {user.id}: {e}")
+
+        await query.edit_message_text(
+            "❌ Ошибка при добавлении в дневник.\nПопробуйте позже.",
+            reply_markup=back_to_menu_keyboard()
+        )
+
+        return ConversationHandler.END
+
+
+async def cancel_food_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена добавления еды"""
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data.pop("recognized_food", None)
+
+    await query.edit_message_text(
+        "❌ Добавление отменено",
+        reply_markup=main_menu_keyboard()
+    )
+
+    return ConversationHandler.END
