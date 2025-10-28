@@ -292,13 +292,12 @@ async def init_database():
     logger.info("Database initialized")
 
 
-def main():
+async def main():
     """Главная функция запуска бота"""
-    logger.info("Starting NutriAI Bot...")
-
     # Инициализируем базу данных
-    import asyncio
-    asyncio.run(init_database())
+    await init_database()
+
+    logger.info("Starting NutriAI Bot...")
 
     # Создаем приложение
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
@@ -330,8 +329,9 @@ def main():
     logger.info("Bot started successfully!")
 
     # Запускаем бота
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
