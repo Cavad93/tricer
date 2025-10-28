@@ -338,12 +338,12 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
     user_data["target_carbs"] = nutrition_targets.carbs
 
     # Сохраняем пользователя в БД
-    from app.db.session import AsyncSessionLocal
+    from app.db.session import async_session_maker
     from app.models.user import User
     from sqlalchemy import select
     from datetime import datetime
 
-    async with AsyncSessionLocal() as session:
+    async with async_session_maker() as session:
         try:
             # Проверяем, существует ли пользователь
             result = await session.execute(
