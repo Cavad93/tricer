@@ -550,11 +550,12 @@ class ShoppingListService:
 
 Начни с формирования поискового запроса."""
 
+            from app.config import settings
             ai_service = ClaudeAIService()
 
             # Первый запрос к AI - формирование поискового запроса
             response1 = await ai_service.async_client.messages.create(
-                model="claude-3-5-sonnet-20240620",
+                model=settings.CLAUDE_MODEL,
                 max_tokens=1000,
                 temperature=0.3,
                 messages=[{"role": "user", "content": prompt}]
@@ -619,7 +620,7 @@ class ShoppingListService:
 Верни ТОЛЬКО JSON, без дополнительного текста."""
 
             response2 = await ai_service.async_client.messages.create(
-                model="claude-3-5-sonnet-20240620",
+                model=settings.CLAUDE_MODEL,
                 max_tokens=500,
                 temperature=0.3,
                 messages=[{"role": "user", "content": prompt2}]

@@ -60,10 +60,11 @@ class MealPlanService:
         prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count)
 
         # Генерируем план через AI
+        from app.config import settings
         ai_service = ClaudeAIService()
         try:
             ai_response = await ai_service.async_client.messages.create(
-                model="claude-3-5-sonnet-20240620",
+                model=settings.CLAUDE_MODEL,
                 max_tokens=16000,
                 temperature=0.8,
                 messages=[{
