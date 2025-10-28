@@ -332,11 +332,79 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
         goal=user_data["goal"],
     )
 
-    # TODO: Сохранить в БД
     user_data["target_calories"] = nutrition_targets.calories
     user_data["target_proteins"] = nutrition_targets.proteins
     user_data["target_fats"] = nutrition_targets.fats
     user_data["target_carbs"] = nutrition_targets.carbs
+
+    # Сохраняем пользователя в БД
+    from app.db.session import AsyncSessionLocal
+    from app.models.user import User
+    from sqlalchemy import select
+    from datetime import datetime
+
+    async with AsyncSessionLocal() as session:
+        try:
+            # Проверяем, существует ли пользователь
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
+
+            if user:
+                # Обновляем существующего пользователя
+                user.username = update.effective_user.username
+                user.first_name = update.effective_user.first_name
+                user.last_name = update.effective_user.last_name
+                user.language_code = update.effective_user.language_code
+                user.gender = user_data["gender"]
+                user.birth_year = user_data["birth_year"]
+                user.height = user_data["height"]
+                user.current_weight = user_data["current_weight"]
+                user.target_weight = user_data["target_weight"]
+                user.goal = user_data["goal"]
+                user.activity_level = user_data["activity_level"]
+                user.target_calories = nutrition_targets.calories
+                user.target_proteins = nutrition_targets.proteins
+                user.target_fats = nutrition_targets.fats
+                user.target_carbs = nutrition_targets.carbs
+                user.diet_type = user_data["diet_type"]
+                user.allergies = user_data.get("allergies", [])
+                user.onboarding_completed = True
+                user.updated_at = datetime.utcnow()
+                user.last_active_at = datetime.utcnow()
+            else:
+                # Создаём нового пользователя
+                user = User(
+                    telegram_id=update.effective_user.id,
+                    username=update.effective_user.username,
+                    first_name=update.effective_user.first_name,
+                    last_name=update.effective_user.last_name,
+                    language_code=update.effective_user.language_code,
+                    gender=user_data["gender"],
+                    birth_year=user_data["birth_year"],
+                    height=user_data["height"],
+                    current_weight=user_data["current_weight"],
+                    target_weight=user_data["target_weight"],
+                    goal=user_data["goal"],
+                    activity_level=user_data["activity_level"],
+                    target_calories=nutrition_targets.calories,
+                    target_proteins=nutrition_targets.proteins,
+                    target_fats=nutrition_targets.fats,
+                    target_carbs=nutrition_targets.carbs,
+                    diet_type=user_data["diet_type"],
+                    allergies=user_data.get("allergies", []),
+                    onboarding_completed=True,
+                )
+                session.add(user)
+
+            await session.commit()
+            logger.info(f"User {update.effective_user.id} profile saved to database")
+
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Error saving user profile: {e}")
+            raise
 
     # Показываем результаты
     await message.edit_text(
