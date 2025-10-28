@@ -285,8 +285,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-async def init_database():
-    """Инициализация базы данных при запуске бота"""
+async def post_init(application: Application) -> None:
+    """Инициализация базы данных после создания приложения"""
     from app.db.session import init_db
     await init_db()
     logger.info("Database initialized")
@@ -294,14 +294,10 @@ async def init_database():
 
 def main():
     """Главная функция запуска бота"""
-    # Инициализируем базу данных
-    import asyncio
-    asyncio.run(init_database())
-
     logger.info("Starting NutriAI Bot...")
 
-    # Создаем приложение
-    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    # Создаем приложение с post_init hook для инициализации БД
+    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
 
     # Добавляем обработчики
     application.add_handler(onboarding_conversation)
