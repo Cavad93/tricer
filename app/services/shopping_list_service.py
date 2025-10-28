@@ -2,13 +2,15 @@
 Сервис для создания списка покупок с поиском цен
 """
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
 
 from app.models.meal_plan import MealPlan
 from app.models.shopping_list import ShoppingList, ShoppingItem
+from app.models.product_price import ProductPrice
 from app.services.meal_plan_service import MealPlanService
 
 
@@ -137,6 +139,7 @@ class ShoppingListService:
             if search_prices:
                 try:
                     price_data = await ShoppingListService._search_product_price(
+                        session,
                         product_name,
                         quantity,
                         unit,
@@ -318,7 +321,153 @@ class ShoppingListService:
         return "Другое"
 
     @staticmethod
+    def _normalize_product_name(product_name: str) -> str:
+        """
+        Нормализовать название продукта для поиска в кэше
+
+        Приводит к нижнему регистру, убирает лишние пробелы
+
+        Args:
+            product_name: Исходное название продукта
+
+        Returns:
+            str: Нормализованное название
+        """
+        return product_name.lower().strip()
+
+    @staticmethod
+    async def _get_cached_price(
+        session: AsyncSession,
+        product_name: str,
+        unit: str,
+        city: str,
+        country: str,
+        budget_category: str,
+        max_age_hours: int = 24
+    ) -> Optional[ProductPrice]:
+        """
+        Получить цену из кэша если она актуальна
+
+        Args:
+            session: Сессия БД
+            product_name: Название продукта
+            unit: Единица измерения
+            city: Город
+            country: Страна
+            budget_category: Бюджетная категория
+            max_age_hours: Максимальный возраст цены в часах (по умолчанию 24)
+
+        Returns:
+            ProductPrice или None если цена не найдена или устарела
+        """
+        normalized_name = ShoppingListService._normalize_product_name(product_name)
+
+        # Ищем в БД
+        result = await session.execute(
+            select(ProductPrice).where(
+                ProductPrice.product_name == normalized_name,
+                ProductPrice.unit == unit,
+                ProductPrice.city == city,
+                ProductPrice.country == country,
+                ProductPrice.budget_category == budget_category
+            )
+        )
+
+        cached_price = result.scalar_one_or_none()
+
+        if cached_price:
+            # Проверяем актуальность
+            if not cached_price.is_stale(hours=max_age_hours):
+                logger.info(
+                    f"Using cached price for {product_name} in {city}: "
+                    f"{cached_price.price_per_unit} руб/{unit}"
+                )
+                return cached_price
+            else:
+                logger.info(f"Cached price for {product_name} is stale, will update")
+
+        return None
+
+    @staticmethod
+    async def _save_price_to_cache(
+        session: AsyncSession,
+        product_name: str,
+        unit: str,
+        city: str,
+        country: str,
+        budget_category: str,
+        price: float,
+        price_per_unit: float,
+        shop_name: Optional[str] = None,
+        shop_url: Optional[str] = None
+    ) -> ProductPrice:
+        """
+        Сохранить цену в кэш
+
+        Если запись уже существует - обновляет её, иначе создает новую
+
+        Args:
+            session: Сессия БД
+            product_name: Название продукта
+            unit: Единица измерения
+            city: Город
+            country: Страна
+            budget_category: Бюджетная категория
+            price: Общая цена
+            price_per_unit: Цена за единицу
+            shop_name: Название магазина
+            shop_url: Ссылка на товар
+
+        Returns:
+            ProductPrice: Сохраненная или обновленная запись
+        """
+        normalized_name = ShoppingListService._normalize_product_name(product_name)
+
+        # Проверяем, есть ли уже такая запись
+        result = await session.execute(
+            select(ProductPrice).where(
+                ProductPrice.product_name == normalized_name,
+                ProductPrice.unit == unit,
+                ProductPrice.city == city,
+                ProductPrice.country == country,
+                ProductPrice.budget_category == budget_category
+            )
+        )
+
+        existing_price = result.scalar_one_or_none()
+
+        if existing_price:
+            # Обновляем существующую запись
+            existing_price.price = price
+            existing_price.price_per_unit = price_per_unit
+            existing_price.shop_name = shop_name
+            existing_price.shop_url = shop_url
+            existing_price.last_updated = datetime.utcnow()
+
+            logger.info(f"Updated cached price for {product_name} in {city}")
+            cached_price = existing_price
+        else:
+            # Создаем новую запись
+            cached_price = ProductPrice(
+                product_name=normalized_name,
+                unit=unit,
+                country=country,
+                city=city,
+                budget_category=budget_category,
+                price=price,
+                price_per_unit=price_per_unit,
+                shop_name=shop_name,
+                shop_url=shop_url
+            )
+            session.add(cached_price)
+            logger.info(f"Saved new price to cache for {product_name} in {city}")
+
+        await session.flush()
+        return cached_price
+
+    @staticmethod
     async def _search_product_price(
+        session: AsyncSession,
         product_name: str,
         quantity: float,
         unit: str,
@@ -327,14 +476,16 @@ class ShoppingListService:
         city: str = "Москва"
     ) -> Dict:
         """
-        Поиск актуальной цены продукта через AI + WebSearch
+        Поиск актуальной цены продукта с использованием кэша и AI
 
-        AI формирует поисковый запрос, ищет в интернете и извлекает:
-        - Актуальную цену
-        - Название магазина
-        - Ссылку на товар
+        Алгоритм:
+        1. Проверяет кэш БД на наличие актуальной цены (< 24 часов)
+        2. Если цена в кэше актуальна - использует её
+        3. Если нет - AI формирует поисковый запрос и оценивает цену
+        4. Сохраняет новую цену в кэш для других пользователей
 
         Args:
+            session: Сессия БД
             product_name: Название продукта
             quantity: Количество
             unit: Единица измерения
@@ -345,6 +496,29 @@ class ShoppingListService:
         Returns:
             Dict: Данные о цене {price, price_per_unit, shop, url}
         """
+        # ШАГ 1: Проверяем кэш
+        cached_price = await ShoppingListService._get_cached_price(
+            session,
+            product_name,
+            unit,
+            city,
+            country,
+            budget_category
+        )
+
+        if cached_price:
+            # Используем кэшированную цену
+            total_price = cached_price.price_per_unit * quantity
+            return {
+                "price": round(total_price, 2),
+                "price_per_unit": cached_price.price_per_unit,
+                "shop": cached_price.shop_name or f"Средняя цена в {city}",
+                "url": cached_price.shop_url
+            }
+
+        # ШАГ 2: Цены нет в кэше или она устарела - ищем через AI
+        logger.info(f"No cached price for {product_name}, searching via AI...")
+
         try:
             from app.services.claude_ai import ClaudeAIService
 
@@ -459,11 +633,29 @@ class ShoppingListService:
             if json_match:
                 price_data = json.loads(json_match.group())
 
+                price_per_unit = float(price_data.get("price_per_unit", 0))
+                shop = price_data.get("shop", f"Средняя цена в {city}")
+                url = price_data.get("url")
+
+                # ШАГ 3: Сохраняем цену в кэш для других пользователей
+                await ShoppingListService._save_price_to_cache(
+                    session,
+                    product_name,
+                    unit,
+                    city,
+                    country,
+                    budget_category,
+                    price=price_per_unit * quantity,  # Сохраняем общую цену для данного количества
+                    price_per_unit=price_per_unit,
+                    shop_name=shop,
+                    shop_url=url
+                )
+
                 return {
-                    "price": float(price_data.get("price", 0)),
-                    "price_per_unit": float(price_data.get("price_per_unit", 0)),
-                    "shop": price_data.get("shop", f"Средняя цена в {city}"),
-                    "url": price_data.get("url")
+                    "price": round(price_per_unit * quantity, 2),
+                    "price_per_unit": price_per_unit,
+                    "shop": shop,
+                    "url": url
                 }
             else:
                 raise ValueError("Could not parse AI price response")
@@ -524,3 +716,113 @@ class ShoppingListService:
             .order_by(ShoppingItem.category, ShoppingItem.product_name)
         )
         return result.scalars().all()
+
+    @staticmethod
+    async def cleanup_old_prices(
+        session: AsyncSession,
+        max_age_days: int = 7
+    ) -> int:
+        """
+        Очистить устаревшие цены из кэша
+
+        Удаляет записи о ценах, которые не обновлялись дольше указанного времени.
+        Это нужно для поддержания БД в чистоте и удаления неактуальных данных.
+
+        Примечание: Цены старше 24 часов автоматически считаются устаревшими
+        и обновляются при следующем запросе. Этот метод удаляет ОЧЕНЬ старые
+        записи (по умолчанию > 7 дней), которые вероятно больше не актуальны.
+
+        Args:
+            session: Сессия БД
+            max_age_days: Максимальный возраст записи в днях (по умолчанию 7)
+
+        Returns:
+            int: Количество удаленных записей
+        """
+        from sqlalchemy import delete
+
+        cutoff_date = datetime.utcnow() - timedelta(days=max_age_days)
+
+        # Подсчитываем сколько записей будет удалено
+        count_result = await session.execute(
+            select(ProductPrice).where(ProductPrice.last_updated < cutoff_date)
+        )
+        records_to_delete = len(count_result.scalars().all())
+
+        if records_to_delete == 0:
+            logger.info("No old price records to cleanup")
+            return 0
+
+        # Удаляем устаревшие записи
+        await session.execute(
+            delete(ProductPrice).where(ProductPrice.last_updated < cutoff_date)
+        )
+
+        await session.commit()
+
+        logger.info(
+            f"Cleaned up {records_to_delete} price records older than {max_age_days} days"
+        )
+
+        return records_to_delete
+
+    @staticmethod
+    async def get_price_cache_stats(session: AsyncSession) -> Dict:
+        """
+        Получить статистику по кэшу цен
+
+        Returns:
+            Dict: Статистика {
+                total_records: общее количество записей,
+                fresh_records: записи младше 24 часов,
+                stale_records: записи старше 24 часов но младше 7 дней,
+                very_old_records: записи старше 7 дней,
+                cities: количество городов в кэше,
+                products: количество уникальных продуктов
+            }
+        """
+        from sqlalchemy import func, distinct
+
+        # Общее количество записей
+        total_result = await session.execute(select(func.count(ProductPrice.id)))
+        total_records = total_result.scalar()
+
+        # Записи младше 24 часов
+        fresh_cutoff = datetime.utcnow() - timedelta(hours=24)
+        fresh_result = await session.execute(
+            select(func.count(ProductPrice.id))
+            .where(ProductPrice.last_updated >= fresh_cutoff)
+        )
+        fresh_records = fresh_result.scalar()
+
+        # Записи старше 7 дней
+        old_cutoff = datetime.utcnow() - timedelta(days=7)
+        old_result = await session.execute(
+            select(func.count(ProductPrice.id))
+            .where(ProductPrice.last_updated < old_cutoff)
+        )
+        very_old_records = old_result.scalar()
+
+        # Записи между 24 часами и 7 днями
+        stale_records = total_records - fresh_records - very_old_records
+
+        # Количество городов
+        cities_result = await session.execute(
+            select(func.count(distinct(ProductPrice.city)))
+        )
+        cities_count = cities_result.scalar()
+
+        # Количество уникальных продуктов
+        products_result = await session.execute(
+            select(func.count(distinct(ProductPrice.product_name)))
+        )
+        products_count = products_result.scalar()
+
+        return {
+            "total_records": total_records,
+            "fresh_records": fresh_records,
+            "stale_records": stale_records,
+            "very_old_records": very_old_records,
+            "cities": cities_count,
+            "products": products_count
+        }

@@ -45,6 +45,7 @@ async def init_db():
     from app.models.meal import Meal, MealFood  # noqa
     from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal  # noqa
     from app.models.shopping_list import ShoppingList, ShoppingItem  # noqa
+    from app.models.product_price import ProductPrice  # noqa
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
