@@ -292,10 +292,11 @@ async def init_database():
     logger.info("Database initialized")
 
 
-async def main():
+def main():
     """Главная функция запуска бота"""
     # Инициализируем базу данных
-    await init_database()
+    import asyncio
+    asyncio.run(init_database())
 
     logger.info("Starting NutriAI Bot...")
 
@@ -328,10 +329,9 @@ async def main():
 
     logger.info("Bot started successfully!")
 
-    # Запускаем бота
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Запускаем бота (run_polling сам управляет event loop)
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
