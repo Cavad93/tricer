@@ -93,3 +93,34 @@ def back_to_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def meal_type_keyboard() -> InlineKeyboardMarkup:
+    """Выбор типа приема пищи"""
+    keyboard = [
+        [InlineKeyboardButton("🌅 Завтрак", callback_data="meal_type_breakfast")],
+        [InlineKeyboardButton("🌞 Обед", callback_data="meal_type_lunch")],
+        [InlineKeyboardButton("🌙 Ужин", callback_data="meal_type_dinner")],
+        [InlineKeyboardButton("🍎 Перекус", callback_data="meal_type_snack")],
+        [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def add_meal_confirm_keyboard(meal_id: int = None) -> InlineKeyboardMarkup:
+    """Подтверждение добавления еды в дневник"""
+    keyboard = [
+        [InlineKeyboardButton("✅ Добавить в дневник", callback_data=f"add_to_diary")],
+        [InlineKeyboardButton("✏️ Изменить порцию", callback_data="edit_portion")],
+        [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def diary_actions_keyboard(meal_id: int) -> InlineKeyboardMarkup:
+    """Действия с приемом пищи в дневнике"""
+    keyboard = [
+        [InlineKeyboardButton("🗑️ Удалить", callback_data=f"delete_meal_{meal_id}")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
