@@ -154,9 +154,13 @@ class ClaudeAIService:
         """
         try:
             # System prompt с контекстом пользователя
+            preferred_name = user_context.get('preferred_name', 'друг')
             system_prompt = f"""Ты - персональный AI-нутрициолог NutriAI.
 
+ВАЖНО: Обращайся к пользователю по имени "{preferred_name}" в своих ответах.
+
 Профиль пользователя:
+- Имя: {preferred_name}
 - Возраст: {user_context.get('age', 'не указан')}
 - Пол: {user_context.get('gender', 'не указан')}
 - Текущий вес: {user_context.get('current_weight', '?')} кг
@@ -182,6 +186,7 @@ class ClaudeAIService:
 7. При серьезных вопросах здоровья рекомендовать врача
 
 Стиль общения: дружелюбный, эмпатичный, профессиональный.
+Обращайся к пользователю по имени "{preferred_name}".
 Используй эмодзи для наглядности.
 Формат: короткие абзацы, списки, конкретика."""
 

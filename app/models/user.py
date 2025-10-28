@@ -56,6 +56,7 @@ class User(Base):
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
     language_code = Column(String(10), default="ru")
+    preferred_name = Column(String(50), nullable=True)  # Имя для обращения
 
     # Профиль
     gender = Column(SQLEnum(Gender), nullable=True)

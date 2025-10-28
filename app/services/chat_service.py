@@ -119,6 +119,7 @@ class ChatService:
             return {}
 
         return {
+            "preferred_name": user.preferred_name or user.first_name or "друг",
             "age": user.age,
             "gender": user.gender.value if user.gender else None,
             "current_weight": user.current_weight,

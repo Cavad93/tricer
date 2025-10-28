@@ -36,7 +36,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     # TODO: добавить проверку в БД
 
     await update.message.reply_text(
-        f"👋 Привет, {user.first_name}!\n\n"
+        f"👋 Привет!\n\n"
         "Я NutriAI - твой персональный AI-нутрициолог!\n\n"
         "Я помогу тебе:\n"
         "✅ Отслеживать питание (просто отправь фото еды)\n"
@@ -47,7 +47,27 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     )
 
     await update.message.reply_text(
-        "Выбери свой пол:",
+        "Как мне к тебе обращаться? Напиши своё имя:"
+    )
+
+    return OnboardingStates.PREFERRED_NAME
+
+
+async def preferred_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода имени пользователя"""
+    preferred_name = update.message.text.strip()
+
+    if len(preferred_name) < 1 or len(preferred_name) > 50:
+        await update.message.reply_text(
+            "❌ Имя должно быть от 1 до 50 символов. Попробуй ещё раз:"
+        )
+        return OnboardingStates.PREFERRED_NAME
+
+    context.user_data["preferred_name"] = preferred_name
+
+    await update.message.reply_text(
+        f"Приятно познакомиться, {preferred_name}! 😊\n\n"
+        "Теперь выбери свой пол:",
         reply_markup=gender_keyboard()
     )
 
@@ -357,6 +377,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 user.first_name = update.effective_user.first_name
                 user.last_name = update.effective_user.last_name
                 user.language_code = update.effective_user.language_code
+                user.preferred_name = user_data.get("preferred_name")
                 user.gender = user_data["gender"]
                 user.birth_year = user_data["birth_year"]
                 user.height = user_data["height"]
@@ -381,6 +402,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     first_name=update.effective_user.first_name,
                     last_name=update.effective_user.last_name,
                     language_code=update.effective_user.language_code,
+                    preferred_name=user_data.get("preferred_name"),
                     gender=user_data["gender"],
                     birth_year=user_data["birth_year"],
                     height=user_data["height"],
@@ -407,8 +429,11 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
             raise
 
     # Показываем результаты
+    preferred_name = user_data.get("preferred_name", "")
+    greeting = f"✅ Отлично, {preferred_name}! Твой профиль настроен!\n\n" if preferred_name else "✅ Отлично! Твой профиль настроен!\n\n"
+
     await message.edit_text(
-        "✅ Отлично! Твой профиль настроен!\n\n"
+        greeting +
         f"📊 Твои целевые показатели на день:\n"
         f"🔥 Калории: {nutrition_targets.calories} ккал\n"
         f"🥩 Белки: {nutrition_targets.proteins}г\n"
@@ -419,7 +444,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Что хочешь сделать?",
+        text=f"{preferred_name}, что хочешь сделать?" if preferred_name else "Что хочешь сделать?",
         reply_markup=main_menu_keyboard()
     )
 
@@ -439,6 +464,9 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 onboarding_conversation = ConversationHandler(
     entry_points=[CommandHandler("start", start_command)],
     states={
+        OnboardingStates.PREFERRED_NAME: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, preferred_name_handler)
+        ],
         OnboardingStates.GENDER: [
             CallbackQueryHandler(gender_callback, pattern="^gender_")
         ],
