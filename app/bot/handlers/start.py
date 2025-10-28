@@ -34,9 +34,33 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     logger.info(f"User {user.id} started the bot")
 
-    # Проверяем, есть ли пользователь в БД
-    # TODO: добавить проверку в БД
+    # Проверяем, зарегистрирован ли пользователь в БД
+    from app.db.session import async_session_maker
+    from app.models.user import User
+    from sqlalchemy import select
 
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == user.id)
+        )
+        db_user = result.scalar_one_or_none()
+
+        # Если пользователь уже прошел онбординг - показываем главное меню
+        if db_user and db_user.onboarding_completed:
+            logger.info(f"User {user.id} is already registered, showing main menu")
+
+            # Обновляем время последней активности
+            db_user.last_active_at = datetime.utcnow()
+            await session.commit()
+
+            await update.message.reply_text(
+                f"👋 С возвращением, {db_user.preferred_name or db_user.first_name}!\n\n"
+                f"Рад тебя снова видеть! 😊",
+                reply_markup=main_menu_keyboard()
+            )
+            return ConversationHandler.END
+
+    # Новый пользователь - начинаем онбординг
     await update.message.reply_text(
         f"👋 Привет!\n\n"
         "Я NutriAI - твой персональный AI-нутрициолог!\n\n"
