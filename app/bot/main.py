@@ -14,8 +14,14 @@ from loguru import logger
 import sys
 
 from app.config import settings
+from app.db.session import async_session_maker
 from app.bot.handlers.start import onboarding_conversation
 from app.bot.handlers.photo import photo_handler
+from app.bot.handlers.chat import (
+    chat_message_handler,
+    clear_chat_command,
+    chat_stats_command
+)
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
 
 
@@ -36,11 +42,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/start - Начать работу / Настроить профиль\n"
         "/help - Показать эту справку\n"
         "/profile - Мой профиль\n"
-        "/menu - Главное меню\n\n"
+        "/menu - Главное меню\n"
+        "/clear_chat - Очистить историю AI-чата\n"
+        "/chat_stats - Статистика использования\n\n"
         "*Как пользоваться:*\n"
         "📸 Отправь фото еды - я автоматически распознаю блюдо и посчитаю калории\n"
-        "💬 Задай вопрос о питании - получи ответ от AI\n"
-        "📊 Смотри статистику и прогресс в дневнике\n\n"
+        "💬 Напиши вопрос о питании - получи ответ от AI с учетом твоего профиля\n"
+        "📊 Используй /menu для доступа ко всем функциям\n\n"
+        "*AI-чат:*\n"
+        "Просто напиши мне любой вопрос о питании, и я отвечу с учетом:\n"
+        "• Твоих целей и параметров\n"
+        "• Истории нашего разговора\n"
+        "• Научных данных о питании\n\n"
         "*Нужна помощь?* Просто напиши мне!"
     )
 
@@ -142,15 +155,45 @@ async def ai_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    user = update.effective_user
+
+    # Получаем статистику использования
+    async with async_session_maker() as session:
+        from app.models.user import User
+        from sqlalchemy import select
+
+        result = await session.execute(
+            select(User).where(User.telegram_id == user.id)
+        )
+        db_user = result.scalar_one_or_none()
+
+        if db_user:
+            from app.services.usage_service import UsageService
+            stats = await UsageService.get_usage_stats(session, db_user.id)
+
+            limit_info = ""
+            if not stats['is_premium']:
+                remaining = stats['chat_limit'] - stats['chat_messages']
+                limit_info = f"\n\n_Осталось сообщений сегодня: {remaining}/{stats['chat_limit']}_"
+        else:
+            limit_info = ""
+
     await query.edit_message_text(
-        "💬 *AI-чат*\n\n"
-        "Задай мне любой вопрос о питании, и я постараюсь помочь!\n\n"
-        "Например:\n"
-        "• Что лучше съесть перед тренировкой?\n"
-        "• Можно ли мне шоколад на диете?\n"
+        "💬 *AI-чат активирован*\n\n"
+        "Я - твой персональный AI-нутрициолог! Задай мне любой вопрос о питании.\n\n"
+        "🎯 *Я учитываю:*\n"
+        "• Твой профиль и цели\n"
+        "• Историю нашего разговора\n"
+        "• Твои предпочтения и аллергии\n"
+        "• Научные данные о питании\n\n"
+        "💡 *Примеры вопросов:*\n"
+        "• Что съесть перед тренировкой?\n"
         "• Почему я не худею?\n"
-        "• Какие продукты богаты белком?\n\n"
-        "Просто напиши свой вопрос в чат!",
+        "• Можно ли мне шоколад?\n"
+        "• Как увеличить белок в рационе?\n"
+        "• Составь меню на сегодня\n\n"
+        "📝 Просто напиши свой вопрос в чат!"
+        + limit_info,
         parse_mode="Markdown",
         reply_markup=back_to_menu_keyboard()
     )
@@ -226,12 +269,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик текстовых сообщений"""
-    await update.message.reply_text(
-        "Текстовые сообщения будут обрабатываться в следующей версии!\n"
-        "Используй /menu для доступа к функциям бота."
-    )
+# Обработчик текстовых сообщений импортирован из app.bot.handlers.chat
 
 
 # Обработчик фото импортирован из app.bot.handlers.photo
@@ -259,6 +297,8 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))
+    application.add_handler(CommandHandler("clear_chat", clear_chat_command))
+    application.add_handler(CommandHandler("chat_stats", chat_stats_command))
 
     # Callback handlers для кнопок
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
@@ -270,7 +310,7 @@ def main():
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
 
     # Обработчики сообщений
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))
     application.add_handler(MessageHandler(filters.PHOTO, photo_handler))
 
     # Обработчик ошибок

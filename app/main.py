@@ -7,7 +7,7 @@ from loguru import logger
 
 from app.config import settings
 from app.db.session import init_db
-from app.api.v1 import users
+from app.api.v1 import users, chat
 
 # Создаем FastAPI приложение
 app = FastAPI(
@@ -59,6 +59,7 @@ async def health_check():
 
 # Подключаем роутеры API
 app.include_router(users.router, prefix="/api/v1", tags=["users"])
+app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 
 
 if __name__ == "__main__":
