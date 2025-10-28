@@ -7,6 +7,8 @@ from enum import IntEnum, auto
 class OnboardingStates(IntEnum):
     """Состояния онбординга"""
     PREFERRED_NAME = auto()
+    COUNTRY = auto()
+    CITY = auto()
     GENDER = auto()
     BIRTH_YEAR = auto()
     HEIGHT = auto()

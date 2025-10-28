@@ -81,6 +81,22 @@ def budget_category_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def country_keyboard() -> InlineKeyboardMarkup:
+    """Выбор страны"""
+    keyboard = [
+        [InlineKeyboardButton("🇷🇺 Россия", callback_data="country_Россия")],
+        [InlineKeyboardButton("🇰🇿 Казахстан", callback_data="country_Казахстан")],
+        [InlineKeyboardButton("🇺🇦 Украина", callback_data="country_Украина")],
+        [InlineKeyboardButton("🇧🇾 Беларусь", callback_data="country_Беларусь")],
+        [InlineKeyboardButton("🇺🇿 Узбекистан", callback_data="country_Узбекистан")],
+        [InlineKeyboardButton("🇦🇿 Азербайджан", callback_data="country_Азербайджан")],
+        [InlineKeyboardButton("🇦🇲 Армения", callback_data="country_Армения")],
+        [InlineKeyboardButton("🇬🇪 Грузия", callback_data="country_Грузия")],
+        [InlineKeyboardButton("✍️ Другая (написать)", callback_data="country_other")],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def confirm_keyboard(action: str) -> InlineKeyboardMarkup:
     """Клавиатура подтверждения"""
     keyboard = [

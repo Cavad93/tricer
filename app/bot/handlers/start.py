@@ -18,6 +18,7 @@ from app.bot.keyboards import (
     activity_level_keyboard,
     diet_type_keyboard,
     budget_category_keyboard,
+    country_keyboard,
     skip_keyboard,
     main_menu_keyboard,
 )
@@ -68,7 +69,73 @@ async def preferred_name_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     await update.message.reply_text(
         f"Приятно познакомиться, {preferred_name}! 😊\n\n"
-        "Теперь выбери свой пол:",
+        "Где ты живёшь? Выбери свою страну:\n\n"
+        "Это нужно для точного подбора цен на продукты в твоём регионе.",
+        reply_markup=country_keyboard()
+    )
+
+    return OnboardingStates.COUNTRY
+
+
+async def country_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора страны"""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "country_other":
+        # Пользователь хочет ввести другую страну
+        await query.edit_message_text(
+            "Напиши название своей страны:"
+        )
+        return OnboardingStates.COUNTRY
+
+    # Извлекаем название страны из callback_data
+    country = query.data.replace("country_", "")
+    context.user_data["country"] = country
+
+    await query.edit_message_text(
+        f"✅ Страна: {country}\n\n"
+        "Теперь напиши свой город:"
+    )
+
+    return OnboardingStates.CITY
+
+
+async def country_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка текстового ввода страны (если выбрал 'Другая')"""
+    country = update.message.text.strip()
+
+    if len(country) < 2 or len(country) > 100:
+        await update.message.reply_text(
+            "❌ Пожалуйста, введи корректное название страны:"
+        )
+        return OnboardingStates.COUNTRY
+
+    context.user_data["country"] = country
+
+    await update.message.reply_text(
+        f"✅ Страна: {country}\n\n"
+        "Теперь напиши свой город:"
+    )
+
+    return OnboardingStates.CITY
+
+
+async def city_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода города"""
+    city = update.message.text.strip()
+
+    if len(city) < 2 or len(city) > 100:
+        await update.message.reply_text(
+            "❌ Пожалуйста, введи корректное название города:"
+        )
+        return OnboardingStates.CITY
+
+    context.user_data["city"] = city
+
+    await update.message.reply_text(
+        f"✅ Город: {city}\n\n"
+        "Отлично! Теперь выбери свой пол:",
         reply_markup=gender_keyboard()
     )
 
@@ -409,6 +476,8 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 user.last_name = update.effective_user.last_name
                 user.language_code = update.effective_user.language_code
                 user.preferred_name = user_data.get("preferred_name")
+                user.country = user_data.get("country")
+                user.city = user_data.get("city")
                 user.gender = user_data["gender"]
                 user.birth_year = user_data["birth_year"]
                 user.height = user_data["height"]
@@ -435,6 +504,8 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     last_name=update.effective_user.last_name,
                     language_code=update.effective_user.language_code,
                     preferred_name=user_data.get("preferred_name"),
+                    country=user_data.get("country"),
+                    city=user_data.get("city"),
                     gender=user_data["gender"],
                     birth_year=user_data["birth_year"],
                     height=user_data["height"],
@@ -499,6 +570,13 @@ onboarding_conversation = ConversationHandler(
     states={
         OnboardingStates.PREFERRED_NAME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, preferred_name_handler)
+        ],
+        OnboardingStates.COUNTRY: [
+            CallbackQueryHandler(country_callback, pattern="^country_"),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, country_text_handler)
+        ],
+        OnboardingStates.CITY: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, city_handler)
         ],
         OnboardingStates.GENDER: [
             CallbackQueryHandler(gender_callback, pattern="^gender_")

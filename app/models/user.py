@@ -65,6 +65,10 @@ class User(Base):
     language_code = Column(String(10), default="ru")
     preferred_name = Column(String(50), nullable=True)  # Имя для обращения
 
+    # Локация (для подбора цен)
+    country = Column(String(100), nullable=True)  # Страна
+    city = Column(String(100), nullable=True)  # Город
+
     # Профиль
     gender = Column(SQLEnum(Gender), nullable=True)
     birth_year = Column(Integer, nullable=True)  # Год рождения
@@ -127,6 +131,8 @@ class User(Base):
             "username": self.username,
             "first_name": self.first_name,
             "last_name": self.last_name,
+            "country": self.country,
+            "city": self.city,
             "gender": self.gender.value if self.gender else None,
             "age": self.age,
             "height": self.height,
