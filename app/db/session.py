@@ -38,5 +38,13 @@ async def get_session() -> AsyncSession:
 
 async def init_db():
     """Инициализация БД (создание таблиц)"""
+    # Импортируем все модели, чтобы они были зарегистрированы в Base.metadata
+    from app.models.user import User  # noqa
+    from app.models.chat import ChatMessage  # noqa
+    from app.models.usage import DailyUsage  # noqa
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    from loguru import logger
+    logger.info("Database tables created successfully")

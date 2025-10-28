@@ -285,9 +285,20 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def init_database():
+    """Инициализация базы данных при запуске бота"""
+    from app.db.session import init_db
+    await init_db()
+    logger.info("Database initialized")
+
+
 def main():
     """Главная функция запуска бота"""
     logger.info("Starting NutriAI Bot...")
+
+    # Инициализируем базу данных
+    import asyncio
+    asyncio.run(init_database())
 
     # Создаем приложение
     application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
