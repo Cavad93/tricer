@@ -65,7 +65,7 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             user_context = await ChatService.get_user_context(session, db_user.id)
 
             # Получаем историю разговора (последние 10 сообщений)
-            conversation_history = await ChatService.get_chat_context(session, db_user.id, limit=10)
+            conversation_history = await ChatService.get_chat_context(session, db_user.id, message_limit=10)
 
             # Отправляем запрос к Claude API
             logger.info(f"Sending chat request to Claude for user {user.id}")
