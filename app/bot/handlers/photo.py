@@ -8,6 +8,7 @@ import io
 from datetime import datetime, date
 
 from app.services.claude_ai import claude_service
+from app.services.scheduler_service import get_scheduler
 from app.services.meal_service import MealService
 from app.services.usage_service import UsageService
 from app.services.food_correction_service import FoodCorrectionService
@@ -547,6 +548,19 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 foods_data=foods_data,
                 photo_url=recognized_food.get("photo_file_id")  # Сохраняем file_id фото
             )
+
+            # Планируем wellness опрос через 30 минут после еды
+            try:
+                scheduler = get_scheduler()
+                if scheduler:
+                    scheduler.schedule_wellness_survey(
+                        telegram_id=update.effective_user.id,
+                        meal_id=meal.id,
+                        delay_minutes=30
+                    )
+                    logger.info(f"Scheduled wellness survey for user {update.effective_user.id}, meal {meal.id}")
+            except Exception as e:
+                logger.warning(f"Failed to schedule wellness survey: {e}")
 
             # Обновляем суточные микронутриенты если есть данные
             if recognized_food.get("total_micronutrients"):

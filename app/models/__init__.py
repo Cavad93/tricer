@@ -7,6 +7,7 @@ from app.models.food_correction import FoodRecognitionCorrection
 from app.models.user_consent import UserConsent
 from app.models.chat import ChatMessage
 from app.models.medical_analysis import MedicalAnalysis
+from app.models.wellness_log import WellnessLog
 
 __all__ = [
     "User",
@@ -29,4 +30,5 @@ __all__ = [
     "UserConsent",
     "ChatMessage",
     "MedicalAnalysis",
+    "WellnessLog",
 ]

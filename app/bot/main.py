@@ -73,6 +73,7 @@ from app.bot.handlers.reminders import (
     cancel_reminder_setup
 )
 from app.bot.handlers.reports import get_reports_conversation_handler
+from app.bot.handlers.wellness import wellness_survey_conversation
 from app.services.scheduler_service import init_scheduler
 
 
@@ -95,9 +96,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/profile - Мой профиль\n"
         "/menu - Главное меню\n"
         "/clear_chat - Очистить историю AI-чата\n"
-        "/chat_stats - Статистика использования\n\n"
+        "/chat_stats - Статистика использования\n"
+        "/wellness_insights - AI-анализ самочувствия\n\n"
         "*Как пользоваться:*\n"
         "📸 Отправь фото еды - я автоматически распознаю блюдо и посчитаю калории\n"
+        "🌟 Заполняй опросы о самочувствии через 30 мин после еды\n"
         "💬 Напиши вопрос о питании - получи ответ от AI с учетом твоего профиля\n"
         "📊 Используй /menu для доступа ко всем функциям\n\n"
         "*AI-чат:*\n"
@@ -364,6 +367,102 @@ async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAUL
 
 
 # Reports callback теперь обрабатывается через get_reports_conversation_handler
+
+
+async def wellness_insights_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Команда для получения AI-анализа паттернов самочувствия
+    """
+    user = update.effective_user
+
+    await update.message.reply_text(
+        "🔄 Анализирую ваши данные о самочувствии и питании...\n\n"
+        "Это может занять несколько секунд."
+    )
+
+    async with async_session_maker() as session:
+        from app.models.user import User
+        from app.services.wellness_service import WellnessService
+        from sqlalchemy import select
+
+        # Получаем пользователя
+        result = await session.execute(
+            select(User).where(User.telegram_id == user.id)
+        )
+        db_user = result.scalar_one_or_none()
+
+        if not db_user:
+            await update.message.reply_text(
+                "❌ Ошибка: пользователь не найден",
+                reply_markup=back_to_menu_keyboard()
+            )
+            return
+
+        # Запускаем анализ
+        wellness_service = WellnessService()
+        analysis = await wellness_service.analyze_wellness_patterns(
+            session=session,
+            user_id=db_user.id,
+            days=14  # Анализируем последние 14 дней
+        )
+
+        if analysis.get("status") == "no_data":
+            await update.message.reply_text(
+                "📊 <b>Недостаточно данных</b>\n\n"
+                "Для анализа нужно заполнять опросы о самочувствии после приемов пищи.\n\n"
+                "💡 Опросы появляются автоматически через 30 минут после того, как вы добавляете еду.",
+                parse_mode="HTML",
+                reply_markup=back_to_menu_keyboard()
+            )
+            return
+
+        if analysis.get("status") == "error":
+            await update.message.reply_text(
+                f"❌ Ошибка при анализе: {analysis.get('message')}",
+                reply_markup=back_to_menu_keyboard()
+            )
+            return
+
+        # Формируем красивый ответ
+        if "summary" in analysis:
+            response = f"🌟 <b>Анализ самочувствия за 14 дней</b>\n\n"
+            response += f"<b>Общий балл:</b> {analysis.get('overall_wellness_score', 'N/A')}/10\n\n"
+            response += f"📝 <b>Резюме:</b>\n{analysis['summary']}\n\n"
+
+            # Основные проблемы
+            if analysis.get("key_issues"):
+                response += "<b>⚠️ Основные проблемы:</b>\n"
+                for issue in analysis["key_issues"][:3]:  # Топ-3
+                    response += f"• {issue.get('issue')} ({issue.get('severity')})\n"
+                response += "\n"
+
+            # Рекомендации
+            if analysis.get("recommendations"):
+                response += "<b>💡 Рекомендации:</b>\n"
+                for rec in analysis["recommendations"][:3]:  # Топ-3
+                    response += f"• {rec.get('action')}\n"
+                response += "\n"
+
+            # Продукты
+            if analysis.get("foods_to_increase"):
+                foods = ", ".join(analysis["foods_to_increase"][:5])
+                response += f"<b>✅ Увеличить:</b> {foods}\n"
+            if analysis.get("foods_to_decrease"):
+                foods = ", ".join(analysis["foods_to_decrease"][:5])
+                response += f"<b>⛔️ Уменьшить:</b> {foods}\n"
+
+            await update.message.reply_text(
+                response,
+                parse_mode="HTML",
+                reply_markup=back_to_menu_keyboard()
+            )
+        else:
+            # Если JSON не распарсился, отправляем текстовый анализ
+            await update.message.reply_text(
+                f"🌟 <b>Анализ самочувствия</b>\n\n{analysis.get('text_analysis', 'Анализ выполнен')}",
+                parse_mode="HTML",
+                reply_markup=back_to_menu_keyboard()
+            )
 
 
 async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -653,11 +752,13 @@ def main():
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания
     application.add_handler(reminder_setup_conversation)  # Обработчик настройки напоминаний
     application.add_handler(get_reports_conversation_handler())  # Обработчик отчетов
+    application.add_handler(wellness_survey_conversation)  # Обработчик опросов о самочувствии
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))
     application.add_handler(CommandHandler("clear_chat", clear_chat_command))
     application.add_handler(CommandHandler("chat_stats", chat_stats_command))
+    application.add_handler(CommandHandler("wellness_insights", wellness_insights_command))
 
     # Callback handlers для кнопок
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
