@@ -29,7 +29,6 @@ from app.bot.handlers.meal_plan import (
     meal_plan_period_selected,
     view_meal_plan,
     view_shopping_list,
-    create_new_plan_callback,
     cancel_meal_plan
 )
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard

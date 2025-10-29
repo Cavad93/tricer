@@ -33,6 +33,28 @@ async def meal_plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if query:
         await query.answer()
 
+    # Если это callback "create_new_plan", деактивируем старые планы и показываем выбор периода
+    if query and query.data == 'create_new_plan':
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
+
+            if user:
+                # Деактивируем старые планы
+                await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+
+        # Показываем выбор периода для нового плана
+        text = """🍽 Создание плана питания
+
+Я создам для тебя персональный план питания с учетом твоих целей, предпочтений и бюджета!
+
+На какой период создать план?"""
+
+        await query.edit_message_text(text, reply_markup=meal_plan_period_keyboard())
+        return MealPlanStates.WAITING_PERIOD
+
     # Проверяем есть ли активный план
     async with async_session_maker() as session:
         result = await session.execute(
@@ -421,36 +443,6 @@ async def view_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
         )
-
-
-async def create_new_plan_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback для создания нового плана (деактивирует старый и показывает выбор периода)"""
-    query = update.callback_query
-    await query.answer()
-
-    # Получаем пользователя
-    from app.db.session import async_session_maker
-    from app.models.user import User
-    from sqlalchemy import select
-
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(User).where(User.telegram_id == update.effective_user.id)
-        )
-        user = result.scalar_one_or_none()
-
-        # Деактивируем старые планы
-        await MealPlanService.deactivate_old_plans(session, user.telegram_id)
-
-    # Показываем выбор периода для нового плана
-    await query.edit_message_text(
-        "🍽 Создание плана питания\n\n"
-        "Я создам для тебя персональный план питания с учетом твоих целей, предпочтений и бюджета!\n\n"
-        "На какой период создать план?",
-        reply_markup=meal_plan_period_keyboard()
-    )
-
-    return MealPlanStates.WAITING_PERIOD
 
 
 async def cancel_meal_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
