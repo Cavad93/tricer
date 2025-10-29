@@ -440,10 +440,16 @@ async def allergies_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     else:
         context.user_data["allergies"] = []
 
-    # Рассчитываем целевые показатели
-    await calculate_and_save_profile(update, context)
+    # Переходим к медицинским вопросам (Этап 4)
+    await update.message.reply_text(
+        "🏥 Теперь несколько вопросов о твоём здоровье.\n\n"
+        "Есть ли у тебя хронические заболевания, которые я должен учитывать при составлении рациона?\n"
+        "(Например: диабет, гипертония, заболевания ЖКТ и т.д.)\n\n"
+        "Напиши их через запятую или нажми 'Пропустить' если нет:",
+        reply_markup=skip_keyboard("chronic_conditions")
+    )
 
-    return ConversationHandler.END
+    return OnboardingStates.CHRONIC_CONDITIONS
 
 
 async def skip_allergies_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -453,9 +459,81 @@ async def skip_allergies_callback(update: Update, context: ContextTypes.DEFAULT_
 
     context.user_data["allergies"] = []
 
+    # Переходим к медицинским вопросам (Этап 4)
+    await query.edit_message_text(
+        "🏥 Теперь несколько вопросов о твоём здоровье.\n\n"
+        "Есть ли у тебя хронические заболевания, которые я должен учитывать при составлении рациона?\n"
+        "(Например: диабет, гипертония, заболевания ЖКТ и т.д.)\n\n"
+        "Напиши их через запятую или нажми 'Пропустить' если нет:",
+        reply_markup=skip_keyboard("chronic_conditions")
+    )
+
+    return OnboardingStates.CHRONIC_CONDITIONS
+
+
+async def chronic_conditions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода хронических заболеваний"""
+    if update.message:
+        conditions_text = update.message.text.strip()
+        conditions = [c.strip() for c in conditions_text.split(",") if c.strip()]
+        context.user_data["chronic_conditions"] = conditions
+    else:
+        context.user_data["chronic_conditions"] = []
+
+    # Переходим к вопросу об удаленных органах
+    await update.message.reply_text(
+        "Были ли удалены какие-то органы?\n"
+        "(Например: желчный пузырь, аппендикс и т.д.)\n\n"
+        "Напиши их через запятую или нажми 'Пропустить' если нет:",
+        reply_markup=skip_keyboard("removed_organs")
+    )
+
+    return OnboardingStates.REMOVED_ORGANS
+
+
+async def skip_chronic_conditions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск ввода хронических заболеваний"""
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["chronic_conditions"] = []
+
+    # Переходим к вопросу об удаленных органах
+    await query.edit_message_text(
+        "Были ли удалены какие-то органы?\n"
+        "(Например: желчный пузырь, аппендикс и т.д.)\n\n"
+        "Напиши их через запятую или нажми 'Пропустить' если нет:",
+        reply_markup=skip_keyboard("removed_organs")
+    )
+
+    return OnboardingStates.REMOVED_ORGANS
+
+
+async def removed_organs_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода удаленных органов"""
+    if update.message:
+        organs_text = update.message.text.strip()
+        organs = [o.strip() for o in organs_text.split(",") if o.strip()]
+        context.user_data["removed_organs"] = organs
+    else:
+        context.user_data["removed_organs"] = []
+
+    # Теперь рассчитываем целевые показатели и сохраняем профиль
+    await calculate_and_save_profile(update, context)
+
+    return ConversationHandler.END
+
+
+async def skip_removed_organs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск ввода удаленных органов"""
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["removed_organs"] = []
+
     await query.edit_message_text("⏭️ Пропускаем...")
 
-    # Рассчитываем целевые показатели
+    # Теперь рассчитываем целевые показатели и сохраняем профиль
     await calculate_and_save_profile(update, context)
 
     return ConversationHandler.END
@@ -528,6 +606,9 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 user.diet_type = user_data["diet_type"]
                 user.budget_category = user_data.get("budget_category", BudgetCategory.NORMAL)
                 user.allergies = user_data.get("allergies", [])
+                # Медицинская информация (Этап 4)
+                user.chronic_conditions = user_data.get("chronic_conditions", [])
+                user.removed_organs = user_data.get("removed_organs", [])
                 user.onboarding_completed = True
                 user.updated_at = datetime.utcnow()
                 user.last_active_at = datetime.utcnow()
@@ -556,12 +637,26 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     diet_type=user_data["diet_type"],
                     budget_category=user_data.get("budget_category", BudgetCategory.NORMAL),
                     allergies=user_data.get("allergies", []),
+                    # Медицинская информация (Этап 4)
+                    chronic_conditions=user_data.get("chronic_conditions", []),
+                    removed_organs=user_data.get("removed_organs", []),
                     onboarding_completed=True,
                 )
                 session.add(user)
 
             await session.commit()
+            await session.refresh(user)
             logger.info(f"User {update.effective_user.id} profile saved to database")
+
+            # Генерируем медицинские ограничения на основе введенных данных (Этап 4)
+            if user.chronic_conditions or user.removed_organs:
+                try:
+                    from app.services.medical_analysis_service import MedicalAnalysisService
+                    logger.info(f"Generating medical restrictions for user {user.id}")
+                    await MedicalAnalysisService.generate_medical_restrictions(user, session)
+                    logger.info(f"Medical restrictions generated for user {user.id}")
+                except Exception as e:
+                    logger.error(f"Error generating medical restrictions: {e}")
 
         except Exception as e:
             await session.rollback()
@@ -648,6 +743,14 @@ onboarding_conversation = ConversationHandler(
         OnboardingStates.ALLERGIES: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, allergies_handler),
             CallbackQueryHandler(skip_allergies_callback, pattern="^skip_allergies")
+        ],
+        OnboardingStates.CHRONIC_CONDITIONS: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, chronic_conditions_handler),
+            CallbackQueryHandler(skip_chronic_conditions_callback, pattern="^skip_chronic_conditions")
+        ],
+        OnboardingStates.REMOVED_ORGANS: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, removed_organs_handler),
+            CallbackQueryHandler(skip_removed_organs_callback, pattern="^skip_removed_organs")
         ],
     },
     fallbacks=[CommandHandler("cancel", cancel_command)],

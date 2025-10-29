@@ -194,6 +194,26 @@ class MealPlanService:
         if user.allergies and len(user.allergies) > 0:
             allergies_text = f"\n❗ АЛЛЕРГИИ/ИСКЛЮЧЕНИЯ: {', '.join(user.allergies)}"
 
+        # Формируем информацию о медицинских ограничениях (Этап 4)
+        medical_info_text = ""
+        if user.chronic_conditions and len(user.chronic_conditions) > 0:
+            medical_info_text += f"\n🏥 ХРОНИЧЕСКИЕ ЗАБОЛЕВАНИЯ: {', '.join(user.chronic_conditions)}"
+        if user.removed_organs and len(user.removed_organs) > 0:
+            medical_info_text += f"\n⚕️ УДАЛЕННЫЕ ОРГАНЫ: {', '.join(user.removed_organs)}"
+
+        # Добавляем медицинские ограничения по питанию, если они есть
+        medical_restrictions_text = ""
+        if user.medical_restrictions and len(user.medical_restrictions) > 0:
+            restrictions = user.medical_restrictions
+            if restrictions.get("foods_to_avoid"):
+                medical_restrictions_text += f"\n❌ ИЗБЕГАТЬ: {', '.join(restrictions['foods_to_avoid'])}"
+            if restrictions.get("foods_to_limit"):
+                medical_restrictions_text += f"\n⚠️ ОГРАНИЧИТЬ: {', '.join(restrictions['foods_to_limit'])}"
+            if restrictions.get("foods_to_increase"):
+                medical_restrictions_text += f"\n✅ УВЕЛИЧИТЬ: {', '.join(restrictions['foods_to_increase'])}"
+            if restrictions.get("nutrients_to_focus"):
+                medical_restrictions_text += f"\n🎯 ФОКУС НА НУТРИЕНТАХ: {', '.join(restrictions['nutrients_to_focus'])}"
+
         period_text = {
             PlanPeriod.DAY: "на 1 день",
             PlanPeriod.WEEK: "на 7 дней (неделю)",
@@ -232,7 +252,11 @@ class MealPlanService:
 - Целевой вес: {user.target_weight} кг
 - Цель: {goal_desc}
 - Тип питания: {diet_desc}
-- Бюджет: {budget_desc}{allergies_text}
+- Бюджет: {budget_desc}{allergies_text}{medical_info_text}
+
+🏥 МЕДИЦИНСКИЕ ОГРАНИЧЕНИЯ (Этап 4 - КРИТИЧЕСКИ ВАЖНО):{medical_restrictions_text}
+
+⚠️ ВНИМАНИЕ: Строго соблюдай все медицинские ограничения! Это влияет на здоровье пользователя.
 
 🎯 ЦЕЛЕВЫЕ ПОКАЗАТЕЛИ НА ДЕНЬ:
 - Калории: {user.target_calories} ккал
