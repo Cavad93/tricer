@@ -517,6 +517,8 @@ medical_analysis_conversation = ConversationHandler(
     states={
         MedicalAnalysisStates.ASKING_TO_UPLOAD: [
             CallbackQueryHandler(add_new_analysis_callback, pattern="^add_new_analysis$"),
+            CallbackQueryHandler(upload_file_callback, pattern="^upload_file$"),
+            CallbackQueryHandler(input_text_callback, pattern="^input_text$"),
             CallbackQueryHandler(view_history_callback, pattern="^view_history$"),
             CallbackQueryHandler(cancel_medical_analysis, pattern="^main_menu$"),
         ],
