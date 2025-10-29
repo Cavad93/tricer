@@ -2,9 +2,9 @@
 Сервис для отправки напоминаний о приемах пищи
 """
 from datetime import datetime, time
-from typing import Optional
+from typing import Optional, List, Tuple
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from telegram import Bot
 from telegram.error import TelegramError
 
@@ -13,10 +13,108 @@ from app.models.meal import MealType
 from app.models.meal_plan import MealPlan
 from app.db.session import async_session_maker
 from app.bot.texts import FriendlyPhrases
+from app.services.diary_check_service import DiaryCheckService
 
 
 class ReminderService:
     """Сервис для работы с напоминаниями о приемах пищи"""
+
+    @staticmethod
+    async def send_all_reminders_for_time(bot: Bot, target_time: str):
+        """
+        ОПТИМИЗИРОВАННЫЙ метод: отправляет ВСЕ типы напоминаний за ОДИН запрос к БД
+
+        Делает один запрос для получения всех пользователей, у которых:
+        - Напоминания о еде (breakfast/lunch/dinner/snack) на это время
+        - Проверка дневника на это время
+
+        Вместо 6 запросов к БД делает 1 запрос.
+
+        Args:
+            bot: Telegram bot instance
+            target_time: Время в формате HH:MM
+        """
+        try:
+            async with async_session_maker() as session:
+                # ОПТИМИЗАЦИЯ: Один запрос для всех типов напоминаний + diary check
+                result = await session.execute(
+                    select(User).where(
+                        or_(
+                            # Meal reminders
+                            (User.reminders_enabled == True) & (User.breakfast_reminder_time == target_time),
+                            (User.reminders_enabled == True) & (User.lunch_reminder_time == target_time),
+                            (User.reminders_enabled == True) & (User.dinner_reminder_time == target_time),
+                            (User.reminders_enabled == True) & (User.snack_reminder_time == target_time),
+                            # Diary check
+                            (User.diary_check_enabled == True) & (User.diary_check_time == target_time)
+                        ),
+                        User.is_active == True,
+                        User.is_blocked == False
+                    )
+                )
+                users = result.scalars().all()
+
+                if not users:
+                    # Нет пользователей с напоминаниями на это время - не логируем (спам в логах)
+                    return
+
+                logger.info(f"Found {len(users)} users with reminders/checks at {target_time}")
+
+                # Группируем пользователей по типу напоминания
+                breakfast_users = []
+                lunch_users = []
+                dinner_users = []
+                snack_users = []
+                diary_check_users = []
+
+                for user in users:
+                    # Meal reminders
+                    if user.reminders_enabled:
+                        if user.breakfast_reminder_time == target_time:
+                            breakfast_users.append(user)
+                        if user.lunch_reminder_time == target_time:
+                            lunch_users.append(user)
+                        if user.dinner_reminder_time == target_time:
+                            dinner_users.append(user)
+                        if user.snack_reminder_time == target_time:
+                            snack_users.append(user)
+
+                    # Diary check
+                    if user.diary_check_enabled and user.diary_check_time == target_time:
+                        diary_check_users.append(user)
+
+                # Отправляем напоминания по типам
+                if breakfast_users:
+                    logger.info(f"Sending breakfast reminders to {len(breakfast_users)} users")
+                    for user in breakfast_users:
+                        await ReminderService.send_meal_reminder(bot, user, MealType.BREAKFAST)
+
+                if lunch_users:
+                    logger.info(f"Sending lunch reminders to {len(lunch_users)} users")
+                    for user in lunch_users:
+                        await ReminderService.send_meal_reminder(bot, user, MealType.LUNCH)
+
+                if dinner_users:
+                    logger.info(f"Sending dinner reminders to {len(dinner_users)} users")
+                    for user in dinner_users:
+                        await ReminderService.send_meal_reminder(bot, user, MealType.DINNER)
+
+                if snack_users:
+                    logger.info(f"Sending snack reminders to {len(snack_users)} users")
+                    for user in snack_users:
+                        await ReminderService.send_meal_reminder(bot, user, MealType.SNACK)
+
+                # Проверяем дневники
+                if diary_check_users:
+                    logger.info(f"Checking diaries for {len(diary_check_users)} users")
+                    for user in diary_check_users:
+                        try:
+                            await DiaryCheckService._check_user_diary(bot, user, session)
+                        except Exception as e:
+                            logger.error(f"Error checking diary for user {user.id}: {e}")
+
+        except Exception as e:
+            logger.error(f"Error in send_all_reminders_for_time: {e}")
 
     @staticmethod
     async def send_meal_reminder(bot: Bot, user: User, meal_type: MealType):

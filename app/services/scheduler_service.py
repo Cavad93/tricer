@@ -60,6 +60,9 @@ class SchedulerService:
         Проверить и отправить напоминания для текущего времени
         Также проверяет дневники питания
         Вызывается каждую минуту
+
+        ОПТИМИЗАЦИЯ: Делает один запрос для всех типов напоминаний
+        вместо 6 отдельных запросов
         """
         try:
             # Получаем текущее время в формате HH:MM
@@ -67,26 +70,12 @@ class SchedulerService:
 
             logger.debug(f"Checking reminders for time {current_time}")
 
-            # Проверяем напоминания для каждого типа приема пищи
-            await ReminderService.send_reminders_for_meal_type(
-                self.bot, MealType.BREAKFAST, current_time
-            )
-            await ReminderService.send_reminders_for_meal_type(
-                self.bot, MealType.LUNCH, current_time
-            )
-            await ReminderService.send_reminders_for_meal_type(
-                self.bot, MealType.DINNER, current_time
-            )
-            await ReminderService.send_reminders_for_meal_type(
-                self.bot, MealType.SNACK, current_time
-            )
-
-            # Проверяем дневники питания
-            await DiaryCheckService.check_and_notify_incomplete_diaries(
+            # ОПТИМИЗИРОВАНО: Один запрос для всех типов напоминаний
+            await ReminderService.send_all_reminders_for_time(
                 self.bot, current_time
             )
 
-            # Запрашиваем количество шагов за день
+            # Запрашиваем количество шагов за день (только в 22:00)
             await StepsRequestService.request_daily_steps(
                 self.bot, current_time
             )

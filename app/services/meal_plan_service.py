@@ -554,29 +554,66 @@ class MealPlanService:
         """
         Парсинг ответа AI с планом питания
 
+        УЛУЧШЕННЫЙ ПАРСИНГ:
+        - Удаляет markdown блоки (```json ... ```)
+        - Обрабатывает trailing commas
+        - Очищает комментарии
+        - Fallback на несколько методов парсинга
+
         Args:
             ai_response: Ответ от AI
 
         Returns:
             Dict: Структурированный план питания
         """
+        import re
+
         try:
-            # Пытаемся найти JSON в ответе
-            start_idx = ai_response.find("{")
-            end_idx = ai_response.rfind("}") + 1
+            # Шаг 1: Удаляем markdown блоки ```json ... ``` или ``` ... ```
+            cleaned_response = ai_response
+
+            # Удаляем ```json и ```
+            cleaned_response = re.sub(r'```json\s*', '', cleaned_response)
+            cleaned_response = re.sub(r'```\s*', '', cleaned_response)
+
+            # Шаг 2: Ищем JSON объект
+            start_idx = cleaned_response.find("{")
+            end_idx = cleaned_response.rfind("}") + 1
 
             if start_idx == -1 or end_idx == 0:
                 raise ValueError("JSON not found in AI response")
 
-            json_str = ai_response[start_idx:end_idx]
-            plan_data = json.loads(json_str)
+            json_str = cleaned_response[start_idx:end_idx]
 
-            return plan_data
+            # Шаг 3: Попытка парсинга
+            try:
+                plan_data = json.loads(json_str)
+                return plan_data
+            except json.JSONDecodeError as parse_error:
+                # Шаг 4: Попытка исправить trailing commas
+                logger.warning(f"First parse attempt failed: {parse_error}. Trying to fix trailing commas...")
+
+                # Убираем trailing commas перед ] и }
+                fixed_json = re.sub(r',(\s*[}\]])', r'\1', json_str)
+
+                try:
+                    plan_data = json.loads(fixed_json)
+                    logger.info("Successfully parsed JSON after fixing trailing commas")
+                    return plan_data
+                except json.JSONDecodeError as second_error:
+                    # Логируем полный JSON для отладки
+                    logger.error(f"Failed to parse AI meal plan after cleanup: {second_error}")
+                    logger.error(f"JSON string (first 1000 chars): {json_str[:1000]}")
+                    logger.error(f"JSON string (last 500 chars): {json_str[-500:]}")
+                    raise ValueError(f"Invalid JSON format in AI response: {second_error}")
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI meal plan response: {e}")
-            logger.error(f"AI response: {ai_response[:500]}...")
+            logger.error(f"AI response (first 500 chars): {ai_response[:500]}")
             raise ValueError("Invalid JSON format in AI response")
+        except Exception as e:
+            logger.error(f"Unexpected error parsing AI meal plan: {e}")
+            raise ValueError(f"Error parsing AI response: {e}")
 
     @staticmethod
     async def get_active_meal_plan(session: AsyncSession, user_id: int) -> Optional[MealPlan]:
