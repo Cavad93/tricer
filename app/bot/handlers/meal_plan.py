@@ -240,8 +240,6 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
     clarify_phrase = random.choice(FriendlyPhrases.CLARIFY_PREFERENCES)
 
     # Задаем первый вопрос
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
     skip_keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip")]
     ])
@@ -408,8 +406,6 @@ async def reuse_weekly_plan_yes(update: Update, context: ContextTypes.DEFAULT_TY
             await session.commit()
 
         # Отправляем PDF файлы
-        from telegram import InputFile
-
         with open(pdf_plan_path, 'rb') as pdf_file:
             await context.bot.send_document(
                 chat_id=update.effective_chat.id,
@@ -496,8 +492,6 @@ async def reuse_weekly_plan_no(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_preference_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Универсальный обработчик ответов на вопросы о предпочтениях"""
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
     step = context.user_data.get("preference_step", 1)
 
     # Определяем источник: callback или текст
@@ -875,8 +869,6 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
         # Отправляем новые PDF
-        from telegram import InputFile
-
         with open(pdf_plan_path, 'rb') as pdf_file:
             await context.bot.send_document(
                 chat_id=update.effective_chat.id,
