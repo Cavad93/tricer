@@ -106,6 +106,10 @@ class User(Base):
     snack_reminder_time = Column(String, nullable=True)  # Время напоминания о перекусе (HH:MM, опционально)
     reminder_timezone = Column(String, default='UTC')  # Часовой пояс пользователя
 
+    # Проверка дневника питания
+    diary_check_enabled = Column(Boolean, default=True)  # Включена ли проверка дневника
+    diary_check_time = Column(String, nullable=True)  # Время проверки дневника (HH:MM)
+
     # Подписка
     subscription_type = Column(SQLEnum(SubscriptionType), default=SubscriptionType.FREE)
     subscription_expires_at = Column(DateTime, nullable=True)

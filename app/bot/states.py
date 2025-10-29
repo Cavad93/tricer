@@ -23,6 +23,7 @@ class OnboardingStates(IntEnum):
     # Медицинская информация (Этап 4)
     CHRONIC_CONDITIONS = auto()  # Хронические заболевания
     REMOVED_ORGANS = auto()  # Удаленные органы
+    DIARY_CHECK_TIME = auto()  # Выбор времени проверки дневника
     CALCULATING = auto()
 
 

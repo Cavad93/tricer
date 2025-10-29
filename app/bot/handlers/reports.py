@@ -29,6 +29,7 @@ async def reports_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Клавиатура выбора периода
         keyboard = [
+            [InlineKeyboardButton("📊 График веса", callback_data="report_weight_chart")],
             [InlineKeyboardButton("За сегодня", callback_data="report_day")],
             [InlineKeyboardButton("За неделю", callback_data="report_week")],
             [InlineKeyboardButton("За месяц", callback_data="report_month")],
@@ -37,12 +38,13 @@ async def reports_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         text = (
-            "Выберите период для отчета:\n\n"
-            "За отчет вы получите PDF-файл с:\n"
-            "• Круговой диаграммой КБЖУ\n"
-            "• Прогресс-барами по макронутриентам\n"
-            "• Таблицами витаминов и минералов\n"
-            "• Сравнением с целевыми значениями\n\n"
+            "Выберите тип отчета:\n\n"
+            "📊 <b>График веса</b> - визуализация изменения веса с момента регистрации\n\n"
+            "<b>Отчеты о питании:</b>\n"
+            "• Круговая диаграмма КБЖУ\n"
+            "• Прогресс-бары по макронутриентам\n"
+            "• Таблицы витаминов и минералов\n"
+            "• Сравнение с целевыми значениями\n\n"
             "<i>Примечание: данные о микронутриентах являются приблизительной оценкой</i>"
         )
 
@@ -171,6 +173,116 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 
+async def generate_weight_chart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Генерация и отправка графика веса"""
+    try:
+        query = update.callback_query
+        await query.answer()
+
+        # Отправляем сообщение о начале генерации
+        status_message = await query.message.reply_text(
+            "📊 Генерирую график веса..."
+        )
+
+        telegram_id = query.from_user.id
+
+        async with async_session_maker() as db:
+            # Получаем пользователя
+            result = await db.execute(
+                select(User).where(User.telegram_id == telegram_id)
+            )
+            user = result.scalar_one_or_none()
+
+            if not user:
+                await status_message.edit_text("Пользователь не найден. Пройдите /start.")
+                return ConversationHandler.END
+
+            # Получаем историю веса
+            from app.services.weight_service import WeightService
+            weight_history = await WeightService.get_weight_history(
+                user_id=user.id,
+                session=db,
+                limit=100  # Последние 100 записей
+            )
+
+            # Сортируем по дате (от старых к новым для графика)
+            weight_history = sorted(weight_history, key=lambda x: x.measured_at)
+
+            if not weight_history or len(weight_history) < 2:
+                await status_message.edit_text(
+                    "📊 <b>Недостаточно данных для графика</b>\n\n"
+                    "Для построения графика нужно минимум 2 измерения веса.\n\n"
+                    "Добавьте новый вес через профиль (👤 Профиль → ⚖️ Изменить вес)",
+                    parse_mode='HTML'
+                )
+                return ConversationHandler.END
+
+            # Генерируем график
+            try:
+                from app.services.weight_chart_service import WeightChartService
+
+                chart_buffer = WeightChartService.generate_weight_chart(
+                    weight_history=weight_history,
+                    target_weight=user.target_weight,
+                    user_name=user.preferred_name or user.first_name,
+                    height=user.height
+                )
+
+                # Формируем статистику для подписи
+                start_weight = weight_history[0].weight
+                current_weight = weight_history[-1].weight
+                weight_change = current_weight - start_weight
+                days_tracking = (weight_history[-1].measured_at - weight_history[0].measured_at).days
+
+                if weight_change < 0:
+                    change_text = f"📉 Потеря: {abs(weight_change):.1f} кг"
+                elif weight_change > 0:
+                    change_text = f"📈 Набор: {weight_change:.1f} кг"
+                else:
+                    change_text = "Вес стабилен"
+
+                caption = (
+                    f"📊 <b>График изменения веса</b>\n\n"
+                    f"Начальный вес: {start_weight:.1f} кг\n"
+                    f"Текущий вес: {current_weight:.1f} кг\n"
+                    f"{change_text}\n"
+                    f"Период: {days_tracking} дней\n"
+                    f"Записей: {len(weight_history)}"
+                )
+
+                # Отправляем график
+                await query.message.reply_photo(
+                    photo=chart_buffer,
+                    caption=caption,
+                    parse_mode='HTML'
+                )
+
+                await status_message.delete()
+
+                # Показываем главное меню
+                from app.bot.keyboards import get_main_menu_keyboard
+                keyboard = get_main_menu_keyboard()
+
+                await query.message.reply_text(
+                    "Что бы вы хотели сделать дальше?",
+                    reply_markup=keyboard
+                )
+
+            except Exception as e:
+                logger.error(f"Error generating weight chart: {e}")
+                await status_message.edit_text(
+                    "Произошла ошибка при генерации графика.\n"
+                    "Попробуйте позже или обратитесь в поддержку."
+                )
+
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error in generate_weight_chart: {e}")
+        await query.message.reply_text("Произошла ошибка. Попробуйте позже.")
+        return ConversationHandler.END
+
+
 async def cancel_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена запроса отчета"""
     try:
@@ -205,6 +317,7 @@ def get_reports_conversation_handler():
         ],
         states={
             SELECTING_PERIOD: [
+                CallbackQueryHandler(generate_weight_chart, pattern="^report_weight_chart$"),
                 CallbackQueryHandler(generate_report, pattern="^report_(day|week|month)$"),
                 CallbackQueryHandler(cancel_report, pattern="^back_to_menu$"),
             ],
