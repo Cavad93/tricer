@@ -276,6 +276,19 @@ class MealPlanService:
 
         diet_desc = diet_descriptions.get(user.diet_type.value if user.diet_type else "omnivore", "Всеядный")
 
+        # Маппинг уровней активности
+        activity_level_descriptions = {
+            "minimal": "Минимальная (сидячий образ жизни, без тренировок)",
+            "low": "Низкая (1-3 лёгкие тренировки в неделю)",
+            "medium": "Средняя (3-5 умеренных тренировок в неделю)",
+            "high": "Высокая (5-7 интенсивных тренировок в неделю)"
+        }
+
+        activity_level_desc = activity_level_descriptions.get(
+            user.activity_level.value if user.activity_level else "medium",
+            "Средняя (3-5 умеренных тренировок в неделю)"
+        )
+
         # Формируем информацию об аллергиях
         allergies_text = ""
         if user.allergies and len(user.allergies) > 0:
@@ -366,9 +379,13 @@ class MealPlanService:
 - Рост: {user.height} см
 - Текущий вес: {user.current_weight} кг
 - Целевой вес: {user.target_weight} кг
+- Уровень активности: {activity_level_desc}
 - Цель: {goal_desc}
 - Тип питания: {diet_desc}
 - Бюджет: {budget_desc}{allergies_text}{medical_info_text}
+
+⚠️ ВАЖНО: Учитывай возраст, вес и уровень активности при расчёте микронутриентов!
+   Для более активных людей и людей с большим весом потребности в некоторых микронутриентах выше.
 
 🏥 МЕДИЦИНСКИЕ ОГРАНИЧЕНИЯ (Этап 4 - КРИТИЧЕСКИ ВАЖНО):{medical_restrictions_text}
 
@@ -439,31 +456,49 @@ class MealPlanService:
      * Цельнозерновые (группа B, магний) - ежедневно
 
 7. МИКРОНУТРИЕНТЫ В ОТВЕТЕ:
-   ⚠️ ВАЖНО: Для КАЖДОГО приёма пищи рассчитай и верни примерное содержание ключевых микронутриентов!
+   ⚠️ ВАЖНО: Для КАЖДОГО приёма пищи рассчитай и верни примерное содержание ВСЕХ микронутриентов!
 
-   Включай следующие микронутриенты (в единицах измерения):
+   Учитывай возраст, вес и уровень активности пользователя при оценке адекватности микронутриентов.
+   Для более активных людей и людей с большим весом некоторые нормы могут быть выше.
 
-   Витамины:
-   - vitamin_a (мкг) - Витамин A
-   - vitamin_b1 (мг) - Тиамин
-   - vitamin_b2 (мг) - Рибофлавин
-   - vitamin_b3 (мг) - Ниацин
-   - vitamin_b6 (мг) - Пиридоксин
-   - vitamin_b9 (мкг) - Фолиевая кислота
-   - vitamin_b12 (мкг) - Кобаламин
-   - vitamin_c (мг) - Витамин C
-   - vitamin_d (мкг) - Витамин D
-   - vitamin_e (мг) - Витамин E
-   - vitamin_k (мкг) - Витамин K
+   Включай ВСЕ следующие микронутриенты (в единицах измерения):
 
-   Минералы:
-   - calcium (мг) - Кальций
-   - iron (мг) - Железо
-   - magnesium (мг) - Магний
-   - zinc (мг) - Цинк
-   - potassium (мг) - Калий
+   Витамины (15):
+   - vitamin_a (мкг) - Витамин A (ретинол)
+   - beta_carotene (мкг) - Бета-каротин
+   - vitamin_b1 (мг) - Витамин B1 (тиамин)
+   - vitamin_b2 (мг) - Витамин B2 (рибофлавин)
+   - vitamin_b3 (мг) - Витамин B3/PP (ниацин)
+   - vitamin_b5 (мг) - Витамин B5 (пантотеновая кислота)
+   - vitamin_b6 (мг) - Витамин B6 (пиридоксин)
+   - vitamin_b7 (мкг) - Витамин B7/H (биотин)
+   - vitamin_b9 (мкг) - Витамин B9 (фолиевая кислота)
+   - vitamin_b12 (мкг) - Витамин B12 (кобаламин)
+   - vitamin_c (мг) - Витамин C (аскорбиновая кислота)
+   - vitamin_d (мкг) - Витамин D (кальциферол)
+   - vitamin_e (мг) - Витамин E (токоферол)
+   - vitamin_k (мкг) - Витамин K (филлохинон)
+   - choline (мг) - Холин
 
-   Рассчитывай микронутриенты на основе состава ингредиентов. Используй справочные данные о составе продуктов.
+   Минералы (17):
+   - calcium (мг) - Кальций (Ca)
+   - phosphorus (мг) - Фосфор (P)
+   - magnesium (мг) - Магний (Mg)
+   - potassium (мг) - Калий (K)
+   - sodium (мг) - Натрий (Na)
+   - chloride (мг) - Хлор (Cl)
+   - iron (мг) - Железо (Fe)
+   - zinc (мг) - Цинк (Zn)
+   - iodine (мкг) - Йод (I)
+   - selenium (мкг) - Селен (Se)
+   - copper (мг) - Медь (Cu)
+   - manganese (мг) - Марганец (Mn)
+   - chromium (мкг) - Хром (Cr)
+   - fluoride (мг) - Фтор (F)
+   - cobalt (мкг) - Кобальт (Co)
+   - silicon (мг) - Кремний (Si)
+
+   Рассчитывай микронутриенты на основе состава ингредиентов. Используй справочные данные о составе продуктов (USDA, российские таблицы состава пищи).
 
 ФОРМАТ ОТВЕТА (СТРОГО JSON):
 {{
@@ -493,10 +528,14 @@ class MealPlanService:
           ],
           "cooking_instructions": "1. Залить овсяные хлопья молоком и варить 5 минут. 2. Добавить нарезанный банан. 3. Посыпать измельченными орехами и полить медом.",
           "micronutrients": {{
-            "vitamin_a": 50, "vitamin_b1": 0.3, "vitamin_b2": 0.4, "vitamin_b3": 2.5,
-            "vitamin_b6": 0.5, "vitamin_b9": 40, "vitamin_b12": 0.5, "vitamin_c": 10,
-            "vitamin_d": 1.2, "vitamin_e": 4, "vitamin_k": 5, "calcium": 250,
-            "iron": 2.5, "magnesium": 80, "zinc": 2, "potassium": 400
+            "vitamin_a": 50, "beta_carotene": 200, "vitamin_b1": 0.3, "vitamin_b2": 0.4,
+            "vitamin_b3": 2.5, "vitamin_b5": 1.2, "vitamin_b6": 0.5, "vitamin_b7": 8,
+            "vitamin_b9": 40, "vitamin_b12": 0.5, "vitamin_c": 10, "vitamin_d": 1.2,
+            "vitamin_e": 4, "vitamin_k": 5, "choline": 60,
+            "calcium": 250, "phosphorus": 200, "magnesium": 80, "potassium": 400,
+            "sodium": 150, "chloride": 180, "iron": 2.5, "zinc": 2, "iodine": 15,
+            "selenium": 12, "copper": 0.3, "manganese": 0.8, "chromium": 8,
+            "fluoride": 0.2, "cobalt": 2, "silicon": 5
           }}
         }},
         // ... остальные приемы пищи (lunch, dinner, snack)
