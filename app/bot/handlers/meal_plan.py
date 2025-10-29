@@ -861,7 +861,8 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
                 session,
                 user.telegram_id,
                 period,
-                preferences=new_preferences
+                preferences=new_preferences,
+                old_plan_id=old_plan_id
             )
 
             # Используем ранее сохраненный выбор пользователя по расчёту цены

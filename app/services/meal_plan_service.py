@@ -23,7 +23,8 @@ class MealPlanService:
         period_type: PlanPeriod,
         start_date: date = None,
         preferences: dict = None,
-        medical_context: dict = None
+        medical_context: dict = None,
+        old_plan_id: int = None
     ) -> MealPlan:
         """
         Генерация плана питания через AI
@@ -40,6 +41,7 @@ class MealPlanService:
             medical_context: Временные медицинские данные (Этап 4 - доработка)
                 - chronic_conditions_status: текущее состояние хронических заболеваний
                 - acute_conditions: текущие острые состояния
+            old_plan_id: ID предыдущего плана (для внесения изменений)
 
         Returns:
             MealPlan: Созданный план питания
@@ -65,8 +67,13 @@ class MealPlanService:
 
         end_date = start_date + timedelta(days=days_count - 1)
 
-        # Формируем промпт для AI с учетом preferences и medical_context
-        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences, medical_context)
+        # Загружаем данные старого плана, если он указан
+        old_plan_data = None
+        if old_plan_id:
+            old_plan_data = await MealPlanService._load_old_plan_data(session, old_plan_id)
+
+        # Формируем промпт для AI с учетом preferences, medical_context и old_plan_data
+        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences, medical_context, old_plan_data)
 
         # Генерируем план через AI
         from app.config import settings
@@ -155,7 +162,78 @@ class MealPlanService:
         return meal_plan
 
     @staticmethod
-    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None) -> str:
+    async def _load_old_plan_data(session: AsyncSession, plan_id: int) -> Optional[Dict]:
+        """
+        Загружает данные предыдущего плана для передачи в AI
+
+        Args:
+            session: Сессия БД
+            plan_id: ID плана для загрузки
+
+        Returns:
+            Dict с данными плана или None если план не найден
+        """
+        try:
+            # Загружаем план
+            result = await session.execute(
+                select(MealPlan).where(MealPlan.id == plan_id)
+            )
+            plan = result.scalar_one_or_none()
+
+            if not plan:
+                logger.warning(f"Old plan {plan_id} not found")
+                return None
+
+            # Загружаем дни плана
+            days_result = await session.execute(
+                select(MealPlanDay)
+                .where(MealPlanDay.meal_plan_id == plan_id)
+                .order_by(MealPlanDay.day_number)
+            )
+            days = days_result.scalars().all()
+
+            # Формируем структуру с данными плана
+            plan_data = {
+                "period_type": plan.period_type.value,
+                "days": []
+            }
+
+            for day in days:
+                # Загружаем приемы пищи для дня
+                meals_result = await session.execute(
+                    select(PlannedMeal)
+                    .where(PlannedMeal.meal_plan_day_id == day.id)
+                    .order_by(PlannedMeal.meal_order)
+                )
+                meals = meals_result.scalars().all()
+
+                day_data = {
+                    "day_number": day.day_number,
+                    "total_calories": day.total_calories,
+                    "meals": []
+                }
+
+                for meal in meals:
+                    day_data["meals"].append({
+                        "meal_type": meal.meal_type,
+                        "recipe_name": meal.recipe_name,
+                        "calories": meal.calories,
+                        "proteins": meal.proteins,
+                        "fats": meal.fats,
+                        "carbs": meal.carbs,
+                        "ingredients": meal.ingredients
+                    })
+
+                plan_data["days"].append(day_data)
+
+            return plan_data
+
+        except Exception as e:
+            logger.error(f"Error loading old plan {plan_id}: {e}")
+            return None
+
+    @staticmethod
+    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None, old_plan_data: dict = None) -> str:
         """Формирование промпта для генерации плана питания"""
 
         # Обрабатываем preferences
@@ -251,6 +329,27 @@ class MealPlanService:
         if special_requests:
             preferences_text += f"\n💡 ОСОБЫЕ ПОЖЕЛАНИЯ: {special_requests}\n   (Учти эти пожелания при составлении плана)"
 
+        # Формируем секцию с предыдущим планом (если есть)
+        old_plan_text = ""
+        if old_plan_data and old_plan_data.get("days"):
+            old_plan_text = "\n\n📋 ПРЕДЫДУЩИЙ ПЛАН ПИТАНИЯ (для внесения изменений):\n"
+            old_plan_text += "⚠️ ВАЖНО: Это план, который уже был составлен. Пользователь просит внести изменения.\n"
+            old_plan_text += "Внимательно изучи предыдущий план и учти пожелания пользователя из секции ОСОБЫЕ ПОЖЕЛАНИЯ.\n\n"
+
+            for day_data in old_plan_data["days"]:
+                old_plan_text += f"День {day_data['day_number']} ({day_data['total_calories']} ккал):\n"
+                for meal in day_data["meals"]:
+                    meal_type_ru = {
+                        "breakfast": "Завтрак",
+                        "lunch": "Обед",
+                        "dinner": "Ужин",
+                        "snack": "Перекус"
+                    }.get(meal["meal_type"], meal["meal_type"])
+
+                    old_plan_text += f"  • {meal_type_ru}: {meal['recipe_name']} "
+                    old_plan_text += f"({meal['calories']} ккал, Б:{meal['proteins']}г Ж:{meal['fats']}г У:{meal['carbs']}г)\n"
+                old_plan_text += "\n"
+
         # Подключаем AI system prompts для правильного тона
         from app.bot.texts import AI_SYSTEM_PROMPT_BASE, AI_SYSTEM_PROMPT_NO_DIAGNOSIS
 
@@ -281,7 +380,7 @@ class MealPlanService:
 - Жиры: {user.target_fats}г
 - Углеводы: {user.target_carbs}г
 {cooking_time_text}
-{preferences_text}
+{preferences_text}{old_plan_text}
 
 💊 МИКРОНУТРИЕНТЫ (для месячного планирования):
 ВАЖНО: Рацион должен быть сбалансирован так, чтобы за МЕСЯЦ восполнить суточные нормы по всем микронутриентам.
