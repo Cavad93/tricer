@@ -9,11 +9,11 @@ from app.bot.states import MealPlanStates
 from app.bot.keyboards import back_to_menu_keyboard
 from app.db.session import async_session_maker
 from app.models.user import User
-from app.models.meal_plan import PlanPeriod
+from app.models.meal_plan import PlanPeriod, MealPlan
 from app.services.meal_plan_service import MealPlanService
 from app.services.shopping_list_service import ShoppingListService
 from app.services.pdf_generator import PDFGeneratorService
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
 
 def meal_plan_period_keyboard() -> InlineKeyboardMarkup:
