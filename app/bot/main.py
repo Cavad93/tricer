@@ -38,6 +38,10 @@ from app.bot.handlers.meal_plan import (
     reuse_weekly_plan_yes,
     reuse_weekly_plan_no,
     handle_preference_response,
+    handle_chronic_conditions_response,
+    skip_chronic_conditions_check_callback,
+    handle_acute_conditions_response,
+    skip_acute_conditions_callback,
     handle_feedback_positive,
     handle_feedback_negative,
     handle_change_request,
@@ -572,6 +576,18 @@ def main():
                 # Единый обработчик для всех вопросов о предпочтениях
                 CallbackQueryHandler(handle_preference_response, pattern="^preferences_skip$"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preference_response),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.CHECKING_CHRONIC_CONDITIONS: [
+                # Уточнение состояния хронических заболеваний (Этап 4 - доработка)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chronic_conditions_response),
+                CallbackQueryHandler(skip_chronic_conditions_check_callback, pattern="^skip_chronic_check$"),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.CHECKING_ACUTE_CONDITIONS: [
+                # Проверка наличия острых состояний (Этап 4 - доработка)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_acute_conditions_response),
+                CallbackQueryHandler(skip_acute_conditions_callback, pattern="^skip_acute_check$"),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
             MealPlanStates.ASKING_FEEDBACK: [

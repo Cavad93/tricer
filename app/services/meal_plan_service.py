@@ -22,7 +22,8 @@ class MealPlanService:
         user_id: int,
         period_type: PlanPeriod,
         start_date: date = None,
-        preferences: dict = None
+        preferences: dict = None,
+        medical_context: dict = None
     ) -> MealPlan:
         """
         Генерация плана питания через AI
@@ -36,6 +37,9 @@ class MealPlanService:
                 - favorite_foods: любимые блюда/продукты
                 - additional_dislikes: нежелательные продукты
                 - special_requests: особые пожелания
+            medical_context: Временные медицинские данные (Этап 4 - доработка)
+                - chronic_conditions_status: текущее состояние хронических заболеваний
+                - acute_conditions: текущие острые состояния
 
         Returns:
             MealPlan: Созданный план питания
@@ -61,8 +65,8 @@ class MealPlanService:
 
         end_date = start_date + timedelta(days=days_count - 1)
 
-        # Формируем промпт для AI с учетом preferences
-        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences)
+        # Формируем промпт для AI с учетом preferences и medical_context
+        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences, medical_context)
 
         # Генерируем план через AI
         from app.config import settings
@@ -151,7 +155,7 @@ class MealPlanService:
         return meal_plan
 
     @staticmethod
-    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None) -> str:
+    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None) -> str:
         """Формирование промпта для генерации плана питания"""
 
         # Обрабатываем preferences
@@ -159,6 +163,11 @@ class MealPlanService:
         favorite_foods = preferences.get("favorite_foods")
         additional_dislikes = preferences.get("additional_dislikes")
         special_requests = preferences.get("special_requests")
+
+        # Обрабатываем временный медицинский контекст (Этап 4 - доработка)
+        medical_context = medical_context or {}
+        chronic_conditions_status = medical_context.get("chronic_conditions_status")
+        acute_conditions = medical_context.get("acute_conditions")
 
         # Маппинг бюджетных категорий
         budget_descriptions = {
@@ -198,8 +207,16 @@ class MealPlanService:
         medical_info_text = ""
         if user.chronic_conditions and len(user.chronic_conditions) > 0:
             medical_info_text += f"\n🏥 ХРОНИЧЕСКИЕ ЗАБОЛЕВАНИЯ: {', '.join(user.chronic_conditions)}"
+            # Добавляем текущее состояние, если пользователь уточнил
+            if chronic_conditions_status and chronic_conditions_status != "no_changes":
+                medical_info_text += f"\n   📋 ТЕКУЩЕЕ СОСТОЯНИЕ: {chronic_conditions_status}"
         if user.removed_organs and len(user.removed_organs) > 0:
             medical_info_text += f"\n⚕️ УДАЛЕННЫЕ ОРГАНЫ: {', '.join(user.removed_organs)}"
+
+        # Добавляем информацию об острых состояниях (Этап 4 - доработка)
+        if acute_conditions:
+            medical_info_text += f"\n🌡️ ОСТРЫЕ СОСТОЯНИЯ (ВРЕМЕННЫЕ): {acute_conditions}"
+            medical_info_text += "\n   ⚠️ ВАЖНО: Учти эти временные состояния при составлении рациона! Рацион должен быть щадящим и подходящим для текущего состояния."
 
         # Добавляем медицинские ограничения по питанию, если они есть
         medical_restrictions_text = ""

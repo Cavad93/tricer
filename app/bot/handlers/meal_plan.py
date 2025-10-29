@@ -557,29 +557,153 @@ async def handle_preference_response(update: Update, context: ContextTypes.DEFAU
     elif step == 3:
         context.user_data["special_requests"] = response
 
-        # Все вопросы заданы, начинаем генерацию
-        from app.bot.texts import FriendlyPhrases
-        import random
+        # Все вопросы о предпочтениях заданы
+        # Теперь проверяем, нужно ли уточнить медицинские данные (Этап 4 - доработка)
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
 
-        creation_phrase = random.choice(FriendlyPhrases.PLAN_CREATION_START)
+            # Проверяем есть ли у пользователя хронические заболевания
+            has_chronic = user and user.chronic_conditions and len(user.chronic_conditions) > 0
 
-        period = context.user_data.get("meal_plan_period")
-        period_text = {
-            PlanPeriod.DAY: "1 день",
-            PlanPeriod.WEEK: "неделю (7 дней)",
-            PlanPeriod.MONTH: "месяц (30 дней)"
-        }[period]
+            if has_chronic:
+                # Есть хронические заболевания - уточняем их состояние
+                from app.bot.texts import MEDICAL_CHECK_INTRO, get_chronic_conditions_check_text
 
-        progress_text = f"{creation_phrase}\n\n" \
-                       f"⏳ Создаю персональный план питания на {period_text}...\n\n" \
-                       "Это может занять до 2 минут. Пожалуйста, подожди."
+                intro_text = MEDICAL_CHECK_INTRO
+                check_text = get_chronic_conditions_check_text(user.chronic_conditions)
 
-        if is_skip:
-            progress_message = await query.edit_message_text(progress_text)
-        else:
-            progress_message = await update.message.reply_text(progress_text)
+                skip_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Без изменений", callback_data="skip_chronic_check")]
+                ])
 
-        return await generate_meal_plan_with_preferences(update, context, progress_message)
+                full_text = intro_text + "\n\n" + check_text
+
+                if is_skip:
+                    await query.edit_message_text(full_text, reply_markup=skip_keyboard, parse_mode='HTML')
+                else:
+                    await update.message.reply_text(full_text, reply_markup=skip_keyboard, parse_mode='HTML')
+
+                return MealPlanStates.CHECKING_CHRONIC_CONDITIONS
+
+        # Нет хронических заболеваний - сразу спрашиваем про острые состояния
+        return await ask_acute_conditions(update, context, is_skip)
+
+
+async def ask_acute_conditions(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback: bool = False) -> int:
+    """Спрашивает про острые заболевания/состояния"""
+    from app.bot.texts import ACUTE_CONDITIONS_CHECK
+
+    skip_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Нет острых состояний", callback_data="skip_acute_check")]
+    ])
+
+    if is_callback:
+        query = update.callback_query
+        await query.edit_message_text(
+            ACUTE_CONDITIONS_CHECK,
+            reply_markup=skip_keyboard,
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(
+            ACUTE_CONDITIONS_CHECK,
+            reply_markup=skip_keyboard,
+            parse_mode='HTML'
+        )
+
+    return MealPlanStates.CHECKING_ACUTE_CONDITIONS
+
+
+async def handle_chronic_conditions_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ответа о текущем состоянии хронических заболеваний"""
+    chronic_status = update.message.text.strip()
+
+    # Сохраняем обновленную информацию во временный контекст
+    context.user_data["chronic_conditions_status"] = chronic_status
+
+    logger.info(f"User {update.effective_user.id} updated chronic conditions status: {chronic_status}")
+
+    # Переходим к вопросу про острые состояния
+    return await ask_acute_conditions(update, context, is_callback=False)
+
+
+async def skip_chronic_conditions_check_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск проверки хронических заболеваний (оставить как есть)"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем, что изменений нет
+    context.user_data["chronic_conditions_status"] = "no_changes"
+
+    logger.info(f"User {update.effective_user.id} skipped chronic conditions check")
+
+    # Переходим к вопросу про острые состояния
+    return await ask_acute_conditions(update, context, is_callback=True)
+
+
+async def handle_acute_conditions_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ответа о наличии острых состояний"""
+    acute_conditions = update.message.text.strip()
+
+    # Сохраняем информацию во временный контекст
+    context.user_data["acute_conditions"] = acute_conditions
+
+    logger.info(f"User {update.effective_user.id} reported acute conditions: {acute_conditions}")
+
+    # Начинаем генерацию плана
+    return await start_meal_plan_generation(update, context, is_callback=False)
+
+
+async def skip_acute_conditions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск проверки острых состояний (нет острых состояний)"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем, что острых состояний нет
+    context.user_data["acute_conditions"] = None
+
+    logger.info(f"User {update.effective_user.id} has no acute conditions")
+
+    # Начинаем генерацию плана
+    return await start_meal_plan_generation(update, context, is_callback=True)
+
+
+async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback: bool = False) -> int:
+    """Начинает генерацию плана питания после всех уточнений"""
+    from app.bot.texts import FriendlyPhrases, MEDICAL_CHECK_COMPLETE
+    import random
+
+    # Показываем сообщение о завершении медицинских уточнений
+    if is_callback:
+        query = update.callback_query
+        await query.edit_message_text(MEDICAL_CHECK_COMPLETE, parse_mode='HTML')
+    else:
+        await update.message.reply_text(MEDICAL_CHECK_COMPLETE, parse_mode='HTML')
+
+    # Формируем текст о начале генерации
+    creation_phrase = random.choice(FriendlyPhrases.PLAN_CREATION_START)
+
+    period = context.user_data.get("meal_plan_period")
+    period_text = {
+        PlanPeriod.DAY: "1 день",
+        PlanPeriod.WEEK: "неделю (7 дней)",
+        PlanPeriod.MONTH: "месяц (30 дней)"
+    }[period]
+
+    progress_text = f"{creation_phrase}\n\n" \
+                   f"⏳ Создаю персональный план питания на {period_text}...\n\n" \
+                   "Это может занять до 2 минут. Пожалуйста, подожди."
+
+    # Отправляем сообщение о начале генерации
+    progress_message = await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=progress_text
+    )
+
+    return await generate_meal_plan_with_preferences(update, context, progress_message)
 
 
 async def handle_feedback_positive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -825,12 +949,19 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
                 "special_requests": context.user_data.get("special_requests")
             }
 
-            # Генерируем новый план с учетом preferences
+            # Собираем временные медицинские данные (Этап 4 - доработка)
+            medical_context = {
+                "chronic_conditions_status": context.user_data.get("chronic_conditions_status"),
+                "acute_conditions": context.user_data.get("acute_conditions")
+            }
+
+            # Генерируем новый план с учетом preferences и медицинского контекста
             meal_plan = await MealPlanService.generate_meal_plan(
                 session,
                 user.telegram_id,
                 period,
-                preferences=preferences
+                preferences=preferences,
+                medical_context=medical_context
             )
 
             await progress_message.edit_text(
