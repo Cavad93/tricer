@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from loguru import logger
 
 from app.models.meal import Meal, MealFood
@@ -44,12 +45,15 @@ class NutritionReportService:
             if not user:
                 raise ValueError(f"User {user_id} not found")
 
-            # Получаем приемы пищи за день
+            # Получаем приемы пищи за день с eager loading foods
             result = await db.execute(
-                select(Meal).where(
+                select(Meal)
+                .options(selectinload(Meal.foods))
+                .where(
                     Meal.user_id == user_id,
                     Meal.meal_date == target_date
-                ).order_by(Meal.meal_time)
+                )
+                .order_by(Meal.meal_time)
             )
             meals = list(result.scalars().all())
 
@@ -179,9 +183,11 @@ class NutritionReportService:
             if not user:
                 raise ValueError(f"User {user_id} not found")
 
-            # Получаем все приемы пищи за период
+            # Получаем все приемы пищи за период с eager loading foods
             result = await db.execute(
-                select(Meal).where(
+                select(Meal)
+                .options(selectinload(Meal.foods))
+                .where(
                     Meal.user_id == user_id,
                     Meal.meal_date >= start_date,
                     Meal.meal_date <= end_date
