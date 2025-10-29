@@ -208,31 +208,46 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
    - Примерные КБЖУ
    - Почему это подходит (с учетом настроения и рациона)
 
-ФОРМАТ ОТВЕТА (текстом, не JSON):
-🍽 **Рекомендую тебе:**
-
-**1. [Название блюда]**
-~ [Примерные калории] ккал | Б: [белки]г | Ж: [жиры]г | У: [углеводы]г
-
-💡 [Короткое объяснение почему это подходит]
-
-**2. [Название блюда]**
-~ [Примерные калории] ккал | Б: [белки]г | Ж: [жиры]г | У: [углеводы]г
-
-💡 [Короткое объяснение]
-
-**3. [Название блюда]** (опционально, если есть хороший третий вариант)
-~ [Примерные калории] ккал | Б: [белки]г | Ж: [жиры]г | У: [углеводы]г
-
-💡 [Короткое объяснение]
-
----
-📊 [Общий совет с учетом текущего прогресса]
+ФОРМАТ ОТВЕТА - строго JSON:
+{{
+  "recommendations": [
+    {{
+      "number": 1,
+      "name": "Название блюда",
+      "calories": 450,
+      "proteins": 30,
+      "fats": 15,
+      "carbs": 45,
+      "explanation": "Короткое объяснение почему подходит"
+    }},
+    {{
+      "number": 2,
+      "name": "Название блюда",
+      "calories": 350,
+      "proteins": 25,
+      "fats": 12,
+      "carbs": 35,
+      "explanation": "Короткое объяснение"
+    }},
+    {{
+      "number": 3,
+      "name": "Название блюда (опционально)",
+      "calories": 400,
+      "proteins": 28,
+      "fats": 14,
+      "carbs": 40,
+      "explanation": "Короткое объяснение"
+    }}
+  ],
+  "general_advice": "Общий совет с учетом текущего прогресса"
+}}
 
 ВАЖНО:
-- Используй дружелюбный тон
+- Верни только валидный JSON, без markdown форматирования
+- Минимум 2 рекомендации, максимум 3
+- Используй дружелюбный тон в объяснениях
 - Учитывай настроение пользователя
-- Будь честным: если в меню нет хороших вариантов для текущего рациона, скажи об этом
+- Будь честным: если в меню нет хороших вариантов, скажи об этом в general_advice
 - Не ставь диагнозы, используй фразы "может помочь", "поможет сбалансировать"
 """
 
@@ -269,10 +284,32 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
                 ]
             )
 
-            recommendations = response.content[0].text
+            recommendations_text = response.content[0].text
 
-            # Показываем рекомендации
-            final_text = f"🍽 <b>Рекомендации для {meal_type_text}:</b>\n\n{recommendations}"
+            # Парсим JSON ответ
+            import json
+            import re
+
+            # Пытаемся извлечь JSON из ответа (на случай если Claude добавил markdown)
+            json_match = re.search(r'\{[\s\S]*\}', recommendations_text)
+            if json_match:
+                recommendations_json = json.loads(json_match.group())
+            else:
+                recommendations_json = json.loads(recommendations_text)
+
+            # Формируем текст для пользователя
+            final_text = f"🍽 <b>Рекомендации для {meal_type_text}:</b>\n\n"
+
+            for rec in recommendations_json.get("recommendations", []):
+                final_text += (
+                    f"<b>{rec['number']}. {rec['name']}</b>\n"
+                    f"~ {rec['calories']} ккал | Б: {rec['proteins']}г | "
+                    f"Ж: {rec['fats']}г | У: {rec['carbs']}г\n\n"
+                    f"💡 {rec['explanation']}\n\n"
+                )
+
+            if recommendations_json.get("general_advice"):
+                final_text += f"---\n📊 {recommendations_json['general_advice']}"
 
             await processing_msg.edit_text(
                 final_text,
@@ -280,11 +317,25 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
                 reply_markup=main_menu_keyboard()
             )
 
-            # Очищаем контекст
-            context.user_data.pop("restaurant_menu_photo", None)
-            context.user_data.pop("restaurant_mood", None)
+            # Сохраняем рекомендации для последующего использования
+            context.user_data["restaurant_recommendations"] = recommendations_json
+            context.user_data["restaurant_meal_type"] = meal_type
+            context.user_data["restaurant_message_id"] = processing_msg.message_id
+            context.user_data["restaurant_chat_id"] = query.message.chat_id
 
-            logger.info(f"Restaurant recommendations provided for user {user.id}")
+            # Планируем отложенное уточнение через 5 минут (300 секунд)
+            context.job_queue.run_once(
+                restaurant_followup_callback,
+                when=300,
+                data={
+                    "chat_id": query.message.chat_id,
+                    "user_id": user.id,
+                    "telegram_id": user.id
+                },
+                name=f"restaurant_followup_{user.id}"
+            )
+
+            logger.info(f"Restaurant recommendations provided for user {user.id}, followup scheduled in 5 minutes")
 
             return ConversationHandler.END
 
@@ -298,6 +349,230 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
         )
 
         return ConversationHandler.END
+
+
+async def restaurant_followup_callback(context: ContextTypes.DEFAULT_TYPE):
+    """Отложенный callback для уточнения использования рекомендаций (через 5 минут)"""
+    job_data = context.job.data
+    chat_id = job_data.get("chat_id")
+    telegram_id = job_data.get("telegram_id")
+
+    # Проверяем есть ли сохраненные рекомендации
+    if "restaurant_recommendations" not in context.application.user_data.get(telegram_id, {}):
+        logger.info(f"No restaurant recommendations found for user {telegram_id}, skipping followup")
+        return
+
+    # Создаем кнопки для ответа
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Да, воспользовался", callback_data="restaurant_used_yes")],
+        [InlineKeyboardButton("❌ Нет, выбрал другое", callback_data="restaurant_used_no")]
+    ]
+
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            "👋 Привет!\n\n"
+            "Я тут подумал... Воспользовался ли ты моими рекомендациями из ресторана?\n"
+            "Если да, я могу добавить выбранное блюдо в твой дневник питания!"
+        ),
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    logger.info(f"Restaurant followup sent to user {telegram_id}")
+
+
+async def handle_restaurant_used_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ответа пользователя о том, воспользовался ли он рекомендациями"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+    response = query.data.replace("restaurant_used_", "")
+
+    if response == "no":
+        # Пользователь выбрал что-то другое
+        await query.edit_message_text(
+            "Понял! Главное, чтобы было вкусно и полезно 😊\n\n"
+            "Если хочешь добавить то, что ты съел, просто отправь фото блюда через 📸 Добавить еду.",
+            reply_markup=main_menu_keyboard()
+        )
+
+        # Очищаем сохраненные рекомендации
+        context.user_data.pop("restaurant_recommendations", None)
+        context.user_data.pop("restaurant_meal_type", None)
+
+        return
+
+    # Пользователь воспользовался рекомендациями
+    recommendations = context.user_data.get("restaurant_recommendations", {}).get("recommendations", [])
+
+    if not recommendations:
+        await query.edit_message_text(
+            "❌ К сожалению, я не нашел сохраненные рекомендации.\n\n"
+            "Но ты можешь добавить еду вручную через 📸 Добавить еду!",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # Показываем варианты для выбора
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    text = "Отлично! Что именно ты выбрал?\n\n"
+
+    keyboard = []
+    for rec in recommendations:
+        # Формируем краткое описание для кнопки
+        button_text = f"{rec['number']}. {rec['name'][:30]}..."
+        # Детальное описание в тексте
+        text += (
+            f"<b>{rec['number']}. {rec['name']}</b>\n"
+            f"~ {rec['calories']} ккал | Б: {rec['proteins']}г | "
+            f"Ж: {rec['fats']}г | У: {rec['carbs']}г\n\n"
+        )
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"restaurant_dish_{rec['number']}")])
+
+    keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="main_menu")])
+
+    await query.edit_message_text(
+        text,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def handle_restaurant_dish_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Добавление выбранного блюда из ресторана в дневник"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    # Получаем номер выбранного блюда
+    dish_number = int(query.data.replace("restaurant_dish_", ""))
+
+    # Получаем рекомендации
+    recommendations = context.user_data.get("restaurant_recommendations", {}).get("recommendations", [])
+    meal_type = context.user_data.get("restaurant_meal_type")
+
+    # Находим выбранное блюдо
+    selected_dish = None
+    for rec in recommendations:
+        if rec["number"] == dish_number:
+            selected_dish = rec
+            break
+
+    if not selected_dish or not meal_type:
+        await query.edit_message_text(
+            "❌ Не удалось найти информацию о блюде.\n\n"
+            "Попробуй добавить еду вручную через 📸 Добавить еду!",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # Добавляем блюдо в дневник
+    from datetime import date, datetime
+    from app.models.user import User
+    from app.services.meal_service import MealService
+    from sqlalchemy import select
+
+    await query.edit_message_text("⏳ Добавляю блюдо в дневник...", parse_mode='HTML')
+
+    try:
+        async with async_session_maker() as session:
+            # Получаем пользователя
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Формируем данные о еде
+            foods_data = [{
+                "name": selected_dish["name"],
+                "portion_description": "1 порция",
+                "calories": selected_dish["calories"],
+                "proteins": selected_dish["proteins"],
+                "fats": selected_dish["fats"],
+                "carbs": selected_dish["carbs"]
+            }]
+
+            # Создаем прием пищи
+            meal = await MealService.create_meal_with_foods(
+                session=session,
+                user_id=db_user.id,
+                meal_type=meal_type,
+                meal_date=date.today(),
+                meal_time=datetime.now(),
+                foods_data=foods_data
+            )
+
+            # Получаем прогресс за день
+            progress = await MealService.get_nutrition_progress(
+                session=session,
+                user_id=db_user.id,
+                target_date=date.today()
+            )
+
+            from app.models.meal import MealType
+            meal_type_names = {
+                MealType.BREAKFAST: "Завтрак",
+                MealType.LUNCH: "Обед",
+                MealType.DINNER: "Ужин",
+                MealType.SNACK: "Перекус"
+            }
+
+            current = progress["current"]
+            target = progress["target"]
+            remaining = progress["remaining"]
+
+            success_text = (
+                f"✅ Добавлено в *{meal_type_names[meal_type]}*!\n\n"
+                f"🍽 *{selected_dish['name']}*\n"
+                f"~ {selected_dish['calories']} ккал | Б: {selected_dish['proteins']}г | "
+                f"Ж: {selected_dish['fats']}г | У: {selected_dish['carbs']}г\n\n"
+                f"📊 *Прогресс за сегодня:*\n"
+                f"🔥 Калории: {current['calories']}/{target['calories']} ккал "
+                f"(осталось {remaining['calories']})\n"
+                f"🥩 Белки: {current['proteins']:.0f}/{target['proteins']}г\n"
+                f"🧈 Жиры: {current['fats']:.0f}/{target['fats']}г\n"
+                f"🍞 Углеводы: {current['carbs']:.0f}/{target['carbs']}г\n\n"
+            )
+
+            # Предупреждения
+            if current['calories'] > target['calories']:
+                success_text += "⚠️ Ты превысил дневную норму калорий\n"
+            elif remaining['calories'] < 300:
+                success_text += f"💡 Осталось всего {remaining['calories']} ккал на сегодня\n"
+
+            success_text += "\n🎉 Приятного аппетита!"
+
+            await query.edit_message_text(
+                success_text,
+                parse_mode="Markdown",
+                reply_markup=main_menu_keyboard()
+            )
+
+            # Очищаем контекст
+            context.user_data.pop("restaurant_recommendations", None)
+            context.user_data.pop("restaurant_meal_type", None)
+
+            logger.info(f"Restaurant dish added to diary for user {user.id}, meal_id: {meal.id}")
+
+    except Exception as e:
+        logger.error(f"Error adding restaurant dish for user {user.id}: {e}", exc_info=True)
+
+        await query.edit_message_text(
+            "❌ Ошибка при добавлении в дневник.\nПопробуй позже.",
+            reply_markup=back_to_menu_keyboard()
+        )
 
 
 async def cancel_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):

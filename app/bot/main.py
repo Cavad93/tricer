@@ -45,7 +45,9 @@ from app.bot.handlers.restaurant import (
     restaurant_photo_handler,
     handle_mood_selection,
     analyze_menu_and_recommend,
-    cancel_restaurant
+    cancel_restaurant,
+    handle_restaurant_used_response,
+    handle_restaurant_dish_selection
 )
 from app.bot.handlers.reminders import (
     ReminderSetupStates,
@@ -617,6 +619,10 @@ def main():
     # Callback handlers для настроек времени готовки
     application.add_handler(CallbackQueryHandler(change_cooking_time_callback, pattern="^change_cooking_time$"))
     application.add_handler(CallbackQueryHandler(set_cooking_time_callback, pattern="^set_cooking_time_"))
+
+    # Callback handlers для ресторана (отложенные уточнения)
+    application.add_handler(CallbackQueryHandler(handle_restaurant_used_response, pattern="^restaurant_used_"))
+    application.add_handler(CallbackQueryHandler(handle_restaurant_dish_selection, pattern="^restaurant_dish_"))
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))

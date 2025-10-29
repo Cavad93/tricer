@@ -64,6 +64,31 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 additional_context=f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"
             )
 
+            # Проверка на неподходящий контент
+            if result and result.get("inappropriate_content", False):
+                reason = result.get("reason", "неподходящий контент")
+                warning_text = (
+                    "⚠️ *Обнаружен неподходящий контент*\n\n"
+                    f"Причина: {reason}\n\n"
+                    "⛔️ *Это не смешно и не корректно.*\n\n"
+                    "Я создан, чтобы помогать с питанием и здоровьем. "
+                    "Если у тебя есть проблемы, с которыми нужна помощь, "
+                    "пожалуйста, обратись к специалисту:\n\n"
+                    "🆘 *Экстренная психологическая помощь:*\n"
+                    "• Телефон доверия: 8-800-2000-122 (бесплатно, круглосуточно)\n"
+                    "• Служба поддержки: 8-495-989-50-50\n\n"
+                    "💚 Береги себя. Если что-то беспокоит - обратись за помощью к профессионалам."
+                )
+
+                await processing_msg.edit_text(
+                    warning_text,
+                    parse_mode="Markdown",
+                    reply_markup=back_to_menu_keyboard()
+                )
+
+                logger.warning(f"Inappropriate content detected for user {user.id}: {reason}")
+                return ConversationHandler.END
+
             # Формирование ответа
             if result and "dishes" in result and len(result["dishes"]) > 0:
                 dishes = result["dishes"]
