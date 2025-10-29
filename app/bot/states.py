@@ -49,6 +49,7 @@ class MealPlanStates(IntEnum):
     # Медицинские уточнения (Этап 4 - доработка)
     CHECKING_CHRONIC_CONDITIONS = auto()  # Уточнение состояния хронических заболеваний
     CHECKING_ACUTE_CONDITIONS = auto()  # Проверка наличия острых заболеваний/состояний
+    ASKING_PRICE_CALCULATION = auto()  # Вопрос о необходимости расчёта цены
     GENERATING = auto()  # Генерация плана
     ASKING_FEEDBACK = auto()  # Запрос обратной связи после создания
     ASKING_CHANGES = auto()  # Сбор пожеланий по изменениям

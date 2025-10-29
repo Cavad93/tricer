@@ -666,9 +666,8 @@ async def skip_acute_conditions_callback(update: Update, context: ContextTypes.D
 
 
 async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback: bool = False) -> int:
-    """Начинает генерацию плана питания после всех уточнений"""
-    from app.bot.texts import FriendlyPhrases, MEDICAL_CHECK_COMPLETE
-    import random
+    """Начинает процесс создания плана - показывает вопрос о расчёте цены"""
+    from app.bot.texts import MEDICAL_CHECK_COMPLETE, PRICE_CALCULATION_QUESTION
 
     # Показываем сообщение о завершении медицинских уточнений
     if is_callback:
@@ -676,6 +675,53 @@ async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text(MEDICAL_CHECK_COMPLETE, parse_mode='HTML')
     else:
         await update.message.reply_text(MEDICAL_CHECK_COMPLETE, parse_mode='HTML')
+
+    # Задаём вопрос о расчёте цены
+    price_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Да, рассчитать цену", callback_data="price_yes")],
+        [InlineKeyboardButton("⏩ Нет, пропустить", callback_data="price_no")]
+    ])
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=PRICE_CALCULATION_QUESTION,
+        reply_markup=price_keyboard,
+        parse_mode='HTML'
+    )
+
+    return MealPlanStates.ASKING_PRICE_CALCULATION
+
+
+async def handle_price_calculation_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ответа "Да" на вопрос о расчёте цены"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем выбор пользователя
+    context.user_data["calculate_prices"] = True
+
+    # Начинаем генерацию плана
+    return await start_generation_process(update, context)
+
+
+async def handle_price_calculation_no(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ответа "Нет" на вопрос о расчёте цены"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем выбор пользователя
+    context.user_data["calculate_prices"] = False
+
+    # Начинаем генерацию плана
+    return await start_generation_process(update, context)
+
+
+async def start_generation_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Начинает процесс генерации плана питания"""
+    from app.bot.texts import FriendlyPhrases
+    import random
+
+    query = update.callback_query
 
     # Формируем текст о начале генерации
     creation_phrase = random.choice(FriendlyPhrases.PLAN_CREATION_START)
@@ -687,14 +733,22 @@ async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAU
         PlanPeriod.MONTH: "месяц (30 дней)"
     }[period]
 
+    calculate_prices = context.user_data.get("calculate_prices", False)
+    time_warning = ""
+    if calculate_prices:
+        time_warning = "\n\n💡 Расчёт цены может занять дополнительное время..."
+
     progress_text = f"{creation_phrase}\n\n" \
-                   f"⏳ Создаю персональный план питания на {period_text}...\n\n" \
+                   f"⏳ Создаю персональный план питания на {period_text}...{time_warning}\n\n" \
                    "Это может занять до 2 минут. Пожалуйста, подожди."
+
+    # Редактируем сообщение с вопросом
+    await query.edit_message_text(progress_text)
 
     # Отправляем сообщение о начале генерации
     progress_message = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=progress_text
+        text="⏳ Генерация началась..."
     )
 
     return await generate_meal_plan_with_preferences(update, context, progress_message)
@@ -810,16 +864,25 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
                 preferences=new_preferences
             )
 
-            await progress_message.edit_text(
-                "✅ План обновлен!\n\n"
-                "📊 Создаю новый список покупок..."
-            )
+            # Используем ранее сохраненный выбор пользователя по расчёту цены
+            calculate_prices = context.user_data.get("calculate_prices", False)
 
-            # Создаем новый список покупок
+            if calculate_prices:
+                await progress_message.edit_text(
+                    "✅ План обновлен!\n\n"
+                    "📊 Создаю новый список покупок и рассчитываю стоимость..."
+                )
+            else:
+                await progress_message.edit_text(
+                    "✅ План обновлен!\n\n"
+                    "📊 Создаю новый список покупок..."
+                )
+
+            # Создаем новый список покупок с учетом выбора пользователя
             shopping_list = await ShoppingListService.create_shopping_list(
                 session,
                 meal_plan.id,
-                search_prices=True
+                search_prices=calculate_prices
             )
 
             await progress_message.edit_text(
@@ -956,16 +1019,26 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
                 medical_context=medical_context
             )
 
-            await progress_message.edit_text(
-                f"✅ План питания создан!\n\n"
-                f"📊 Теперь создаю список покупок и рассчитываю стоимость..."
-            )
+            # Получаем выбор пользователя по расчёту цены
+            calculate_prices = context.user_data.get("calculate_prices", False)
 
-            # Создаем список покупок
+            if calculate_prices:
+                await progress_message.edit_text(
+                    f"✅ План питания создан!\n\n"
+                    f"📊 Теперь создаю список покупок и рассчитываю стоимость...\n"
+                    f"⏳ Это может занять несколько минут..."
+                )
+            else:
+                await progress_message.edit_text(
+                    f"✅ План питания создан!\n\n"
+                    f"📊 Теперь создаю список покупок..."
+                )
+
+            # Создаем список покупок с учетом выбора пользователя
             shopping_list = await ShoppingListService.create_shopping_list(
                 session,
                 meal_plan.id,
-                search_prices=True
+                search_prices=calculate_prices
             )
 
             await progress_message.edit_text(
