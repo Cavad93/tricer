@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Inde
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
-from app.db.base_class import Base
+from app.db.session import Base
 
 
 class FoodRecognitionCorrection(Base):

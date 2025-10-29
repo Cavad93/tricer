@@ -5,7 +5,7 @@ from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal, PlanPeriod
 from app.models.micronutrients import DailyMicronutrients, MicronutrientTargets
 from app.models.food_correction import FoodRecognitionCorrection
 from app.models.user_consent import UserConsent
-from app.models.chat import ChatMessage, ChatSession
+from app.models.chat import ChatMessage
 
 __all__ = [
     "User",
@@ -27,5 +27,4 @@ __all__ = [
     "FoodRecognitionCorrection",
     "UserConsent",
     "ChatMessage",
-    "ChatSession",
 ]

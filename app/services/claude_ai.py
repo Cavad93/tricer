@@ -65,7 +65,11 @@ class ClaudeAIService:
    - Белки (г)
    - Жиры (г)
    - Углеводы (г)
-6. Уверенность в распознавании (0.0-1.0)
+6. Основные микронутриенты (примерная оценка):
+   - Витамины: A, B1, B2, B3, B6, B9, B12, C, D, E (в мкг или мг)
+   - Минералы: Железо, Кальций, Магний, Калий, Цинк (в мг)
+   ВАЖНО: Это приблизительная оценка на основе типичного состава продуктов
+7. Уверенность в распознавании (0.0-1.0)
 
 {additional_context}
 
@@ -92,6 +96,23 @@ class ClaudeAIService:
         "fats": 15,
         "carbs": 45
       }},
+      "micronutrients": {{
+        "vitamin_a": 120.0,
+        "vitamin_b1": 0.3,
+        "vitamin_b2": 0.4,
+        "vitamin_b3": 5.0,
+        "vitamin_b6": 0.5,
+        "vitamin_b9": 50.0,
+        "vitamin_b12": 1.5,
+        "vitamin_c": 15.0,
+        "vitamin_d": 2.0,
+        "vitamin_e": 3.0,
+        "iron": 3.5,
+        "calcium": 80.0,
+        "magnesium": 45.0,
+        "potassium": 350.0,
+        "zinc": 2.5
+      }},
       "confidence": 0.85
     }}
   ],
@@ -100,8 +121,31 @@ class ClaudeAIService:
     "proteins": 30,
     "fats": 15,
     "carbs": 45
+  }},
+  "total_micronutrients": {{
+    "vitamin_a": 120.0,
+    "vitamin_b1": 0.3,
+    "vitamin_b2": 0.4,
+    "vitamin_b3": 5.0,
+    "vitamin_b6": 0.5,
+    "vitamin_b9": 50.0,
+    "vitamin_b12": 1.5,
+    "vitamin_c": 15.0,
+    "vitamin_d": 2.0,
+    "vitamin_e": 3.0,
+    "iron": 3.5,
+    "calcium": 80.0,
+    "magnesium": 45.0,
+    "potassium": 350.0,
+    "zinc": 2.5
   }}
-}}"""
+}}
+
+ВАЖНО о микронутриентах:
+- Указывай только основные (топ-10), остальные можно опустить
+- Если данных нет - поставь 0
+- Это приблизительная оценка на основе типичного состава
+- Единицы: витамины A,D,E в мкг; группа B в мг; минералы в мг"""
 
             logger.info("Sending request to Claude API for food recognition")
 

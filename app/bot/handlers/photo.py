@@ -519,7 +519,7 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
             # Подготавливаем данные о блюдах
             foods_data = []
             for dish in recognized_food["dishes"]:
-                foods_data.append({
+                food_data = {
                     "name": dish["name"],
                     "portion_size": dish["portion_size_grams"],
                     "portion_description": dish.get("portion_description"),
@@ -529,7 +529,13 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     "carbs": dish["nutrition"]["carbs"],
                     "ingredients": dish.get("ingredients", []),
                     "confidence_score": dish.get("confidence")
-                })
+                }
+
+                # Добавляем микронутриенты если есть
+                if "micronutrients" in dish and dish["micronutrients"]:
+                    food_data["micronutrients"] = dish["micronutrients"]
+
+                foods_data.append(food_data)
 
             # Создаем прием пищи
             meal = await MealService.create_meal_with_foods(
@@ -541,6 +547,20 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 foods_data=foods_data,
                 photo_url=recognized_food.get("photo_file_id")  # Сохраняем file_id фото
             )
+
+            # Обновляем суточные микронутриенты если есть данные
+            if recognized_food.get("total_micronutrients"):
+                from app.services.micronutrient_service import MicronutrientService
+                try:
+                    await MicronutrientService.update_daily_micronutrients(
+                        db=session,
+                        user_id=db_user.id,
+                        meal_date=date.today(),
+                        micronutrients_delta=recognized_food["total_micronutrients"]
+                    )
+                    logger.info(f"Updated daily micronutrients for user {db_user.id}")
+                except Exception as e:
+                    logger.warning(f"Failed to update micronutrients: {e}")
 
             # Получаем прогресс за день
             progress = await MealService.get_nutrition_progress(

@@ -66,6 +66,7 @@ from app.bot.handlers.reminders import (
     request_custom_time,
     cancel_reminder_setup
 )
+from app.bot.handlers.reports import get_reports_conversation_handler
 from app.services.scheduler_service import init_scheduler
 
 
@@ -356,22 +357,7 @@ async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAUL
             )
 
 
-async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатия на кнопку 'Статистика'"""
-    query = update.callback_query
-    await query.answer()
-
-    await query.edit_message_text(
-        "📈 *Статистика*\n\n"
-        "Эта функция будет доступна в следующей версии!\n"
-        "Здесь ты увидишь:\n"
-        "• Динамику веса\n"
-        "• Графики калорий и БЖУ\n"
-        "• AI-инсайты о твоем питании\n"
-        "• Прогресс к цели",
-        parse_mode="Markdown",
-        reply_markup=back_to_menu_keyboard()
-    )
+# Reports callback теперь обрабатывается через get_reports_conversation_handler
 
 
 async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -613,6 +599,7 @@ def main():
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания
     application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан"
     application.add_handler(reminder_setup_conversation)  # Обработчик настройки напоминаний
+    application.add_handler(get_reports_conversation_handler())  # Обработчик отчетов
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))
@@ -626,7 +613,6 @@ def main():
     application.add_handler(CallbackQueryHandler(delete_meal_callback, pattern="^delete_meal_"))
     application.add_handler(CallbackQueryHandler(ai_chat_callback, pattern="^ai_chat$"))
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
-    application.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats$"))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
 
     # Callback handlers для плана питания
