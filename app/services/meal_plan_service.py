@@ -537,28 +537,35 @@ class MealPlanService:
             "selenium": 12, "copper": 0.3, "manganese": 0.8, "chromium": 8,
             "fluoride": 0.2, "cobalt": 2, "silicon": 5
           }}
-        }},
-        // ... остальные приемы пищи (lunch, dinner, snack)
+        }}
       ]
     }}
-    // ... остальные дни
   ]
 }}
 
-Верни ТОЛЬКО валидный JSON, без дополнительного текста или объяснений."""
+КРИТИЧЕСКИ ВАЖНО:
+1. Верни ТОЛЬКО валидный JSON без текста до и после
+2. НЕ используй комментарии (// или /* */) внутри JSON
+3. НЕ добавляй trailing commas (запятая перед ] или })
+4. Все строки должны быть в двойных кавычках "
+5. Числа должны быть без кавычек
+6. Используй escape для спецсимволов внутри строк (\", \\n)
+7. НЕ оборачивай JSON в markdown блоки ```json```
+
+ВЕРНИ ЧИСТЫЙ ВАЛИДНЫЙ JSON БЕЗ КОММЕНТАРИЕВ И ЛИШНЕГО ТЕКСТА!"""
 
         return prompt
 
     @staticmethod
     def _parse_ai_meal_plan(ai_response: str) -> Dict:
         """
-        Парсинг ответа AI с планом питания
+        НАДЕЖНЫЙ ПАРСИНГ ответа AI с планом питания
 
-        УЛУЧШЕННЫЙ ПАРСИНГ:
-        - Удаляет markdown блоки (```json ... ```)
-        - Обрабатывает trailing commas
-        - Очищает комментарии
-        - Fallback на несколько методов парсинга
+        Использует множественные стратегии парсинга:
+        1. Стандартный json.loads()
+        2. Очистка trailing commas + повторная попытка
+        3. json-repair для автоматического исправления
+        4. Агрессивная очистка + повторная попытка
 
         Args:
             ai_response: Ответ от AI
@@ -567,16 +574,15 @@ class MealPlanService:
             Dict: Структурированный план питания
         """
         import re
+        from json_repair import repair_json
 
         try:
-            # Шаг 1: Удаляем markdown блоки ```json ... ``` или ``` ... ```
+            # Шаг 1: Предварительная очистка - удаляем markdown блоки
             cleaned_response = ai_response
-
-            # Удаляем ```json и ```
             cleaned_response = re.sub(r'```json\s*', '', cleaned_response)
             cleaned_response = re.sub(r'```\s*', '', cleaned_response)
 
-            # Шаг 2: Ищем JSON объект
+            # Шаг 2: Извлекаем JSON объект
             start_idx = cleaned_response.find("{")
             end_idx = cleaned_response.rfind("}") + 1
 
@@ -585,35 +591,80 @@ class MealPlanService:
 
             json_str = cleaned_response[start_idx:end_idx]
 
-            # Шаг 3: Попытка парсинга
+            # МЕТОД 1: Стандартный парсинг
             try:
                 plan_data = json.loads(json_str)
+                logger.info("✅ Successfully parsed JSON with standard json.loads()")
                 return plan_data
-            except json.JSONDecodeError as parse_error:
-                # Шаг 4: Попытка исправить trailing commas
-                logger.warning(f"First parse attempt failed: {parse_error}. Trying to fix trailing commas...")
+            except json.JSONDecodeError as e1:
+                logger.warning(f"Standard parsing failed: {e1}")
 
+            # МЕТОД 2: Исправление trailing commas
+            try:
                 # Убираем trailing commas перед ] и }
                 fixed_json = re.sub(r',(\s*[}\]])', r'\1', json_str)
+                plan_data = json.loads(fixed_json)
+                logger.info("✅ Successfully parsed JSON after fixing trailing commas")
+                return plan_data
+            except json.JSONDecodeError as e2:
+                logger.warning(f"Trailing comma fix failed: {e2}")
 
-                try:
-                    plan_data = json.loads(fixed_json)
-                    logger.info("Successfully parsed JSON after fixing trailing commas")
-                    return plan_data
-                except json.JSONDecodeError as second_error:
-                    # Логируем полный JSON для отладки
-                    logger.error(f"Failed to parse AI meal plan after cleanup: {second_error}")
-                    logger.error(f"JSON string (first 1000 chars): {json_str[:1000]}")
-                    logger.error(f"JSON string (last 500 chars): {json_str[-500:]}")
-                    raise ValueError(f"Invalid JSON format in AI response: {second_error}")
+            # МЕТОД 3: json-repair (автоматическое исправление)
+            try:
+                repaired_json = repair_json(json_str)
+                plan_data = json.loads(repaired_json)
+                logger.info("✅ Successfully parsed JSON using json-repair library")
+                return plan_data
+            except Exception as e3:
+                logger.warning(f"json-repair failed: {e3}")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse AI meal plan response: {e}")
-            logger.error(f"AI response (first 500 chars): {ai_response[:500]}")
-            raise ValueError("Invalid JSON format in AI response")
+            # МЕТОД 4: Агрессивная очистка
+            try:
+                # Удаляем комментарии // и /* */
+                aggressive_clean = re.sub(r'//.*?$', '', json_str, flags=re.MULTILINE)
+                aggressive_clean = re.sub(r'/\*.*?\*/', '', aggressive_clean, flags=re.DOTALL)
+
+                # Убираем trailing commas
+                aggressive_clean = re.sub(r',(\s*[}\]])', r'\1', aggressive_clean)
+
+                # Убираем множественные пробелы
+                aggressive_clean = re.sub(r'\s+', ' ', aggressive_clean)
+
+                # Пытаемся снова с json-repair
+                repaired = repair_json(aggressive_clean)
+                plan_data = json.loads(repaired)
+                logger.info("✅ Successfully parsed JSON after aggressive cleanup + repair")
+                return plan_data
+            except Exception as e4:
+                logger.error(f"Aggressive cleanup + repair failed: {e4}")
+
+            # ВСЕ МЕТОДЫ ПРОВАЛИЛИСЬ - логируем детали для отладки
+            logger.error("=" * 80)
+            logger.error("❌ ALL PARSING METHODS FAILED")
+            logger.error("=" * 80)
+            logger.error(f"Original AI response length: {len(ai_response)} chars")
+            logger.error(f"Extracted JSON length: {len(json_str)} chars")
+            logger.error("JSON preview (first 1500 chars):")
+            logger.error(json_str[:1500])
+            logger.error("JSON preview (chars 38000-40000 around error position):")
+            logger.error(json_str[38000:40000])
+            logger.error("JSON preview (last 1000 chars):")
+            logger.error(json_str[-1000:])
+            logger.error("=" * 80)
+
+            raise ValueError(
+                f"All JSON parsing methods failed. "
+                f"Last error: {e4}. "
+                f"JSON length: {len(json_str)} chars. "
+                f"Check logs for detailed output."
+            )
+
+        except ValueError as e:
+            # Пробрасываем ValueError дальше
+            raise
         except Exception as e:
-            logger.error(f"Unexpected error parsing AI meal plan: {e}")
-            raise ValueError(f"Error parsing AI response: {e}")
+            logger.error(f"Unexpected error in _parse_ai_meal_plan: {e}")
+            raise ValueError(f"Unexpected error parsing AI response: {e}")
 
     @staticmethod
     async def get_active_meal_plan(session: AsyncSession, user_id: int) -> Optional[MealPlan]:
