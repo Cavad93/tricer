@@ -11,7 +11,9 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Drawing
+from reportlab.graphics.shapes import Rect, String
+from reportlab.graphics import renderPDF
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
@@ -19,6 +21,7 @@ from loguru import logger
 
 from app.models.meal_plan import MealPlan
 from app.models.shopping_list import ShoppingList
+from app.models.micronutrients import MicronutrientTargets
 
 
 class PDFGeneratorService:
@@ -224,11 +227,75 @@ class PDFGeneratorService:
         return styles
 
     @staticmethod
+    def _create_progress_bar(value: float, target: float, name: str, unit: str, width: float = 14*cm) -> Drawing:
+        """
+        Создает ползунок (progress bar) для визуализации микронутриента
+
+        Args:
+            value: Текущее значение
+            target: Целевое значение (100%)
+            name: Название микронутриента
+            unit: Единица измерения
+            width: Ширина ползунка
+
+        Returns:
+            Drawing объект с ползунком
+        """
+        height = 0.8*cm
+        drawing = Drawing(width, height)
+
+        # Вычисляем процент
+        percentage = min((value / target * 100) if target > 0 else 0, 100)
+
+        # Фон ползунка (серый)
+        bar_width = 10*cm
+        bar_height = 0.4*cm
+        bar_x = 4*cm
+        bar_y = 0.2*cm
+
+        drawing.add(Rect(bar_x, bar_y, bar_width, bar_height,
+                         fillColor=colors.HexColor('#ECF0F1'),
+                         strokeColor=colors.HexColor('#BDC3C7'),
+                         strokeWidth=0.5))
+
+        # Заполненная часть (цвет зависит от процента)
+        if percentage < 50:
+            fill_color = colors.HexColor('#E74C3C')  # Красный - мало
+        elif percentage < 80:
+            fill_color = colors.HexColor('#F39C12')  # Оранжевый - недостаточно
+        elif percentage <= 120:
+            fill_color = colors.HexColor('#27AE60')  # Зелёный - норма
+        else:
+            fill_color = colors.HexColor('#3498DB')  # Синий - избыток
+
+        filled_width = bar_width * (percentage / 100)
+        drawing.add(Rect(bar_x, bar_y, filled_width, bar_height,
+                         fillColor=fill_color,
+                         strokeColor=None))
+
+        # Текст слева (название)
+        regular_font, _ = PDFGeneratorService._get_fonts()
+        drawing.add(String(0, 0.3*cm, name,
+                          fontName=regular_font,
+                          fontSize=9,
+                          fillColor=colors.black))
+
+        # Текст справа (значение и процент)
+        value_text = f"{value:.1f}/{target:.0f}{unit} ({percentage:.0f}%)"
+        drawing.add(String(bar_x + bar_width + 0.2*cm, 0.3*cm, value_text,
+                          fontName=regular_font,
+                          fontSize=9,
+                          fillColor=colors.black))
+
+        return drawing
+
+    @staticmethod
     async def generate_meal_plan_pdf(
         meal_plan: MealPlan,
         days_data: List,
         user_name: str = "Пользователь",
-        user_city: str = None
+        user_city: str = None,
+        user_gender: str = "male"
     ) -> str:
         """
         Генерация PDF с планом питания
@@ -392,6 +459,79 @@ class PDFGeneratorService:
                     story.append(Paragraph(time_text, styles['CustomSmall']))
 
                 story.append(Spacer(1, 0.5*cm))
+
+        # Подсчёт микронутриентов за весь период
+        total_micronutrients = {}
+        for day, meals in days_data:
+            for meal in meals:
+                if meal.micronutrients:
+                    for nutrient, value in meal.micronutrients.items():
+                        total_micronutrients[nutrient] = total_micronutrients.get(nutrient, 0) + value
+
+        # Добавляем страницу с микронутриентами если они есть
+        if total_micronutrients:
+            story.append(PageBreak())
+            story.append(Paragraph("Микронутриенты за период", styles['CustomTitle']))
+            story.append(Spacer(1, 0.3*cm))
+
+            # Получаем количество дней для расчёта среднего в день
+            days_count = len(days_data)
+            period_text = {
+                "day": f"за {days_count} день",
+                "week": f"за {days_count} дней (неделя)",
+                "month": f"за {days_count} дней (месяц)"
+            }.get(meal_plan.period_type, f"за {days_count} дней")
+
+            info_text = f"""
+            Ниже представлены суммарные микронутриенты {period_text}.<br/>
+            Цветовая индикация: <font color="#E74C3C">■</font> менее 50% нормы,
+            <font color="#F39C12">■</font> 50-80% нормы,
+            <font color="#27AE60">■</font> 80-120% нормы (оптимально),
+            <font color="#3498DB">■</font> более 120% нормы.
+            """
+            story.append(Paragraph(info_text, styles['CustomSmall']))
+            story.append(Spacer(1, 0.5*cm))
+
+            # Ключевые микронутриенты для визуализации
+            key_nutrients = [
+                ("vitamin_a", "Витамин A", "мкг"),
+                ("vitamin_b1", "Витамин B1", "мг"),
+                ("vitamin_b2", "Витамин B2", "мг"),
+                ("vitamin_b6", "Витамин B6", "мг"),
+                ("vitamin_b9", "Фолиевая к-та", "мкг"),
+                ("vitamin_b12", "Витамин B12", "мкг"),
+                ("vitamin_c", "Витамин C", "мг"),
+                ("vitamin_d", "Витамин D", "мкг"),
+                ("vitamin_e", "Витамин E", "мг"),
+                ("calcium", "Кальций", "мг"),
+                ("iron", "Железо", "мг"),
+                ("magnesium", "Магний", "мг"),
+                ("zinc", "Цинк", "мг"),
+                ("potassium", "Калий", "мг"),
+            ]
+
+            # Получаем целевые значения для пола пользователя
+            targets = MicronutrientTargets.get_all_targets(user_gender)
+
+            # Создаём ползунки для каждого микронутриента
+            for nutrient_key, nutrient_name, unit in key_nutrients:
+                value = total_micronutrients.get(nutrient_key, 0)
+                target = targets.get(nutrient_key, {}).get("target", 100) * days_count
+
+                if target > 0:  # Показываем только если есть целевое значение
+                    progress_bar = PDFGeneratorService._create_progress_bar(
+                        value, target, nutrient_name, unit
+                    )
+                    story.append(progress_bar)
+                    story.append(Spacer(1, 0.1*cm))
+
+            # Добавляем примечание
+            story.append(Spacer(1, 0.5*cm))
+            note_text = """
+            <i>Примечание: Значения микронутриентов являются приблизительными и рассчитаны на основе состава продуктов.
+            Для точного учёта рекомендуется проконсультироваться с диетологом.</i>
+            """
+            story.append(Paragraph(note_text, styles['CustomSmall']))
 
         # Строим PDF
         doc.build(story)

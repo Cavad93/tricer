@@ -390,7 +390,8 @@ async def reuse_weekly_plan_yes(update: Update, context: ContextTypes.DEFAULT_TY
                 daily_plan,
                 days_data,
                 user.preferred_name or user.first_name,
-                user.city
+                user.city,
+                user.gender.value if user.gender else "male"
             )
 
             items = await ShoppingListService.get_shopping_items(session, shopping_list.id)
@@ -910,7 +911,8 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
                 meal_plan,
                 days_data,
                 user.preferred_name or user.first_name,
-                user.city
+                user.city,
+                user.gender.value if user.gender else "male"
             )
 
             # PDF со списком покупок
@@ -1067,7 +1069,8 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
                 meal_plan,
                 days_data,
                 user.preferred_name or user.first_name,
-                user.city
+                user.city,
+                user.gender.value if user.gender else "male"
             )
 
             # PDF со списком покупок
