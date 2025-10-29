@@ -500,15 +500,26 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
                 # Формируем промпт с учетом предыдущих ошибок
                 correction_note = ""
                 if attempt > 0 and validation_result:
+                    # Создаем список доступных блюд
+                    available_dishes = "\n".join([f"  • {dish['name']}" for dish in dishes_data.get("dishes", [])])
                     correction_note = f"""
-⚠️ ВНИМАНИЕ! В предыдущем ответе ты рекомендовал блюда, которых НЕТ в меню:
-{', '.join(validation_result['invalid_dishes'])}
+🚫 КРИТИЧЕСКАЯ ОШИБКА! В предыдущем ответе ты рекомендовал блюда, которых НЕТ в меню:
+{', '.join([f'"{dish}"' for dish in validation_result['invalid_dishes']])}
 
-ЭТО КРИТИЧЕСКАЯ ОШИБКА! Перечитай список блюд в меню и выбери ТОЛЬКО из него!
+Это НЕДОПУСТИМО! Ты ОБЯЗАН выбирать ТОЛЬКО из этого списка:
+{available_dishes}
+
+Перечитай список выше и выбери блюда СТРОГО из него. НЕ придумывай новые названия!
 """
+
+                # Формируем список названий блюд для явного указания в промпте
+                dish_names_list = "\n".join([f"• {dish['name']}" for dish in dishes_data.get("dishes", [])])
 
                 prompt = f"""{correction_note}
 На основе меню ресторана порекомендуй 2-3 блюда для пользователя.
+
+⚠️ СПИСОК БЛЮД КОТОРЫЕ ЕСТЬ В МЕНЮ (выбирай ТОЛЬКО из этого списка):
+{dish_names_list}
 
 ВАЖНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:
 - Тип приема пищи: {meal_type_text}
@@ -522,7 +533,7 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 - Тип диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}
 - Аллергии: {', '.join(db_user.allergies) if db_user.allergies else 'нет'}
 
-БЛЮДА В МЕНЮ:
+БЛЮДА В МЕНЮ (детальная информация):
 {json.dumps(dishes_data, ensure_ascii=False, indent=2)}
 
 {web_data_text}
@@ -612,7 +623,7 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
                 validation_result = validate_recommendations_against_menu(
                     recommendations=recommendations_json.get("recommendations", []),
                     menu_dishes=dishes_data.get("dishes", []),
-                    similarity_threshold=0.85
+                    similarity_threshold=0.92  # Повышен порог до 92% для строгости
                 )
 
                 logger.info(
