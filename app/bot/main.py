@@ -467,9 +467,41 @@ async def handle_new_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"Изменение: {change_text}\n\n"
                     f"📊 Твой ИМТ: {bmi} ({bmi_category})\n"
                     f"🎯 Целевой вес: {user.target_weight} кг",
-                    reply_markup=back_to_menu_keyboard(),
                     parse_mode='HTML'
                 )
+
+                # Генерируем персонализированное сообщение от AI (если есть значимое изменение)
+                if abs(weight_diff) >= 0.1:
+                    try:
+                        from app.services.weight_support_service import WeightSupportService
+
+                        # Показываем индикатор печати
+                        await update.message.chat.send_action("typing")
+
+                        ai_message = await WeightSupportService.generate_weight_change_message(
+                            user=user,
+                            old_weight=old_weight,
+                            new_weight=new_weight,
+                            session=session
+                        )
+
+                        await update.message.reply_text(
+                            ai_message,
+                            reply_markup=back_to_menu_keyboard()
+                        )
+                    except Exception as e:
+                        logger.error(f"Error generating AI weight message: {e}")
+                        # Если AI не сработал, просто показываем меню
+                        await update.message.reply_text(
+                            "Что хочешь сделать дальше?",
+                            reply_markup=back_to_menu_keyboard()
+                        )
+                else:
+                    # Если изменения нет, просто показываем меню
+                    await update.message.reply_text(
+                        "Что хочешь сделать дальше?",
+                        reply_markup=back_to_menu_keyboard()
+                    )
 
                 return ConversationHandler.END
 
