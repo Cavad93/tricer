@@ -886,6 +886,7 @@ async def handle_restaurant_dish_selection(update: Update, context: ContextTypes
             # Формируем данные о еде
             foods_data = [{
                 "name": selected_dish["name"],
+                "portion_size": 1,  # Одна порция
                 "portion_description": "1 порция",
                 "calories": selected_dish["calories"],
                 "proteins": selected_dish["proteins"],
