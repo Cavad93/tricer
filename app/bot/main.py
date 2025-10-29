@@ -27,6 +27,8 @@ from app.bot.handlers.diary import diary_callback, delete_meal_callback
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
     meal_plan_period_selected,
+    reuse_weekly_plan_yes,
+    reuse_weekly_plan_no,
     handle_preference_response,
     handle_feedback_positive,
     handle_feedback_negative,
@@ -320,6 +322,8 @@ def main():
         states={
             MealPlanStates.WAITING_PERIOD: [
                 CallbackQueryHandler(meal_plan_period_selected, pattern="^plan_period_"),
+                CallbackQueryHandler(reuse_weekly_plan_yes, pattern="^reuse_weekly_yes$"),
+                CallbackQueryHandler(reuse_weekly_plan_no, pattern="^reuse_weekly_no$"),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
             MealPlanStates.ASKING_PREFERENCES: [

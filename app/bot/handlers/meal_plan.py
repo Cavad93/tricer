@@ -154,6 +154,51 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
         PlanPeriod.MONTH: "месяц (30 дней)"
     }[period]
 
+    # Если выбран дневной план, проверяем наличие недельного плана
+    if period == PlanPeriod.DAY:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
+
+            # Ищем активный недельный план
+            weekly_plan_result = await session.execute(
+                select(MealPlan).where(and_(
+                    MealPlan.user_id == user.telegram_id,
+                    MealPlan.period_type == PlanPeriod.WEEK,
+                    MealPlan.is_active == 1
+                ))
+            )
+            weekly_plan = weekly_plan_result.scalar_one_or_none()
+
+            if weekly_plan:
+                # Есть недельный план - предлагаем использовать его
+                from datetime import date
+                today = date.today()
+                days_diff = (today - weekly_plan.start_date).days
+                day_number = (days_diff % 7) + 1
+
+                reuse_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Да, использовать", callback_data="reuse_weekly_yes")],
+                    [InlineKeyboardButton("🔄 Создать новый", callback_data="reuse_weekly_no")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+                ])
+
+                # Сохраняем weekly_plan_id для дальнейшего использования
+                context.user_data["weekly_plan_id"] = weekly_plan.id
+                context.user_data["weekly_plan_day"] = day_number
+
+                await query.edit_message_text(
+                    f"📋 <b>У тебя есть активный недельный план!</b>\n\n"
+                    f"Хочешь использовать меню дня {day_number} из недельного плана?\n\n"
+                    f"Это быстрее и сохранит согласованность рациона на неделю.",
+                    reply_markup=reuse_keyboard,
+                    parse_mode='HTML'
+                )
+
+                return MealPlanStates.WAITING_PERIOD  # Остаемся в том же состоянии
+
     # Инициализируем счетчик вопросов и данные
     context.user_data["preference_step"] = 1
     context.user_data["favorite_foods"] = None
@@ -175,6 +220,181 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
 
     await query.edit_message_text(
         f"✅ Отлично! Создам план на {period_text}.\n\n"
+        f"{clarify_phrase}\n\n"
+        "❓ <b>Вопрос 1 из 3:</b> Есть ли у тебя любимые блюда или продукты, которые хотел бы видеть в плане?\n\n"
+        "Напиши их через запятую или нажми 'Пропустить'.",
+        reply_markup=skip_keyboard,
+        parse_mode='HTML'
+    )
+
+    return MealPlanStates.ASKING_PREFERENCES
+
+
+async def reuse_weekly_plan_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Использование дня из недельного плана для создания дневного"""
+    query = update.callback_query
+    await query.answer()
+
+    weekly_plan_id = context.user_data.get("weekly_plan_id")
+    day_number = context.user_data.get("weekly_plan_day", 1)
+
+    if not weekly_plan_id:
+        await query.edit_message_text(
+            "❌ Ошибка: недельный план не найден",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+    progress_message = await query.edit_message_text(
+        f"⏳ Копирую день {day_number} из недельного плана...\n\n"
+        "Пожалуйста, подожди."
+    )
+
+    try:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
+
+            # Получаем недельный план
+            weekly_plan = await MealPlanService.get_meal_plan_by_id(session, weekly_plan_id)
+
+            if not weekly_plan:
+                raise ValueError("Weekly plan not found")
+
+            # Деактивируем старые дневные планы
+            await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+
+            # Копируем день из недельного плана
+            daily_plan = await MealPlanService.copy_day_from_weekly_plan(
+                session,
+                user.telegram_id,
+                weekly_plan,
+                day_number
+            )
+
+            await progress_message.edit_text(
+                "✅ План скопирован!\n\n"
+                "📊 Создаю список покупок..."
+            )
+
+            # Создаем список покупок
+            shopping_list = await ShoppingListService.create_shopping_list(
+                session,
+                daily_plan.id,
+                search_prices=True
+            )
+
+            await progress_message.edit_text(
+                "✅ Список покупок готов!\n\n"
+                "📄 Генерирую PDF документы..."
+            )
+
+            # Генерируем PDF
+            days = await MealPlanService.get_meal_plan_days(session, daily_plan.id)
+            days_data = []
+
+            for day in days:
+                meals = await MealPlanService.get_day_meals(session, day.id)
+                days_data.append((day, meals))
+
+            pdf_plan_path = await PDFGeneratorService.generate_meal_plan_pdf(
+                daily_plan,
+                days_data,
+                user.preferred_name or user.first_name,
+                user.city
+            )
+
+            items = await ShoppingListService.get_shopping_items(session, shopping_list.id)
+            pdf_shopping_path = await PDFGeneratorService.generate_shopping_list_pdf(
+                shopping_list,
+                items,
+                daily_plan,
+                user.preferred_name or user.first_name,
+                user.city
+            )
+
+            shopping_list.pdf_path = pdf_shopping_path
+            await session.commit()
+
+        # Отправляем PDF файлы
+        from telegram import InputFile
+
+        with open(pdf_plan_path, 'rb') as pdf_file:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=InputFile(pdf_file, filename="План_питания_1_день.pdf"),
+                caption="📋 План питания на 1 день (из недельного плана)"
+            )
+
+        with open(pdf_shopping_path, 'rb') as pdf_file:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=InputFile(pdf_file, filename="Список_покупок_1_день.pdf"),
+                caption=f"🛒 Список покупок (~{shopping_list.total_cost:.2f} ₽)"
+            )
+
+        # Показываем результат
+        summary_text = f"""
+✅ <b>План питания создан из недельного плана!</b>
+
+📅 День {day_number} из недельного плана
+🎯 Калорий: {daily_plan.daily_calories} ккал
+💰 Стоимость продуктов: ~{shopping_list.total_cost:.2f} ₽
+
+<i>Это сохраняет согласованность твоего рациона на неделю.</i>
+"""
+
+        keyboard = [
+            [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{daily_plan.id}")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ]
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=summary_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='HTML'
+        )
+
+        logger.info(f"Created daily plan from weekly plan for user {update.effective_user.id}")
+
+    except Exception as e:
+        logger.error(f"Error copying day from weekly plan: {e}", exc_info=True)
+
+        await progress_message.edit_text(
+            "❌ Произошла ошибка при копировании плана.\n\n"
+            "Попробуй создать новый план.",
+            reply_markup=back_to_menu_keyboard()
+        )
+
+    return ConversationHandler.END
+
+
+async def reuse_weekly_plan_no(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Отказ от использования недельного плана - создание нового"""
+    query = update.callback_query
+    await query.answer()
+
+    # Используем дружелюбные фразы
+    from app.bot.texts import FriendlyPhrases
+    import random
+
+    clarify_phrase = random.choice(FriendlyPhrases.CLARIFY_PREFERENCES)
+
+    # Инициализируем счетчик вопросов и данные
+    context.user_data["preference_step"] = 1
+    context.user_data["favorite_foods"] = None
+    context.user_data["additional_dislikes"] = None
+    context.user_data["special_requests"] = None
+
+    skip_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip")]
+    ])
+
+    await query.edit_message_text(
+        f"✅ Хорошо! Создам новый план на 1 день.\n\n"
         f"{clarify_phrase}\n\n"
         "❓ <b>Вопрос 1 из 3:</b> Есть ли у тебя любимые блюда или продукты, которые хотел бы видеть в плане?\n\n"
         "Напиши их через запятую или нажми 'Пропустить'.",

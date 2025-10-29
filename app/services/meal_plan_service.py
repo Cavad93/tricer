@@ -389,3 +389,106 @@ class MealPlanService:
 
         await session.commit()
         logger.info(f"Deactivated {len(old_plans)} old meal plans for user {user_id}")
+
+    @staticmethod
+    async def copy_day_from_weekly_plan(
+        session: AsyncSession,
+        user_id: int,
+        weekly_plan: MealPlan,
+        day_number: int = None
+    ) -> MealPlan:
+        """
+        Копирование одного дня из недельного плана в отдельный дневной план
+
+        Args:
+            session: Сессия БД
+            user_id: ID пользователя
+            weekly_plan: Недельный план, из которого копируем
+            day_number: Номер дня для копирования (1-7). Если None, берем день недели сегодня
+
+        Returns:
+            MealPlan: Созданный дневной план
+        """
+        from datetime import date, timedelta
+
+        # Определяем какой день копировать
+        if day_number is None:
+            # Берем текущий день недели (1 = понедельник, 7 = воскресенье)
+            today = date.today()
+            # Вычисляем, сколько дней прошло с начала недельного плана
+            days_diff = (today - weekly_plan.start_date).days
+            # Определяем номер дня в плане (циклически)
+            day_number = (days_diff % 7) + 1
+
+        # Получаем день для копирования
+        result = await session.execute(
+            select(MealPlanDay).where(and_(
+                MealPlanDay.meal_plan_id == weekly_plan.id,
+                MealPlanDay.day_number == day_number
+            ))
+        )
+        source_day = result.scalar_one_or_none()
+
+        if not source_day:
+            raise ValueError(f"Day {day_number} not found in weekly plan")
+
+        # Получаем приемы пищи этого дня
+        meals = await MealPlanService.get_day_meals(session, source_day.id)
+
+        # Создаем новый дневной план
+        start_date = date.today()
+        end_date = start_date
+
+        daily_plan = MealPlan(
+            user_id=user_id,
+            period_type=PlanPeriod.DAY,
+            start_date=start_date,
+            end_date=end_date,
+            daily_calories=weekly_plan.daily_calories,
+            daily_proteins=weekly_plan.daily_proteins,
+            daily_fats=weekly_plan.daily_fats,
+            daily_carbs=weekly_plan.daily_carbs,
+            budget_category=weekly_plan.budget_category,
+            diet_preferences=weekly_plan.diet_preferences
+        )
+
+        session.add(daily_plan)
+        await session.flush()
+
+        # Создаем день
+        new_day = MealPlanDay(
+            meal_plan_id=daily_plan.id,
+            day_date=start_date,
+            day_number=1,
+            total_calories=source_day.total_calories,
+            total_proteins=source_day.total_proteins,
+            total_fats=source_day.total_fats,
+            total_carbs=source_day.total_carbs
+        )
+
+        session.add(new_day)
+        await session.flush()
+
+        # Копируем приемы пищи
+        for meal in meals:
+            new_meal = PlannedMeal(
+                meal_plan_day_id=new_day.id,
+                meal_type=meal.meal_type,
+                meal_order=meal.meal_order,
+                recipe_name=meal.recipe_name,
+                ingredients=meal.ingredients,
+                calories=meal.calories,
+                proteins=meal.proteins,
+                fats=meal.fats,
+                carbs=meal.carbs,
+                cooking_instructions=meal.cooking_instructions,
+                cooking_time_minutes=meal.cooking_time_minutes,
+                serving_size=meal.serving_size
+            )
+
+            session.add(new_meal)
+
+        await session.commit()
+        logger.info(f"Copied day {day_number} from weekly plan {weekly_plan.id} to new daily plan {daily_plan.id}")
+
+        return daily_plan
