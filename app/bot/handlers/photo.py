@@ -314,6 +314,23 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 target_date=date.today()
             )
 
+            # Проверяем наличие активного плана и отклонения от него
+            from app.models.meal_plan import MealPlan
+            from sqlalchemy import and_
+            from app.bot.texts import FriendlyPhrases
+
+            result_plan = await session.execute(
+                select(MealPlan).where(
+                    and_(
+                        MealPlan.user_id == db_user.id,
+                        MealPlan.is_active == True,
+                        MealPlan.start_date <= date.today(),
+                        MealPlan.end_date >= date.today()
+                    )
+                ).limit(1)
+            )
+            active_plan = result_plan.scalar_one_or_none()
+
             # Формируем сообщение об успехе
             meal_type_names = {
                 MealType.BREAKFAST: "Завтрак",
@@ -337,11 +354,75 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"🍞 Углеводы: {current['carbs']:.0f}/{target['carbs']}г\n\n"
             )
 
-            # Предупреждения
+            # Психотерапевтический подход и проверка отклонений от плана
+            deviation_detected = False
+            if active_plan and active_plan.plan_data:
+                # Проверяем отклонение от запланированного
+                try:
+                    plan_data = active_plan.plan_data
+                    today = date.today()
+
+                    # Ищем запланированное блюдо для этого приема пищи
+                    planned_meal = None
+                    if active_plan.period == "day":
+                        meals = plan_data.get("meals", [])
+                    else:
+                        days = plan_data.get("days", [])
+                        current_day = None
+                        for day in days:
+                            if day.get("date") == today.isoformat():
+                                current_day = day
+                                break
+                        meals = current_day.get("meals", []) if current_day else []
+
+                    for plan_meal in meals:
+                        if plan_meal.get("type") == meal_type.value:
+                            planned_meal = plan_meal
+                            break
+
+                    if planned_meal:
+                        # Получаем калории добавленного блюда
+                        added_calories = sum(food["calories"] for food in foods_data)
+                        planned_calories = planned_meal.get("total_nutrition", {}).get("calories", 0)
+
+                        # Если отклонение больше 30% - это значительное отклонение
+                        if planned_calories > 0:
+                            deviation_percent = abs(added_calories - planned_calories) / planned_calories
+                            if deviation_percent > 0.3:
+                                deviation_detected = True
+                except Exception as e:
+                    logger.warning(f"Error checking plan deviation: {e}")
+
+            # Предупреждения и психотерапевтический подход
             if current['calories'] > target['calories']:
-                success_text += "⚠️ Вы превысили дневную норму калорий\n"
+                # Превышение дневной нормы - используем поддерживающий подход
+                overage = current['calories'] - target['calories']
+                success_text += (
+                    f"💭 *Ты превысил дневную норму на {overage} ккал*\n\n"
+                    f"{FriendlyPhrases.get_support_on_deviation()}\n\n"
+                )
+
+                # Предлагаем корректировку плана
+                if active_plan:
+                    success_text += (
+                        "💡 *Могу помочь скорректировать оставшиеся приемы пищи на сегодня, "
+                        "чтобы минимизировать превышение.*\n"
+                        "Напиши мне в AI-чат, если хочешь обсудить план на оставшийся день.\n\n"
+                    )
+            elif deviation_detected:
+                # Отклонение от плана без превышения - мягкий подход
+                success_text += (
+                    f"💭 *Заметил, что ты съел что-то другое, не по плану*\n\n"
+                    f"Это абсолютно нормально! Жизнь непредсказуема, и важно уметь адаптироваться. "
+                    f"{FriendlyPhrases.get_support_on_deviation()}\n\n"
+                    f"Хорошая новость: у тебя осталось {remaining['calories']} ккал на сегодня. "
+                    f"Этого достаточно для полноценных приемов пищи!\n\n"
+                )
             elif remaining['calories'] < 300:
                 success_text += f"💡 Осталось всего {remaining['calories']} ккал на сегодня\n"
+            else:
+                # Все идет по плану - поощрение
+                success_text += f"{FriendlyPhrases.get_encouragement()}\n"
 
             await query.edit_message_text(
                 success_text,
