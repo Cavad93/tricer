@@ -222,15 +222,50 @@ class ClaudeAIService:
             # Импортируем системные промпты для медицинской безопасности
             from app.bot.texts import AI_SYSTEM_PROMPT_BASE, AI_SYSTEM_PROMPT_NO_DIAGNOSIS
 
-            # System prompt с контекстом пользователя
+            # System prompt с ПОЛНЫМ контекстом пользователя
             preferred_name = user_context.get('preferred_name', 'друг')
+
+            # Формируем информацию о медицинских данных
+            medical_info = ""
+            chronic_conditions = user_context.get('chronic_conditions', [])
+            removed_organs = user_context.get('removed_organs', [])
+            medical_restrictions = user_context.get('medical_restrictions', [])
+            allergies = user_context.get('allergies', [])
+
+            if chronic_conditions or removed_organs or medical_restrictions or allergies:
+                medical_info = "\nМЕДИЦИНСКИЕ ДАННЫЕ (учитывай ОБЯЗАТЕЛЬНО!):\n"
+                if chronic_conditions:
+                    medical_info += f"- Хронические заболевания: {', '.join(chronic_conditions)}\n"
+                if removed_organs:
+                    medical_info += f"- Удаленные органы: {', '.join(removed_organs)}\n"
+                if medical_restrictions:
+                    medical_info += f"- Медицинские ограничения: {', '.join(medical_restrictions)}\n"
+                if allergies:
+                    medical_info += f"- Аллергии: {', '.join(allergies)}\n"
+                if user_context.get('medical_notes'):
+                    medical_info += f"- Примечания врача: {user_context.get('medical_notes')}\n"
+
+            # Формируем информацию о недавних приемах пищи
+            recent_meals_info = ""
+            recent_meals = user_context.get('recent_meals', [])
+            if recent_meals:
+                recent_meals_info = "\nНЕДАВНИЕ ПРИЕМЫ ПИЩИ (реальные данные!):\n"
+                for meal_text in recent_meals[:5]:
+                    recent_meals_info += f"- {meal_text}\n"
+
+            # Формируем информацию о самочувствии
+            wellness_info = ""
+            recent_wellness = user_context.get('recent_wellness', [])
+            if recent_wellness:
+                wellness_info = "\nИСТОРИЯ САМОЧУВСТВИЯ:\n"
+                for wellness_text in recent_wellness:
+                    wellness_info += f"- {wellness_text}\n"
 
             # Формируем информацию о плане питания
             plan_info = ""
             if user_context.get('has_active_plan'):
                 plan_summary = user_context.get('today_plan_summary', 'план доступен в меню')
-                plan_info = f"""
-План питания на сегодня:
+                plan_info = f"""\nПлан питания на сегодня:
 {plan_summary}
 """
 
@@ -243,42 +278,68 @@ class ClaudeAIService:
 - Углеводы: {user_context.get('remaining_carbs', 0)}г
 """
 
+            # Формируем дополнительную информацию
+            extra_info = ""
+            if user_context.get('dislikes'):
+                extra_info += f"\n- Не любит: {', '.join(user_context.get('dislikes', []))}"
+            if user_context.get('budget_category'):
+                extra_info += f"\n- Бюджет: {user_context.get('budget_category')}"
+            if user_context.get('preferred_cooking_time_minutes'):
+                extra_info += f"\n- Предпочитаемое время на готовку: {user_context.get('preferred_cooking_time_minutes')} мин"
+            if user_context.get('city'):
+                extra_info += f"\n- Город: {user_context.get('city')}"
+
             system_prompt = f"""{AI_SYSTEM_PROMPT_BASE}
 
 {AI_SYSTEM_PROMPT_NO_DIAGNOSIS}
 
-Ты - персональный AI-нутрициолог NutriAI.
+Ты - персональный AI-нутрициолог NutriAI с полным доступом к данным пользователя.
+
+КРИТИЧЕСКИ ВАЖНО:
+- У тебя есть ВСЯ информация о пользователе - НЕ задавай вопросы о том, что уже известно!
+- НЕ фантазируй - используй ТОЛЬКО реальные данные из профиля ниже
+- Если чего-то нет в профиле - можешь спросить, но сначала проверь все разделы
 
 ВАЖНО: Обращайся к пользователю по имени "{preferred_name}" в своих ответах.
 
-Профиль пользователя:
+=== ПОЛНЫЙ ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ ===
+
+БАЗОВЫЕ ДАННЫЕ:
 - Имя: {preferred_name}
-- Возраст: {user_context.get('age', 'не указан')}
+- Возраст: {user_context.get('age', 'не указан')} лет
 - Пол: {user_context.get('gender', 'не указан')}
+- Рост: {user_context.get('height', '?')} см
 - Текущий вес: {user_context.get('current_weight', '?')} кг
 - Целевой вес: {user_context.get('target_weight', '?')} кг
 - Цель: {user_context.get('goal', 'не указана')}
 - Уровень активности: {user_context.get('activity_level', 'не указан')}
+
+ЦЕЛЕВЫЕ ЗНАЧЕНИЯ:
 - Целевые калории: {user_context.get('target_calories', '?')} ккал/день
-- Диета: {user_context.get('diet_type', 'всеядный')}
+- Целевые белки: {user_context.get('target_proteins', '?')}г
+- Целевые жиры: {user_context.get('target_fats', '?')}г
+- Целевые углеводы: {user_context.get('target_carbs', '?')}г
 
-Статистика сегодня:
+ПРЕДПОЧТЕНИЯ:
+- Диета: {user_context.get('diet_type', 'всеядный')}{extra_info}
+{medical_info}
+СТАТИСТИКА СЕГОДНЯ (реальные данные из дневника):
 - Потреблено калорий: {user_context.get('today_calories', 0)} / {user_context.get('target_calories', 0)} ккал
-- Белки: {user_context.get('today_proteins', 0)}г
-- Жиры: {user_context.get('today_fats', 0)}г
-- Углеводы: {user_context.get('today_carbs', 0)}г
-
-{remaining_info}
-{plan_info}
+- Белки: {user_context.get('today_proteins', 0)}г / {user_context.get('target_proteins', 0)}г
+- Жиры: {user_context.get('today_fats', 0)}г / {user_context.get('target_fats', 0)}г
+- Углеводы: {user_context.get('today_carbs', 0)}г / {user_context.get('target_carbs', 0)}г
+{remaining_info}{recent_meals_info}{wellness_info}{plan_info}
+=== КОНЕЦ ПРОФИЛЯ ===
 
 Твоя задача:
 1. Давать научно обоснованные рекомендации по питанию
-2. Учитывать профиль и цели пользователя
-3. Быть поддерживающим, дружелюбным и мотивирующим
-4. Объяснять сложные концепции простым языком
-5. Давать конкретные, практичные советы
-6. Использовать формулировки: "могут быть признаки", "возможен дефицит", "рекомендую проконсультироваться"
-7. При серьезных вопросах здоровья обязательно рекомендовать консультацию врача
+2. ОБЯЗАТЕЛЬНО учитывать медицинские данные и ограничения
+3. Использовать реальные данные о питании и самочувствии для анализа
+4. Быть поддерживающим, дружелюбным и мотивирующим
+5. Объяснять сложные концепции простым языком
+6. Давать конкретные, практичные советы
+7. НЕ задавать вопросы о том, что УЖЕ ЕСТЬ в профиле выше
+8. При серьезных вопросах здоровья обязательно рекомендовать консультацию врача
 
 СПЕЦИАЛЬНАЯ ФУНКЦИЯ - КОРРЕКЦИЯ РАЦИОНА:
 Когда пользователь:
@@ -287,12 +348,12 @@ class ClaudeAIService:
 - Просит помочь скорректировать оставшийся день
 Ты должен:
 1. Использовать психотерапевтический подход: выслушать, понять причины без осуждения
-2. Спросить что привело к отклонению (если уместно)
+2. Проанализировать что уже съедено (см. "НЕДАВНИЕ ПРИЕМЫ ПИЩИ")
 3. Предложить конкретные варианты блюд для оставшихся приемов пищи, которые:
    - Укладываются в оставшиеся калории ({user_context.get('remaining_calories', 0)} ккал)
    - Помогают достичь баланса макронутриентов
    - Соответствуют диете пользователя ({user_context.get('diet_type', 'всеядный')})
-   - Учитывают аллергии
+   - Учитывают аллергии и медицинские ограничения
 4. Давать 2-3 конкретных варианта с КБЖУ
 5. Подбодрить и мотивировать - один срыв не отменяет прогресс!
 

@@ -101,8 +101,9 @@ class ChatService:
         user_id: int
     ) -> Dict:
         """
-        Получить контекст пользователя для персонализации ответов
-        Включает реальные данные из дневника питания за сегодня и активный план
+        Получить ПОЛНЫЙ контекст пользователя для персонализации ответов
+        Включает реальные данные из дневника питания, медицинские данные,
+        историю питания и самочувствия
 
         Args:
             session: Сессия БД
@@ -111,10 +112,13 @@ class ChatService:
         Returns:
             Словарь с данными пользователя
         """
-        from datetime import date
+        from datetime import date, timedelta
         from app.services.meal_service import MealService
         from app.models.meal_plan import MealPlan
-        from sqlalchemy import and_
+        from app.models.meal import Meal, MealFood
+        from app.models.wellness_log import WellnessLog
+        from sqlalchemy import and_, desc
+        from sqlalchemy.orm import selectinload
 
         result = await session.execute(
             select(User).where(User.id == user_id)
@@ -143,33 +147,111 @@ class ChatService:
         )
         active_plan = result_plan.scalar_one_or_none()
 
+        # Получаем последние 5 приемов пищи с деталями
+        result_meals = await session.execute(
+            select(Meal)
+            .options(selectinload(Meal.foods))
+            .where(Meal.user_id == user_id)
+            .order_by(desc(Meal.meal_time))
+            .limit(5)
+        )
+        recent_meals = result_meals.scalars().all()
+
+        # Формируем описание недавних приемов пищи
+        recent_meals_text = []
+        for meal in recent_meals:
+            meal_type_names = {
+                "breakfast": "Завтрак",
+                "lunch": "Обед",
+                "dinner": "Ужин",
+                "snack": "Перекус"
+            }
+            meal_type = meal_type_names.get(meal.meal_type.value if meal.meal_type else "", "Прием пищи")
+            meal_date = meal.meal_date.strftime("%d.%m")
+            meal_time = meal.meal_time.strftime("%H:%M") if meal.meal_time else ""
+
+            foods_list = []
+            for food in meal.foods:
+                foods_list.append(f"{food.name} ({food.calories} ккал)")
+
+            if foods_list:
+                foods_str = ", ".join(foods_list)
+                recent_meals_text.append(f"{meal_date} {meal_time} {meal_type}: {foods_str}")
+
+        # Получаем последние 3 wellness logs
+        result_wellness = await session.execute(
+            select(WellnessLog)
+            .where(WellnessLog.user_id == user_id)
+            .order_by(desc(WellnessLog.created_at))
+            .limit(3)
+        )
+        wellness_logs = result_wellness.scalars().all()
+
+        # Формируем описание самочувствия
+        wellness_text = []
+        for log in wellness_logs:
+            log_date = log.created_at.strftime("%d.%m %H:%M")
+            energy = log.energy_level or "?"
+            mood = log.mood or "?"
+            digestion = log.digestion_quality or "?"
+            symptoms = ", ".join(log.symptoms) if log.symptoms else "нет"
+            wellness_text.append(
+                f"{log_date}: энергия {energy}/5, настроение {mood}/5, пищеварение {digestion}/5, симптомы: {symptoms}"
+            )
+
         context = {
+            # Базовая информация
             "preferred_name": user.preferred_name or user.first_name or "друг",
             "age": user.age,
             "gender": user.gender.value if user.gender else None,
+            "height": user.height,
             "current_weight": user.current_weight,
             "target_weight": user.target_weight,
             "goal": user.goal.value if user.goal else None,
             "activity_level": user.activity_level.value if user.activity_level else None,
+            "country": user.country,
+            "city": user.city,
+
+            # Целевые значения
             "target_calories": user.target_calories,
             "target_proteins": user.target_proteins,
             "target_fats": user.target_fats,
             "target_carbs": user.target_carbs,
+
+            # Предпочтения и ограничения
             "diet_type": user.diet_type.value if user.diet_type else None,
             "allergies": user.allergies or [],
+            "dislikes": user.dislikes or [],
+            "budget_category": user.budget_category.value if user.budget_category else None,
+            "preferred_cooking_time_minutes": user.preferred_cooking_time_minutes,
+
+            # Медицинские данные
+            "chronic_conditions": user.chronic_conditions or [],
+            "removed_organs": user.removed_organs or [],
+            "medical_restrictions": user.medical_restrictions or [],
+            "medical_notes": user.medical_notes,
+
             # Дневная статистика из РЕАЛЬНОГО дневника питания
             "today_calories": today_totals["calories"],
             "today_proteins": round(today_totals["proteins"], 1),
             "today_fats": round(today_totals["fats"], 1),
             "today_carbs": round(today_totals["carbs"], 1),
+
             # Оставшиеся калории и макросы
             "remaining_calories": progress["remaining"]["calories"],
             "remaining_proteins": round(progress["remaining"]["proteins"], 1),
             "remaining_fats": round(progress["remaining"]["fats"], 1),
             "remaining_carbs": round(progress["remaining"]["carbs"], 1),
+
             # Информация об активном плане
             "has_active_plan": active_plan is not None,
-            "plan_period": active_plan.period if active_plan else None
+            "plan_period": active_plan.period if active_plan else None,
+
+            # Недавние приемы пищи
+            "recent_meals": recent_meals_text,
+
+            # История самочувствия
+            "recent_wellness": wellness_text
         }
 
         # Добавляем информацию о запланированных приемах пищи на сегодня
