@@ -78,6 +78,7 @@ from app.bot.handlers.reminders import (
 )
 from app.bot.handlers.reports import get_reports_conversation_handler
 from app.bot.handlers.wellness import wellness_survey_conversation
+from app.bot.handlers.medical_analysis import medical_analysis_conversation
 from app.services.scheduler_service import init_scheduler
 
 
@@ -933,6 +934,7 @@ def main():
     application.add_handler(reminder_setup_conversation)  # Обработчик настройки напоминаний
     application.add_handler(get_reports_conversation_handler())  # Обработчик отчетов
     application.add_handler(wellness_survey_conversation)  # Обработчик опросов о самочувствии
+    application.add_handler(medical_analysis_conversation)  # Обработчик медицинских анализов
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))

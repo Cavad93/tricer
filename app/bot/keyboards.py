@@ -23,6 +23,9 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📊 Отчеты", callback_data="reports"),
             InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
+        [
+            InlineKeyboardButton("📋 Медицинские анализы", callback_data="medical_analysis"),
+        ],
     ]
     return InlineKeyboardMarkup(keyboard)
 
