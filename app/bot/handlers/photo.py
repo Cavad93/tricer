@@ -129,10 +129,49 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data["recognized_food"] = {
                     "dishes": dishes,
                     "total_nutrition": result.get("total_nutrition", {}),
-                    "photo_file_id": photo.file_id
+                    "photo_file_id": photo.file_id,
+                    "is_packaged": result.get("is_packaged", False),
+                    "package_info": result.get("package_info", {})
                 }
 
-                # Формируем текст с результатами
+                # ПРОВЕРКА: Если продукт в упаковке - уточняем намерение
+                if result.get("is_packaged") and result.get("needs_confirmation"):
+                    package_info = result.get("package_info", {})
+                    product_name = package_info.get("product_name", dishes[0]["name"])
+                    brand = package_info.get("brand", "")
+                    weight = package_info.get("weight_grams", dishes[0].get("portion_size_grams", 0))
+
+                    response_text = "📦 *Распознан упакованный продукт!*\n\n"
+                    if brand:
+                        response_text += f"🏷 Бренд: {brand}\n"
+                    response_text += f"📝 Продукт: {product_name}\n"
+                    if weight:
+                        response_text += f"⚖️ Вес: {weight}г\n"
+                    response_text += f"\n🔥 {dishes[0]['nutrition']['calories']} ккал | "
+                    response_text += f"Б: {dishes[0]['nutrition']['proteins']}г | "
+                    response_text += f"Ж: {dishes[0]['nutrition']['fats']}г | "
+                    response_text += f"У: {dishes[0]['nutrition']['carbs']}г\n\n"
+                    response_text += "❓ *Уточни, пожалуйста:*\n"
+                    response_text += "Ты уже съел это или только планируешь?"
+
+                    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+                    intent_keyboard = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("✅ Уже съел, добавить в дневник", callback_data="intention_eat")],
+                        [InlineKeyboardButton("ℹ️ Просто узнать информацию", callback_data="intention_info")],
+                        [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+                    ])
+
+                    await processing_msg.edit_text(
+                        response_text,
+                        parse_mode="Markdown",
+                        reply_markup=intent_keyboard
+                    )
+
+                    logger.info(f"Packaged product detected for user {user.id}, asking for intent")
+                    return FoodAddStates.ASKING_FOOD_INTENTION
+
+                # Формируем текст с результатами (для неупакованных продуктов)
                 response_text = "✅ *Распознано!*\n\n"
 
                 for i, dish in enumerate(dishes, 1):

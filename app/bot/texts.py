@@ -192,6 +192,40 @@ class FriendlyPhrases:
         "Твоё мнение важно! Устраивает такой рацион? ⭐",
     ]
 
+    @staticmethod
+    def get_encouragement() -> str:
+        """Получить случайную фразу поощрения"""
+        import random
+        return random.choice(FriendlyPhrases.PRAISE)
+
+    @staticmethod
+    def get_support_on_deviation() -> str:
+        """Получить случайную фразу поддержки при отклонении"""
+        import random
+        return random.choice(FriendlyPhrases.PSYCHOLOGICAL_SUPPORT)
+
+    @staticmethod
+    def get_phrase_for_deviation(deviation_percent: float) -> str:
+        """
+        Получить фразу в зависимости от процента отклонения
+
+        Args:
+            deviation_percent: Процент отклонения от цели
+
+        Returns:
+            Подходящая фраза
+        """
+        import random
+
+        if deviation_percent < 10:
+            return random.choice(FriendlyPhrases.PRAISE)
+        elif deviation_percent < 20:
+            return random.choice(FriendlyPhrases.MINOR_DEVIATION)
+        elif deviation_percent < 30:
+            return random.choice(FriendlyPhrases.MEDIUM_DEVIATION)
+        else:
+            return random.choice(FriendlyPhrases.MAJOR_DEVIATION)
+
 
 # =====================================================
 # СИСТЕМНЫЕ ПРОМПТЫ ДЛЯ AI
