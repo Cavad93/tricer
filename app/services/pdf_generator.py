@@ -67,6 +67,32 @@ class PDFGeneratorService:
             return datetime.now(pytz.UTC)
 
     @staticmethod
+    def _convert_to_local_time(utc_time: datetime, city: str = None) -> datetime:
+        """
+        Преобразовать UTC время в местное время города
+
+        Args:
+            utc_time: Время в UTC
+            city: Название города
+
+        Returns:
+            datetime: Местное время
+        """
+        # Определяем часовой пояс
+        timezone_name = PDFGeneratorService.CITY_TIMEZONES.get(city, "Europe/Moscow")
+
+        try:
+            tz = pytz.timezone(timezone_name)
+            # Если время без timezone, считаем что это UTC
+            if utc_time.tzinfo is None:
+                utc_time = pytz.UTC.localize(utc_time)
+            # Конвертируем в местное время
+            return utc_time.astimezone(tz)
+        except Exception as e:
+            logger.warning(f"Could not convert time to timezone for {city}: {e}, returning original")
+            return utc_time
+
+    @staticmethod
     def _setup_fonts():
         """Настройка русских шрифтов"""
         try:
@@ -130,20 +156,27 @@ class PDFGeneratorService:
             logger.error(f"Could not register custom fonts: {e}")
 
     @staticmethod
+    def _get_fonts():
+        """
+        Получить шрифты для использования в PDF
+
+        Returns:
+            tuple: (regular_font, bold_font)
+        """
+        try:
+            pdfmetrics.getFont('DejaVuSans')
+            return ('DejaVuSans', 'DejaVuSans-Bold')
+        except:
+            logger.warning("DejaVu fonts not available, using Helvetica")
+            return ('Helvetica', 'Helvetica-Bold')
+
+    @staticmethod
     def _get_styles():
         """Получить стили для документа"""
         styles = getSampleStyleSheet()
 
-        # Проверяем, зарегистрирован ли DejaVu шрифт
-        try:
-            pdfmetrics.getFont('DejaVuSans')
-            regular_font = 'DejaVuSans'
-            bold_font = 'DejaVuSans-Bold'
-        except:
-            # Fallback на стандартные шрифты (кириллица не будет работать)
-            regular_font = 'Helvetica'
-            bold_font = 'Helvetica-Bold'
-            logger.warning("Using Helvetica font - Cyrillic may not display correctly")
+        # Получаем доступные шрифты
+        regular_font, bold_font = PDFGeneratorService._get_fonts()
 
         # Заголовок
         styles.add(ParagraphStyle(
@@ -250,11 +283,14 @@ class PDFGeneratorService:
             "month": "на месяц"
         }.get(meal_plan.period_type, "")
 
+        # Преобразуем время создания в местное время
+        local_created_at = PDFGeneratorService._convert_to_local_time(meal_plan.created_at, user_city)
+
         info_text = f"""
         <b>Пользователь:</b> {user_name}<br/>
         <b>Период:</b> {period_text}<br/>
         <b>Даты:</b> {meal_plan.start_date.strftime('%d.%m.%Y')} - {meal_plan.end_date.strftime('%d.%m.%Y')}<br/>
-        <b>Создан:</b> {meal_plan.created_at.strftime('%d.%m.%Y %H:%M')}<br/>
+        <b>Создан:</b> {local_created_at.strftime('%d.%m.%Y %H:%M')}<br/>
         """
 
         story.append(Paragraph(info_text, styles['CustomBody']))
@@ -262,6 +298,9 @@ class PDFGeneratorService:
 
         # Целевые показатели
         story.append(Paragraph("Целевые показатели на день:", styles['CustomHeading']))
+
+        # Получаем шрифты для таблиц
+        regular_font, bold_font = PDFGeneratorService._get_fonts()
 
         targets_data = [
             ['Показатель', 'Значение'],
@@ -276,10 +315,11 @@ class PDFGeneratorService:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, 0), bold_font),
             ('FONTSIZE', (0, 0), (-1, 0), 12),
             ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
             ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ECF0F1')),
+            ('FONTNAME', (0, 1), (-1, -1), regular_font),
             ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#BDC3C7')),
             ('FONTSIZE', (0, 1), (-1, -1), 10),
             ('TOPPADDING', (0, 1), (-1, -1), 8),
@@ -421,15 +461,21 @@ class PDFGeneratorService:
             "month": "на месяц"
         }.get(meal_plan.period_type, "")
 
+        # Преобразуем время создания в местное время
+        local_generated_at = PDFGeneratorService._convert_to_local_time(shopping_list.generated_at, user_city)
+
         info_text = f"""
         <b>Пользователь:</b> {user_name}<br/>
         <b>Период:</b> {period_text}<br/>
-        <b>Создан:</b> {shopping_list.generated_at.strftime('%d.%m.%Y %H:%M')}<br/>
+        <b>Создан:</b> {local_generated_at.strftime('%d.%m.%Y %H:%M')}<br/>
         <b>Общая стоимость:</b> ~{shopping_list.total_cost:.2f} {shopping_list.currency}<br/>
         """
 
         story.append(Paragraph(info_text, styles['CustomBody']))
         story.append(Spacer(1, 0.8*cm))
+
+        # Получаем шрифты для таблиц
+        regular_font, bold_font = PDFGeneratorService._get_fonts()
 
         # Группируем товары по категориям
         items_by_category = {}
@@ -463,10 +509,11 @@ class PDFGeneratorService:
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
                 ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTNAME', (0, 0), (-1, 0), bold_font),
                 ('FONTSIZE', (0, 0), (-1, 0), 11),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#ECF0F1')),
+                ('FONTNAME', (0, 1), (-1, -1), regular_font),
                 ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BDC3C7')),
                 ('FONTSIZE', (0, 1), (-1, -1), 10),
                 ('TOPPADDING', (0, 1), (-1, -1), 6),
@@ -490,7 +537,7 @@ class PDFGeneratorService:
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#2ECC71')),
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.whitesmoke),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 0), (-1, -1), bold_font),
             ('FONTSIZE', (0, 0), (-1, -1), 12),
             ('TOPPADDING', (0, 0), (-1, -1), 10),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
