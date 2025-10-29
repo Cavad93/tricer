@@ -23,6 +23,7 @@ from app.bot.keyboards import (
     main_menu_keyboard,
 )
 from app.bot.states import OnboardingStates
+from app.bot.handlers.disclaimer import disclaimer_accept_callback, disclaimer_decline_callback
 from app.models.user import Gender, Goal, ActivityLevel, DietType, BudgetCategory
 from app.services.nutrition_calc import NutritionCalculator
 from loguru import logger
@@ -60,7 +61,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             )
             return ConversationHandler.END
 
-    # Новый пользователь - начинаем онбординг
+    # Новый пользователь - показываем приветствие и дисклеймер
     await update.message.reply_text(
         f"👋 Привет!\n\n"
         "Я NutriAI - твой персональный AI-нутрициолог!\n\n"
@@ -69,14 +70,25 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         "✅ Считать калории и БЖУ автоматически\n"
         "✅ Достигать твоих целей по весу и здоровью\n"
         "✅ Получать персональные рекомендации от AI\n\n"
-        "Давай начнем с настройки твоего профиля! Это займет всего 2 минуты."
+        "Перед началом важно прочитать условия использования..."
     )
+
+    # Показываем дисклеймер
+    from app.bot.texts import MEDICAL_DISCLAIMER
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Согласен", callback_data="disclaimer_accept")],
+        [InlineKeyboardButton("❌ Не согласен", callback_data="disclaimer_decline")]
+    ]
 
     await update.message.reply_text(
-        "Как мне к тебе обращаться? Напиши своё имя:"
+        MEDICAL_DISCLAIMER,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
     )
 
-    return OnboardingStates.PREFERRED_NAME
+    return OnboardingStates.DISCLAIMER
 
 
 async def preferred_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -592,6 +604,10 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 onboarding_conversation = ConversationHandler(
     entry_points=[CommandHandler("start", start_command)],
     states={
+        OnboardingStates.DISCLAIMER: [
+            CallbackQueryHandler(disclaimer_accept_callback, pattern="^disclaimer_accept$"),
+            CallbackQueryHandler(disclaimer_decline_callback, pattern="^disclaimer_decline$")
+        ],
         OnboardingStates.PREFERRED_NAME: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, preferred_name_handler)
         ],

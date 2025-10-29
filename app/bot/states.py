@@ -6,6 +6,7 @@ from enum import IntEnum, auto
 
 class OnboardingStates(IntEnum):
     """Состояния онбординга"""
+    DISCLAIMER = auto()  # Показ дисклеймера
     PREFERRED_NAME = auto()
     COUNTRY = auto()
     CITY = auto()
@@ -30,3 +31,7 @@ class FoodAddStates(IntEnum):
 class MealPlanStates(IntEnum):
     """Состояния создания плана питания"""
     WAITING_PERIOD = auto()  # Ожидание выбора периода (день/неделя/месяц)
+    ASKING_PREFERENCES = auto()  # Уточнение предпочтений перед созданием
+    GENERATING = auto()  # Генерация плана
+    ASKING_FEEDBACK = auto()  # Запрос обратной связи после создания
+    ASKING_CHANGES = auto()  # Сбор пожеланий по изменениям
