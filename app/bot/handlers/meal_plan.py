@@ -154,13 +154,19 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
         PlanPeriod.MONTH: "месяц (30 дней)"
     }[period]
 
+    # Инициализируем счетчик вопросов и данные
+    context.user_data["preference_step"] = 1
+    context.user_data["favorite_foods"] = None
+    context.user_data["additional_dislikes"] = None
+    context.user_data["special_requests"] = None
+
     # Используем дружелюбные фразы
     from app.bot.texts import FriendlyPhrases
     import random
 
     clarify_phrase = random.choice(FriendlyPhrases.CLARIFY_PREFERENCES)
 
-    # Задаем вопросы для уточнения предпочтений
+    # Задаем первый вопрос
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     skip_keyboard = InlineKeyboardMarkup([
@@ -179,130 +185,313 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
     return MealPlanStates.ASKING_PREFERENCES
 
 
-async def collect_favorite_foods(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сбор любимых блюд/продуктов"""
-    if update.callback_query:
-        # Пользователь нажал "Пропустить"
+async def handle_preference_response(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Универсальный обработчик ответов на вопросы о предпочтениях"""
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    step = context.user_data.get("preference_step", 1)
+
+    # Определяем источник: callback или текст
+    is_skip = update.callback_query is not None
+
+    if is_skip:
         query = update.callback_query
         await query.answer()
-        context.user_data["favorite_foods"] = None
-
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        skip_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip2")]
-        ])
-
-        await query.edit_message_text(
-            "❓ <b>Вопрос 2 из 3:</b> Есть ли продукты, которые категорически не хочешь видеть в плане?\n\n"
-            "Напиши их через запятую или нажми 'Пропустить'.",
-            reply_markup=skip_keyboard,
-            parse_mode='HTML'
-        )
+        response = None
     else:
-        # Пользователь ввел текст
-        favorite_foods = update.message.text.strip()
-        context.user_data["favorite_foods"] = favorite_foods
+        response = update.message.text.strip()
 
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    # Сохраняем ответ в зависимости от шага
+    if step == 1:
+        context.user_data["favorite_foods"] = response
+        context.user_data["preference_step"] = 2
+
         skip_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip2")]
+            [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip")]
         ])
 
-        await update.message.reply_text(
-            "✅ Отлично, учту!\n\n"
-            "❓ <b>Вопрос 2 из 3:</b> Есть ли продукты, которые категорически не хочешь видеть в плане?\n\n"
-            "Напиши их через запятую или нажми 'Пропустить'.",
-            reply_markup=skip_keyboard,
-            parse_mode='HTML'
-        )
+        text = "❓ <b>Вопрос 2 из 3:</b> Есть ли продукты, которые категорически не хочешь видеть в плане?\n\n" \
+               "Напиши их через запятую или нажми 'Пропустить'."
 
-    return MealPlanStates.ASKING_PREFERENCES
+        if response:
+            text = "✅ Отлично, учту!\n\n" + text
 
+        if is_skip:
+            await query.edit_message_text(text, reply_markup=skip_keyboard, parse_mode='HTML')
+        else:
+            await update.message.reply_text(text, reply_markup=skip_keyboard, parse_mode='HTML')
 
-async def collect_disliked_foods(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сбор нежелательных продуктов"""
-    if update.callback_query:
-        # Пользователь нажал "Пропустить"
-        query = update.callback_query
-        await query.answer()
-        context.user_data["additional_dislikes"] = None
+        return MealPlanStates.ASKING_PREFERENCES
 
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    elif step == 2:
+        context.user_data["additional_dislikes"] = response
+        context.user_data["preference_step"] = 3
+
         skip_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip3")]
+            [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip")]
         ])
 
-        await query.edit_message_text(
-            "❓ <b>Вопрос 3 из 3:</b> Есть ли какие-то особые пожелания к плану?\n\n"
-            "Например: больше белка, легкие перекусы, готовка до 30 мин и т.д.\n\n"
-            "Напиши свои пожелания или нажми 'Пропустить'.",
-            reply_markup=skip_keyboard,
-            parse_mode='HTML'
-        )
-    else:
-        # Пользователь ввел текст
-        additional_dislikes = update.message.text.strip()
-        context.user_data["additional_dislikes"] = additional_dislikes
+        text = "❓ <b>Вопрос 3 из 3:</b> Есть ли какие-то особые пожелания к плану?\n\n" \
+               "Например: больше белка, легкие перекусы, готовка до 30 мин и т.д.\n\n" \
+               "Напиши свои пожелания или нажми 'Пропустить'."
 
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        skip_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip3")]
-        ])
+        if response:
+            text = "✅ Понял!\n\n" + text
 
-        await update.message.reply_text(
-            "✅ Понял!\n\n"
-            "❓ <b>Вопрос 3 из 3:</b> Есть ли какие-то особые пожелания к плану?\n\n"
-            "Например: больше белка, легкие перекусы, готовка до 30 мин и т.д.\n\n"
-            "Напиши свои пожелания или нажми 'Пропустить'.",
-            reply_markup=skip_keyboard,
-            parse_mode='HTML'
-        )
+        if is_skip:
+            await query.edit_message_text(text, reply_markup=skip_keyboard, parse_mode='HTML')
+        else:
+            await update.message.reply_text(text, reply_markup=skip_keyboard, parse_mode='HTML')
 
-    return MealPlanStates.ASKING_PREFERENCES
+        return MealPlanStates.ASKING_PREFERENCES
+
+    elif step == 3:
+        context.user_data["special_requests"] = response
+
+        # Все вопросы заданы, начинаем генерацию
+        from app.bot.texts import FriendlyPhrases
+        import random
+
+        creation_phrase = random.choice(FriendlyPhrases.PLAN_CREATION_START)
+
+        period = context.user_data.get("meal_plan_period")
+        period_text = {
+            PlanPeriod.DAY: "1 день",
+            PlanPeriod.WEEK: "неделю (7 дней)",
+            PlanPeriod.MONTH: "месяц (30 дней)"
+        }[period]
+
+        progress_text = f"{creation_phrase}\n\n" \
+                       f"⏳ Создаю персональный план питания на {period_text}...\n\n" \
+                       "Это может занять до 2 минут. Пожалуйста, подожди."
+
+        if is_skip:
+            progress_message = await query.edit_message_text(progress_text)
+        else:
+            progress_message = await update.message.reply_text(progress_text)
+
+        return await generate_meal_plan_with_preferences(update, context, progress_message)
 
 
-async def collect_special_requests(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сбор особых пожеланий и запуск генерации плана"""
-    if update.callback_query:
-        # Пользователь нажал "Пропустить"
-        query = update.callback_query
-        await query.answer()
-        context.user_data["special_requests"] = None
-        message_to_edit = query.message
-    else:
-        # Пользователь ввел текст
-        special_requests = update.message.text.strip()
-        context.user_data["special_requests"] = special_requests
-        message_to_edit = update.message
+async def handle_feedback_positive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка положительной обратной связи"""
+    query = update.callback_query
+    await query.answer()
 
-    # Используем дружелюбные фразы
+    plan_id = context.user_data.get("current_plan_id")
+
+    # Используем дружелюбные фразы для поощрения
     from app.bot.texts import FriendlyPhrases
     import random
 
-    creation_phrase = random.choice(FriendlyPhrases.PLAN_CREATION_START)
+    praise = random.choice(FriendlyPhrases.PRAISE)
 
-    period = context.user_data.get("meal_plan_period")
-    period_text = {
-        PlanPeriod.DAY: "1 день",
-        PlanPeriod.WEEK: "неделю (7 дней)",
-        PlanPeriod.MONTH: "месяц (30 дней)"
-    }[period]
+    text = f"{praise}\n\n" \
+           "Если понадобится помощь или захочешь изменить план - обращайся! 💚\n\n" \
+           "Чтобы посмотреть план в любой момент, нажми 📋 Рацион в меню."
+
+    keyboard = [
+        [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{plan_id}")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+    return ConversationHandler.END
+
+
+async def handle_feedback_negative(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка отрицательной обратной связи - запрос пожеланий"""
+    query = update.callback_query
+    await query.answer()
+
+    text = "🔄 Хорошо, давай скорректируем план!\n\n" \
+           "Расскажи, что именно ты хотел бы изменить?\n\n" \
+           "Например:\n" \
+           "• Заменить определенные блюда\n" \
+           "• Изменить калорийность\n" \
+           "• Убрать/добавить продукты\n" \
+           "• Изменить время приготовления\n\n" \
+           "Напиши свои пожелания:"
+
+    cancel_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+    ])
+
+    await query.edit_message_text(text, reply_markup=cancel_keyboard)
+
+    return MealPlanStates.ASKING_CHANGES
+
+
+async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка запроса на изменение плана"""
+    change_requests = update.message.text.strip()
+
+    if not change_requests:
+        await update.message.reply_text(
+            "❌ Пожалуйста, опиши что хочешь изменить.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return ConversationHandler.END
 
     # Показываем прогресс
-    if update.callback_query:
-        progress_message = await message_to_edit.edit_text(
-            f"{creation_phrase}\n\n"
-            f"⏳ Создаю персональный план питания на {period_text}...\n\n"
-            "Это может занять до 2 минут. Пожалуйста, подожди."
-        )
-    else:
-        progress_message = await message_to_edit.reply_text(
-            f"{creation_phrase}\n\n"
-            f"⏳ Создаю персональный план питания на {period_text}...\n\n"
-            "Это может занять до 2 минут. Пожалуйста, подожди."
+    progress_message = await update.message.reply_text(
+        "⏳ Отлично! Вношу изменения в план...\n\n"
+        "Это может занять до 2 минут. Подожди немного."
+    )
+
+    try:
+        period = context.user_data.get("meal_plan_period")
+        old_plan_id = context.user_data.get("current_plan_id")
+
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
+
+            # Деактивируем старый план
+            await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+
+            # Собираем preferences из context с добавлением новых пожеланий
+            old_preferences = {
+                "favorite_foods": context.user_data.get("favorite_foods"),
+                "additional_dislikes": context.user_data.get("additional_dislikes"),
+                "special_requests": context.user_data.get("special_requests")
+            }
+
+            # Объединяем старые пожелания с новыми
+            combined_requests = ""
+            if old_preferences.get("special_requests"):
+                combined_requests = old_preferences["special_requests"] + "\n\n"
+            combined_requests += f"ВАЖНЫЕ ИЗМЕНЕНИЯ: {change_requests}"
+
+            new_preferences = {
+                "favorite_foods": old_preferences.get("favorite_foods"),
+                "additional_dislikes": old_preferences.get("additional_dislikes"),
+                "special_requests": combined_requests
+            }
+
+            # Генерируем новый план с учетом изменений
+            meal_plan = await MealPlanService.generate_meal_plan(
+                session,
+                user.telegram_id,
+                period,
+                preferences=new_preferences
+            )
+
+            await progress_message.edit_text(
+                "✅ План обновлен!\n\n"
+                "📊 Создаю новый список покупок..."
+            )
+
+            # Создаем новый список покупок
+            shopping_list = await ShoppingListService.create_shopping_list(
+                session,
+                meal_plan.id,
+                search_prices=True
+            )
+
+            await progress_message.edit_text(
+                "✅ Список покупок готов!\n\n"
+                "📄 Генерирую PDF документы..."
+            )
+
+            # Генерируем новые PDF
+            days = await MealPlanService.get_meal_plan_days(session, meal_plan.id)
+            days_data = []
+
+            for day in days:
+                meals = await MealPlanService.get_day_meals(session, day.id)
+                days_data.append((day, meals))
+
+            period_text = {
+                PlanPeriod.DAY: "1 день",
+                PlanPeriod.WEEK: "неделю (7 дней)",
+                PlanPeriod.MONTH: "месяц (30 дней)"
+            }[period]
+
+            # PDF с планом питания
+            pdf_plan_path = await PDFGeneratorService.generate_meal_plan_pdf(
+                meal_plan,
+                days_data,
+                user.preferred_name or user.first_name,
+                user.city
+            )
+
+            # PDF со списком покупок
+            items = await ShoppingListService.get_shopping_items(session, shopping_list.id)
+            pdf_shopping_path = await PDFGeneratorService.generate_shopping_list_pdf(
+                shopping_list,
+                items,
+                meal_plan,
+                user.preferred_name or user.first_name,
+                user.city
+            )
+
+            shopping_list.pdf_path = pdf_shopping_path
+            await session.commit()
+
+        # Показываем результат
+        await progress_message.edit_text(
+            f"✨ Готово! План обновлен с учетом твоих пожеланий!\n\n"
+            f"Отправляю новые PDF файлы..."
         )
 
-    return await generate_meal_plan_with_preferences(update, context, progress_message)
+        # Отправляем новые PDF
+        from telegram import InputFile
+
+        with open(pdf_plan_path, 'rb') as pdf_file:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=InputFile(pdf_file, filename=f"План_питания_{period_text}_обновленный.pdf"),
+                caption=f"📋 Обновленный план питания на {period_text}"
+            )
+
+        with open(pdf_shopping_path, 'rb') as pdf_file:
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=InputFile(pdf_file, filename=f"Список_покупок_{period_text}_обновленный.pdf"),
+                caption=f"🛒 Обновленный список покупок (~{shopping_list.total_cost:.2f} ₽)"
+            )
+
+        # Снова запрашиваем обратную связь
+        from app.bot.texts import FriendlyPhrases
+        import random
+
+        feedback_phrase = random.choice(FriendlyPhrases.FEEDBACK_REQUEST)
+
+        feedback_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Теперь отлично!", callback_data="feedback_positive")],
+            [InlineKeyboardButton("🔄 Еще изменения", callback_data="feedback_negative")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ])
+
+        context.user_data["current_plan_id"] = meal_plan.id
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"📝 {feedback_phrase}",
+            reply_markup=feedback_keyboard
+        )
+
+        logger.info(f"Meal plan updated for user {update.effective_user.id}: plan_id={meal_plan.id}")
+
+        return MealPlanStates.ASKING_FEEDBACK
+
+    except Exception as e:
+        logger.error(f"Error updating meal plan: {e}", exc_info=True)
+
+        await progress_message.edit_text(
+            "❌ Произошла ошибка при обновлении плана.\n\n"
+            "Попробуй позже или обратись в поддержку.",
+            reply_markup=back_to_menu_keyboard()
+        )
+
+        return ConversationHandler.END
 
 
 async def generate_meal_plan_with_preferences(update: Update, context: ContextTypes.DEFAULT_TYPE, progress_message) -> int:
@@ -320,11 +509,19 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
             # Деактивируем старые планы
             await MealPlanService.deactivate_old_plans(session, user.telegram_id)
 
-            # Генерируем новый план
+            # Собираем preferences из context
+            preferences = {
+                "favorite_foods": context.user_data.get("favorite_foods"),
+                "additional_dislikes": context.user_data.get("additional_dislikes"),
+                "special_requests": context.user_data.get("special_requests")
+            }
+
+            # Генерируем новый план с учетом preferences
             meal_plan = await MealPlanService.generate_meal_plan(
                 session,
                 user.telegram_id,
-                period
+                period,
+                preferences=preferences
             )
 
             await progress_message.edit_text(
@@ -408,20 +605,36 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
 <i>Все файлы сохранены и будут обновляться автоматически.</i>
 """
 
-        keyboard = [
-            [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{meal_plan.id}")],
-            [InlineKeyboardButton("🔄 Создать новый план", callback_data="create_new_plan")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ]
-
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=summary_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='HTML'
         )
 
         logger.info(f"Meal plan created for user {update.effective_user.id}: plan_id={meal_plan.id}")
+
+        # Запрашиваем обратную связь
+        from app.bot.texts import FriendlyPhrases
+        import random
+
+        feedback_phrase = random.choice(FriendlyPhrases.FEEDBACK_REQUEST)
+
+        feedback_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Всё отлично!", callback_data="feedback_positive")],
+            [InlineKeyboardButton("🔄 Хочу изменить", callback_data="feedback_negative")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ])
+
+        # Сохраняем plan_id в контексте для дальнейшего использования
+        context.user_data["current_plan_id"] = meal_plan.id
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"📝 {feedback_phrase}",
+            reply_markup=feedback_keyboard
+        )
+
+        return MealPlanStates.ASKING_FEEDBACK
 
     except Exception as e:
         logger.error(f"Error creating meal plan: {e}", exc_info=True)
@@ -432,7 +645,7 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
             reply_markup=back_to_menu_keyboard()
         )
 
-    return ConversationHandler.END
+        return ConversationHandler.END
 
 
 async def view_meal_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):

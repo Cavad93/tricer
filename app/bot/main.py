@@ -27,9 +27,10 @@ from app.bot.handlers.diary import diary_callback, delete_meal_callback
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
     meal_plan_period_selected,
-    collect_favorite_foods,
-    collect_disliked_foods,
-    collect_special_requests,
+    handle_preference_response,
+    handle_feedback_positive,
+    handle_feedback_negative,
+    handle_change_request,
     view_meal_plan,
     view_shopping_list,
     cancel_meal_plan
@@ -322,14 +323,20 @@ def main():
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
             MealPlanStates.ASKING_PREFERENCES: [
-                # Обработка кнопки "Пропустить" для первого вопроса
-                CallbackQueryHandler(collect_favorite_foods, pattern="^preferences_skip$"),
-                # Обработка кнопки "Пропустить" для второго вопроса
-                CallbackQueryHandler(collect_disliked_foods, pattern="^preferences_skip2$"),
-                # Обработка кнопки "Пропустить" для третьего вопроса
-                CallbackQueryHandler(collect_special_requests, pattern="^preferences_skip3$"),
-                # Обработка текстовых ответов (порядок важен!)
-                MessageHandler(filters.TEXT & ~filters.COMMAND, collect_favorite_foods),
+                # Единый обработчик для всех вопросов о предпочтениях
+                CallbackQueryHandler(handle_preference_response, pattern="^preferences_skip$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_preference_response),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.ASKING_FEEDBACK: [
+                # Обработчики обратной связи после создания плана
+                CallbackQueryHandler(handle_feedback_positive, pattern="^feedback_positive$"),
+                CallbackQueryHandler(handle_feedback_negative, pattern="^feedback_negative$"),
+                CallbackQueryHandler(main_menu_callback, pattern="^main_menu$")
+            ],
+            MealPlanStates.ASKING_CHANGES: [
+                # Обработчик запросов на изменение плана
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_change_request),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ]
         },

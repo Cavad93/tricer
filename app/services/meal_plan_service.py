@@ -21,7 +21,8 @@ class MealPlanService:
         session: AsyncSession,
         user_id: int,
         period_type: PlanPeriod,
-        start_date: date = None
+        start_date: date = None,
+        preferences: dict = None
     ) -> MealPlan:
         """
         Генерация плана питания через AI
@@ -31,6 +32,10 @@ class MealPlanService:
             user_id: ID пользователя
             period_type: Период плана (day/week/month)
             start_date: Дата начала плана (по умолчанию - сегодня)
+            preferences: Дополнительные предпочтения пользователя
+                - favorite_foods: любимые блюда/продукты
+                - additional_dislikes: нежелательные продукты
+                - special_requests: особые пожелания
 
         Returns:
             MealPlan: Созданный план питания
@@ -56,8 +61,8 @@ class MealPlanService:
 
         end_date = start_date + timedelta(days=days_count - 1)
 
-        # Формируем промпт для AI
-        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count)
+        # Формируем промпт для AI с учетом preferences
+        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences)
 
         # Генерируем план через AI
         from app.config import settings
@@ -145,8 +150,14 @@ class MealPlanService:
         return meal_plan
 
     @staticmethod
-    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int) -> str:
+    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None) -> str:
         """Формирование промпта для генерации плана питания"""
+
+        # Обрабатываем preferences
+        preferences = preferences or {}
+        favorite_foods = preferences.get("favorite_foods")
+        additional_dislikes = preferences.get("additional_dislikes")
+        special_requests = preferences.get("special_requests")
 
         # Маппинг бюджетных категорий
         budget_descriptions = {
@@ -188,7 +199,23 @@ class MealPlanService:
             PlanPeriod.MONTH: "на 30 дней (месяц)"
         }[period_type]
 
-        prompt = f"""Ты профессиональный диетолог и нутрициолог. Создай детальный план питания {period_text} для пользователя.
+        # Формируем секцию с предпочтениями пользователя
+        preferences_text = ""
+        if favorite_foods:
+            preferences_text += f"\n✨ ЛЮБИМЫЕ ПРОДУКТЫ/БЛЮДА: {favorite_foods}\n   (Постарайся включить их в план, где это возможно)"
+        if additional_dislikes:
+            preferences_text += f"\n❌ ДОПОЛНИТЕЛЬНЫЕ НЕЖЕЛАТЕЛЬНЫЕ ПРОДУКТЫ: {additional_dislikes}\n   (Избегай этих продуктов в плане)"
+        if special_requests:
+            preferences_text += f"\n💡 ОСОБЫЕ ПОЖЕЛАНИЯ: {special_requests}\n   (Учти эти пожелания при составлении плана)"
+
+        # Подключаем AI system prompts для правильного тона
+        from app.bot.texts import AI_SYSTEM_PROMPT_BASE, AI_SYSTEM_PROMPT_NO_DIAGNOSIS
+
+        prompt = f"""{AI_SYSTEM_PROMPT_BASE}
+
+{AI_SYSTEM_PROMPT_NO_DIAGNOSIS}
+
+Ты профессиональный диетолог и нутрициолог. Создай детальный план питания {period_text} для пользователя.
 
 📊 ПАРАМЕТРЫ ПОЛЬЗОВАТЕЛЯ:
 - Имя: {user.preferred_name or "Пользователь"}
@@ -206,6 +233,7 @@ class MealPlanService:
 - Белки: {user.target_proteins}г
 - Жиры: {user.target_fats}г
 - Углеводы: {user.target_carbs}г
+{preferences_text}
 
 📋 ТРЕБОВАНИЯ К ПЛАНУ:
 
