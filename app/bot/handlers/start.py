@@ -523,10 +523,32 @@ async def removed_organs_handler(update: Update, context: ContextTypes.DEFAULT_T
     else:
         context.user_data["removed_organs"] = []
 
-    # Теперь рассчитываем целевые показатели и сохраняем профиль
-    await calculate_and_save_profile(update, context)
+    # Переходим к выбору времени проверки дневника
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-    return ConversationHandler.END
+    keyboard = [
+        [InlineKeyboardButton("🌅 Утром (09:00)", callback_data="diary_check_09:00")],
+        [InlineKeyboardButton("🌆 Днем (14:00)", callback_data="diary_check_14:00")],
+        [InlineKeyboardButton("🌃 Вечером (20:00)", callback_data="diary_check_20:00")],
+        [InlineKeyboardButton("🌙 Перед сном (22:00)", callback_data="diary_check_22:00")],
+        [InlineKeyboardButton("⏩ Не нужно напоминать", callback_data="diary_check_skip")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "📝 <b>Проверка дневника питания</b>\n\n"
+        "Я могу напоминать тебе о заполнении дневника, если вижу, что ты записал "
+        "меньше 70% от рекомендуемых калорий.\n\n"
+        "Это важно, потому что:\n"
+        "• Точный учет помогает достичь целей\n"
+        "• AI-анализ работает лучше с полными данными\n"
+        "• Ты видишь реальную картину своего питания\n\n"
+        "В какое время тебе удобно получать напоминание?",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.DIARY_CHECK_TIME
 
 
 async def skip_removed_organs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -536,7 +558,49 @@ async def skip_removed_organs_callback(update: Update, context: ContextTypes.DEF
 
     context.user_data["removed_organs"] = []
 
-    await query.edit_message_text("⏭️ Пропускаем...")
+    # Переходим к выбору времени проверки дневника
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("🌅 Утром (09:00)", callback_data="diary_check_09:00")],
+        [InlineKeyboardButton("🌆 Днем (14:00)", callback_data="diary_check_14:00")],
+        [InlineKeyboardButton("🌃 Вечером (20:00)", callback_data="diary_check_20:00")],
+        [InlineKeyboardButton("🌙 Перед сном (22:00)", callback_data="diary_check_22:00")],
+        [InlineKeyboardButton("⏩ Не нужно напоминать", callback_data="diary_check_skip")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        "📝 <b>Проверка дневника питания</b>\n\n"
+        "Я могу напоминать тебе о заполнении дневника, если вижу, что ты записал "
+        "меньше 70% от рекомендуемых калорий.\n\n"
+        "Это важно, потому что:\n"
+        "• Точный учет помогает достичь целей\n"
+        "• AI-анализ работает лучше с полными данными\n"
+        "• Ты видишь реальную картину своего питания\n\n"
+        "В какое время тебе удобно получать напоминание?",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.DIARY_CHECK_TIME
+
+
+async def diary_check_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора времени проверки дневника"""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "diary_check_skip":
+        context.user_data["diary_check_enabled"] = False
+        context.user_data["diary_check_time"] = None
+    else:
+        # Извлекаем время из callback_data (diary_check_HH:MM)
+        time_str = query.data.replace("diary_check_", "")
+        context.user_data["diary_check_enabled"] = True
+        context.user_data["diary_check_time"] = time_str
+
+    await query.edit_message_text("⏳ Сохраняю настройки...")
 
     # Теперь рассчитываем целевые показатели и сохраняем профиль
     await calculate_and_save_profile(update, context)
@@ -614,6 +678,9 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 # Медицинская информация (Этап 4)
                 user.chronic_conditions = user_data.get("chronic_conditions", [])
                 user.removed_organs = user_data.get("removed_organs", [])
+                # Настройки проверки дневника
+                user.diary_check_enabled = user_data.get("diary_check_enabled", True)
+                user.diary_check_time = user_data.get("diary_check_time")
                 user.onboarding_completed = True
                 user.updated_at = datetime.utcnow()
                 user.last_active_at = datetime.utcnow()
@@ -645,6 +712,9 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     # Медицинская информация (Этап 4)
                     chronic_conditions=user_data.get("chronic_conditions", []),
                     removed_organs=user_data.get("removed_organs", []),
+                    # Настройки проверки дневника
+                    diary_check_enabled=user_data.get("diary_check_enabled", True),
+                    diary_check_time=user_data.get("diary_check_time"),
                     onboarding_completed=True,
                 )
                 session.add(user)
@@ -769,6 +839,9 @@ onboarding_conversation = ConversationHandler(
         OnboardingStates.REMOVED_ORGANS: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, removed_organs_handler),
             CallbackQueryHandler(skip_removed_organs_callback, pattern="^skip_removed_organs")
+        ],
+        OnboardingStates.DIARY_CHECK_TIME: [
+            CallbackQueryHandler(diary_check_time_callback, pattern="^diary_check_")
         ],
     },
     fallbacks=[CommandHandler("cancel", cancel_command)],

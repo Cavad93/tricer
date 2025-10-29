@@ -10,6 +10,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.models.meal import MealType
 from app.services.reminder_service import ReminderService
+from app.services.diary_check_service import DiaryCheckService
 
 
 class SchedulerService:
@@ -56,6 +57,7 @@ class SchedulerService:
     async def _check_and_send_reminders(self):
         """
         Проверить и отправить напоминания для текущего времени
+        Также проверяет дневники питания
         Вызывается каждую минуту
         """
         try:
@@ -76,6 +78,11 @@ class SchedulerService:
             )
             await ReminderService.send_reminders_for_meal_type(
                 self.bot, MealType.SNACK, current_time
+            )
+
+            # Проверяем дневники питания
+            await DiaryCheckService.check_and_notify_incomplete_diaries(
+                self.bot, current_time
             )
 
         except Exception as e:
