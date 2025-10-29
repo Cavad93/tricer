@@ -3,10 +3,12 @@
 """
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
+from telegram.error import TimedOut, NetworkError, RetryAfter
 from loguru import logger
 import io
 import json
 import re
+import asyncio
 from datetime import datetime, date
 
 from app.services.claude_ai import claude_service
@@ -17,6 +19,49 @@ from app.models.user import User
 from app.models.meal_plan import MealPlan, PlanPeriod
 from app.db.session import async_session_maker
 from sqlalchemy import select, and_
+
+
+async def send_with_retry(coro, max_retries=4, initial_delay=2.0):
+    """
+    Выполняет Telegram API вызов с повторными попытками при ошибках сети
+
+    Args:
+        coro: Корутина для выполнения (например, message.reply_text(...))
+        max_retries: Максимальное количество попыток (default: 4)
+        initial_delay: Начальная задержка в секундах (default: 2.0)
+
+    Returns:
+        Результат выполнения корутины
+
+    Raises:
+        Последнее исключение, если все попытки неудачны
+    """
+    last_exception = None
+    delay = initial_delay
+
+    for attempt in range(max_retries):
+        try:
+            return await coro
+        except (TimedOut, NetworkError) as e:
+            last_exception = e
+            if attempt < max_retries - 1:  # Не ждём после последней попытки
+                logger.warning(f"Network error on attempt {attempt + 1}/{max_retries}: {e}. Retrying in {delay}s...")
+                await asyncio.sleep(delay)
+                delay *= 2  # Экспоненциальная задержка (2s, 4s, 8s, 16s)
+            else:
+                logger.error(f"All {max_retries} attempts failed. Last error: {e}")
+        except RetryAfter as e:
+            # Telegram просит подождать определённое время
+            logger.warning(f"Rate limited. Waiting {e.retry_after}s as requested by Telegram...")
+            await asyncio.sleep(e.retry_after)
+            return await coro  # Повторяем после ожидания
+        except Exception as e:
+            # Другие ошибки не повторяем
+            logger.error(f"Non-retryable error: {type(e).__name__}: {e}")
+            raise
+
+    # Если все попытки неудачны, выбрасываем последнее исключение
+    raise last_exception
 
 
 async def restaurant_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -61,11 +106,14 @@ async def restaurant_photo_handler(update: Update, context: ContextTypes.DEFAULT
     photo = update.message.photo[-1]
     context.user_data["restaurant_menu_photo"] = photo.file_id
 
-    await update.message.reply_text(
-        "📸 Отлично! Фото меню получено.\n\n"
-        "😊 <b>Какое у тебя настроение? Чего хочется?</b>",
-        parse_mode='HTML',
-        reply_markup=mood_keyboard
+    # Отправляем ответ с повторными попытками при ошибках сети
+    await send_with_retry(
+        update.message.reply_text(
+            "📸 Отлично! Фото меню получено.\n\n"
+            "😊 <b>Какое у тебя настроение? Чего хочется?</b>",
+            parse_mode='HTML',
+            reply_markup=mood_keyboard
+        )
     )
 
     return RestaurantStates.ASKING_MEAL_TIME
@@ -256,9 +304,11 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             # ЭТАП 2: Ищем реальные данные о пищевой ценности в интернете
             from app.services.web_search_service import WebSearchService
 
-            await processing_msg.edit_text(
-                "🔍 Ищу данные о пищевой ценности блюд в интернете...\n\n"
-                "Это займет несколько секунд."
+            await send_with_retry(
+                processing_msg.edit_text(
+                    "🔍 Ищу данные о пищевой ценности блюд в интернете...\n\n"
+                    "Это займет несколько секунд."
+                )
             )
 
             web_search_results = await WebSearchService.search_multiple_dishes(dish_names[:10])  # Ограничиваем первыми 10 блюдами
@@ -392,10 +442,12 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             # Добавляем легенду
             final_text += "<i>✅ = данные из интернета | ⚠️ = приблизительная оценка</i>"
 
-            await processing_msg.edit_text(
-                final_text,
-                parse_mode='HTML',
-                reply_markup=main_menu_keyboard()
+            await send_with_retry(
+                processing_msg.edit_text(
+                    final_text,
+                    parse_mode='HTML',
+                    reply_markup=main_menu_keyboard()
+                )
             )
 
             # Сохраняем рекомендации для последующего использования
@@ -423,11 +475,16 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         logger.error(f"Error analyzing restaurant menu for user {user.id}: {e}", exc_info=True)
 
-        await processing_msg.edit_text(
-            "❌ Произошла ошибка при анализе меню.\n\n"
-            "Пожалуйста, попробуй еще раз.",
-            reply_markup=back_to_menu_keyboard()
-        )
+        try:
+            await send_with_retry(
+                processing_msg.edit_text(
+                    "❌ Произошла ошибка при анализе меню.\n\n"
+                    "Пожалуйста, попробуй еще раз.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+            )
+        except Exception as send_error:
+            logger.error(f"Failed to send error message to user {user.id}: {send_error}")
 
         return ConversationHandler.END
 
@@ -449,17 +506,21 @@ async def restaurant_followup_callback(context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Нет, выбрал другое", callback_data="restaurant_used_no")]
     ]
 
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text=(
-            "👋 Привет!\n\n"
-            "Я тут подумал... Воспользовался ли ты моими рекомендациями из ресторана?\n"
-            "Если да, я могу добавить выбранное блюдо в твой дневник питания!"
-        ),
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-    logger.info(f"Restaurant followup sent to user {telegram_id}")
+    try:
+        await send_with_retry(
+            context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "👋 Привет!\n\n"
+                    "Я тут подумал... Воспользовался ли ты моими рекомендациями из ресторана?\n"
+                    "Если да, я могу добавить выбранное блюдо в твой дневник питания!"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        )
+        logger.info(f"Restaurant followup sent to user {telegram_id}")
+    except Exception as e:
+        logger.error(f"Failed to send restaurant followup to user {telegram_id}: {e}")
 
 
 async def handle_restaurant_used_response(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -11,6 +11,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from telegram.request import HTTPXRequest
 from loguru import logger
 import sys
 
@@ -605,8 +606,17 @@ def main():
     """Главная функция запуска бота"""
     logger.info("Starting NutriAI Bot...")
 
-    # Создаем приложение с post_init hook для инициализации БД
-    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    # Настраиваем таймауты для Telegram API (увеличены для работы с медленными сетями)
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        connect_timeout=30.0,      # 30 сек на подключение
+        read_timeout=30.0,          # 30 сек на чтение ответа
+        write_timeout=30.0,         # 30 сек на отправку
+        pool_timeout=10.0           # 10 сек на получение соединения из пула
+    )
+
+    # Создаем приложение с post_init hook для инициализации БД и кастомными таймаутами
+    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).build()
 
     # ConversationHandler для добавления еды по фото
     food_add_conversation = ConversationHandler(
