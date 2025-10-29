@@ -5,6 +5,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from loguru import logger
 import io
+import json
+import re
 from datetime import datetime, date
 
 from app.services.claude_ai import claude_service
@@ -241,7 +243,6 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             extraction_text = extraction_response.content[0].text
 
             # Парсим список блюд
-            import re
             json_match = re.search(r'\{[\s\S]*\}', extraction_text)
             if json_match:
                 dishes_data = json.loads(json_match.group())
@@ -360,9 +361,6 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             recommendations_text = response.content[0].text
 
             # Парсим JSON ответ
-            import json
-            import re
-
             # Пытаемся извлечь JSON из ответа (на случай если Claude добавил markdown)
             json_match = re.search(r'\{[\s\S]*\}', recommendations_text)
             if json_match:
