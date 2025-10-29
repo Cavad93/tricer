@@ -17,7 +17,7 @@ import sys
 from app.config import settings
 from app.db.session import async_session_maker
 from app.bot.handlers.start import onboarding_conversation
-from app.bot.handlers.photo import photo_handler, meal_type_selected, cancel_food_add
+from app.bot.handlers.photo import photo_handler, handle_food_intention, meal_type_selected, cancel_food_add
 from app.bot.handlers.chat import (
     chat_message_handler,
     clear_chat_command,
@@ -39,7 +39,14 @@ from app.bot.handlers.meal_plan import (
     cancel_meal_plan
 )
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
-from app.bot.states import FoodAddStates, MealPlanStates
+from app.bot.states import FoodAddStates, MealPlanStates, RestaurantStates
+from app.bot.handlers.restaurant import (
+    restaurant_start,
+    restaurant_photo_handler,
+    handle_mood_selection,
+    analyze_menu_and_recommend,
+    cancel_restaurant
+)
 
 
 # Настройка логирования
@@ -426,6 +433,11 @@ def main():
     food_add_conversation = ConversationHandler(
         entry_points=[MessageHandler(filters.PHOTO, photo_handler)],
         states={
+            FoodAddStates.ASKING_INTENTION: [
+                # Спрашиваем: будет есть или просто узнать
+                CallbackQueryHandler(handle_food_intention, pattern="^intention_"),
+                CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
+            ],
             FoodAddStates.WAITING_MEAL_TYPE: [
                 CallbackQueryHandler(meal_type_selected, pattern="^meal_type_"),
                 CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
@@ -433,6 +445,29 @@ def main():
         },
         fallbacks=[
             CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
+        ],
+        per_message=False
+    )
+
+    # ConversationHandler для функции "Ресторан"
+    restaurant_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(restaurant_start, pattern="^restaurant$")],
+        states={
+            RestaurantStates.ASKING_MOOD: [
+                MessageHandler(filters.PHOTO, restaurant_photo_handler),
+                CallbackQueryHandler(cancel_restaurant, pattern="^main_menu$")
+            ],
+            RestaurantStates.ASKING_MEAL_TIME: [
+                CallbackQueryHandler(handle_mood_selection, pattern="^mood_"),
+                CallbackQueryHandler(cancel_restaurant, pattern="^main_menu$")
+            ],
+            RestaurantStates.ANALYZING_MENU: [
+                CallbackQueryHandler(analyze_menu_and_recommend, pattern="^restaurant_meal_"),
+                CallbackQueryHandler(cancel_restaurant, pattern="^main_menu$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_restaurant, pattern="^main_menu$")
         ],
         per_message=False
     )
@@ -480,6 +515,7 @@ def main():
     application.add_handler(onboarding_conversation)
     application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания
+    application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан"
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))

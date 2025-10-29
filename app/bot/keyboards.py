@@ -13,13 +13,14 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🍽 Рацион", callback_data="meal_plan"),
+            InlineKeyboardButton("🍴 Ресторан", callback_data="restaurant"),
+        ],
+        [
             InlineKeyboardButton("💬 AI-чат", callback_data="ai_chat"),
-        ],
-        [
             InlineKeyboardButton("👤 Профиль", callback_data="profile"),
-            InlineKeyboardButton("📈 Статистика", callback_data="stats"),
         ],
         [
+            InlineKeyboardButton("📈 Статистика", callback_data="stats"),
             InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
     ]

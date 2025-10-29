@@ -107,17 +107,26 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"У: {total.get('carbs', 0)}г\n\n"
                     )
 
-                response_text += "Хотите добавить в дневник питания?"
+                # Спрашиваем намерение: будет есть или просто интересуется
+                response_text += "🤔 *Ты собираешься это съесть или просто интересуешься?*"
+
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+                intention_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🍽 Буду есть", callback_data="intention_eat")],
+                    [InlineKeyboardButton("👀 Просто узнать", callback_data="intention_info")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+                ])
 
                 await processing_msg.edit_text(
                     response_text,
                     parse_mode="Markdown",
-                    reply_markup=meal_type_keyboard()
+                    reply_markup=intention_keyboard
                 )
 
                 logger.info(f"Food recognition successful for user {user.id}: {len(dishes)} dish(es)")
 
-                return FoodAddStates.WAITING_MEAL_TYPE
+                return FoodAddStates.ASKING_INTENTION
 
             else:
                 await processing_msg.edit_text(
@@ -142,6 +151,83 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         return ConversationHandler.END
+
+
+async def handle_food_intention(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик выбора намерения - есть или просто узнать"""
+    query = update.callback_query
+    await query.answer()
+
+    intention = query.data.replace("intention_", "")
+
+    if intention == "info":
+        # Пользователь просто хотел узнать - показываем финальное сообщение
+        recognized_food = context.user_data.get("recognized_food")
+        if recognized_food:
+            dishes = recognized_food["dishes"]
+
+            response_text = "✅ *Вот информация о блюде:*\n\n"
+
+            for i, dish in enumerate(dishes, 1):
+                nutrition = dish["nutrition"]
+                portion_desc = dish.get("portion_description", f"~{dish['portion_size_grams']}г")
+
+                response_text += (
+                    f"{'🍽' if i == 1 else '➕'} *{dish['name']}*\n"
+                    f"Порция: {portion_desc}\n"
+                    f"🔥 {nutrition['calories']} ккал | "
+                    f"🥩 Б: {nutrition['proteins']}г | "
+                    f"🧈 Ж: {nutrition['fats']}г | "
+                    f"🍞 У: {nutrition['carbs']}г\n\n"
+                )
+
+            response_text += "💡 Если захочешь добавить еду в дневник, просто отправь фото еще раз!"
+
+            await query.edit_message_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=main_menu_keyboard()
+            )
+
+            # Очищаем контекст
+            context.user_data.pop("recognized_food", None)
+
+            logger.info(f"User {update.effective_user.id} checked food info only, not adding to diary")
+
+            return ConversationHandler.END
+
+    elif intention == "eat":
+        # Пользователь будет есть - переходим к выбору типа приема пищи
+        recognized_food = context.user_data.get("recognized_food")
+        if not recognized_food:
+            await query.edit_message_text(
+                "❌ Данные о еде потеряны. Отправьте фото заново.",
+                reply_markup=back_to_menu_keyboard()
+            )
+            return ConversationHandler.END
+
+        # Формируем текст напоминания
+        dishes = recognized_food["dishes"]
+        response_text = "✅ *Отлично! Добавляю в дневник.*\n\n"
+
+        for i, dish in enumerate(dishes, 1):
+            nutrition = dish["nutrition"]
+            response_text += (
+                f"{'🍽' if i == 1 else '➕'} {dish['name']}\n"
+                f"🔥 {nutrition['calories']} ккал\n"
+            )
+
+        response_text += "\n📝 *Выбери тип приема пищи:*"
+
+        await query.edit_message_text(
+            response_text,
+            parse_mode="Markdown",
+            reply_markup=meal_type_keyboard()
+        )
+
+        logger.info(f"User {update.effective_user.id} will eat the food, showing meal type selection")
+
+        return FoodAddStates.WAITING_MEAL_TYPE
 
 
 async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):

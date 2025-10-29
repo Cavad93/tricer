@@ -25,7 +25,15 @@ class OnboardingStates(IntEnum):
 
 class FoodAddStates(IntEnum):
     """Состояния добавления еды"""
+    ASKING_INTENTION = auto()  # Спрашиваем: будет есть или просто узнать
     WAITING_MEAL_TYPE = auto()  # Ожидание выбора типа приема пищи
+
+
+class RestaurantStates(IntEnum):
+    """Состояния для функции 'Ресторан'"""
+    ASKING_MOOD = auto()  # Спрашиваем настроение/желание
+    ASKING_MEAL_TIME = auto()  # Спрашиваем прием пищи
+    ANALYZING_MENU = auto()  # Анализируем меню
 
 
 class MealPlanStates(IntEnum):
