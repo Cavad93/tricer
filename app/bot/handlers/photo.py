@@ -10,6 +10,7 @@ from datetime import datetime, date
 from app.services.claude_ai import claude_service
 from app.services.meal_service import MealService
 from app.services.usage_service import UsageService
+from app.services.food_correction_service import FoodCorrectionService
 from app.bot.keyboards import meal_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
 from app.bot.states import FoodAddStates
 from app.models.meal import MealType
@@ -58,11 +59,41 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             logger.info(f"Photo downloaded, size: {len(image_bytes)} bytes")
 
-            # Распознавание через Claude API
-            result = await claude_service.analyze_food_photo(
-                image_bytes=image_bytes,
-                additional_context=f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"
+            # Вычисляем hash фото для поиска существующих коррекций
+            photo_hash = FoodCorrectionService.calculate_photo_hash(image_bytes)
+            logger.info(f"Photo hash: {photo_hash[:10]}...")
+
+            # Сохраняем hash в контекст для последующего использования
+            context.user_data["photo_hash"] = photo_hash
+            context.user_data["photo_bytes"] = image_bytes  # Сохраняем на случай если потребуется
+
+            # Проверяем есть ли сохраненная коррекция для этого фото
+            existing_correction = await FoodCorrectionService.find_correction_by_hash(
+                session=session,
+                user_id=db_user.id,
+                photo_hash=photo_hash
             )
+
+            # Если коррекция найдена - используем её данные
+            if existing_correction:
+                logger.info(f"Found existing correction for user {user.id}, using it")
+                result = existing_correction.corrected_data
+                # Увеличиваем счетчик использования
+                await FoodCorrectionService.increment_usage(session, existing_correction.id)
+                # Сохраняем ID коррекции для дальнейшего использования
+                context.user_data["correction_id"] = existing_correction.id
+                # Добавляем флаг что это из коррекции
+                context.user_data["from_correction"] = True
+            else:
+                # Распознавание через Claude API
+                logger.info(f"No correction found, using AI recognition")
+                result = await claude_service.analyze_food_photo(
+                    image_bytes=image_bytes,
+                    additional_context=f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"
+                )
+                # Сохраняем оригинальное распознавание для потенциальной коррекции
+                context.user_data["original_recognition"] = result
+                context.user_data["from_correction"] = False
 
             # Проверка на неподходящий контент
             if result and result.get("inappropriate_content", False):
@@ -132,26 +163,30 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"У: {total.get('carbs', 0)}г\n\n"
                     )
 
-                # Спрашиваем намерение: будет есть или просто интересуется
-                response_text += "🤔 *Ты собираешься это съесть или просто интересуешься?*"
+                # Добавляем информацию если данные из коррекции
+                if context.user_data.get("from_correction"):
+                    response_text += "♻️ _Использованы данные из предыдущей коррекции_\n\n"
+
+                # Спрашиваем подтверждение: распознано верно?
+                response_text += "✅ *Всё распознано верно?*"
 
                 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-                intention_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🍽 Буду есть", callback_data="intention_eat")],
-                    [InlineKeyboardButton("👀 Просто узнать", callback_data="intention_info")],
+                verification_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Да, всё верно", callback_data="verification_correct")],
+                    [InlineKeyboardButton("✏️ Нужны уточнения", callback_data="verification_incorrect")],
                     [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
                 ])
 
                 await processing_msg.edit_text(
                     response_text,
                     parse_mode="Markdown",
-                    reply_markup=intention_keyboard
+                    reply_markup=verification_keyboard
                 )
 
                 logger.info(f"Food recognition successful for user {user.id}: {len(dishes)} dish(es)")
 
-                return FoodAddStates.ASKING_INTENTION
+                return FoodAddStates.ASKING_VERIFICATION
 
             else:
                 await processing_msg.edit_text(
@@ -175,6 +210,181 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_to_menu_keyboard()
         )
 
+        return ConversationHandler.END
+
+
+async def handle_verification(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик ответа на вопрос 'Распознано верно?'"""
+    query = update.callback_query
+    await query.answer()
+
+    verification = query.data.replace("verification_", "")
+
+    if verification == "correct":
+        # Пользователь подтвердил - переходим к вопросу о намерении
+        recognized_food = context.user_data.get("recognized_food")
+        if recognized_food:
+            dishes = recognized_food["dishes"]
+
+            # Формируем краткий текст
+            response_text = "✅ *Отлично!*\n\n"
+
+            for i, dish in enumerate(dishes, 1):
+                nutrition = dish["nutrition"]
+                response_text += (
+                    f"{'🍽' if i == 1 else '➕'} *{dish['name']}*\n"
+                    f"🔥 {nutrition['calories']} ккал\n\n"
+                )
+
+            response_text += "🤔 *Ты собираешься это съесть или просто интересуешься?*"
+
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+            intention_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🍽 Буду есть", callback_data="intention_eat")],
+                [InlineKeyboardButton("👀 Просто узнать", callback_data="intention_info")],
+                [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+            ])
+
+            await query.edit_message_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=intention_keyboard
+            )
+
+            return FoodAddStates.ASKING_INTENTION
+
+    elif verification == "incorrect":
+        # Пользователь хочет уточнить - запрашиваем текстовое описание
+        await query.edit_message_text(
+            "✏️ *Хорошо, давай уточним!*\n\n"
+            "Напиши, что именно на фото и в каком количестве.\n"
+            "Например: _\"Куриная грудка 200г и салат Цезарь\"_\n\n"
+            "📝 Чем подробнее опишешь - тем точнее я распознаю в следующий раз!",
+            parse_mode="Markdown"
+        )
+
+        return FoodAddStates.ASKING_CLARIFICATION
+
+    return ConversationHandler.END
+
+
+async def handle_clarification(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик текстового уточнения от пользователя"""
+    user = update.effective_user
+    clarification_text = update.message.text
+
+    logger.info(f"User {user.id} provided clarification: {clarification_text[:50]}...")
+
+    # Отправляем уточнение AI для перераспознавания
+    processing_msg = await update.message.reply_text(
+        "🔄 Учитываю твоё уточнение и перераспознаю..."
+    )
+
+    try:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await processing_msg.edit_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Получаем сохраненное фото
+            photo_bytes = context.user_data.get("photo_bytes")
+            photo_hash = context.user_data.get("photo_hash")
+
+            if not photo_bytes or not photo_hash:
+                await processing_msg.edit_text(
+                    "❌ Фото не найдено. Попробуй отправить его заново.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Перераспознаем с учетом уточнения пользователя
+            result = await claude_service.analyze_food_photo(
+                image_bytes=photo_bytes,
+                additional_context=f"Пользователь уточнил: {clarification_text}\n"
+                                   f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"
+            )
+
+            if result and "dishes" in result and len(result["dishes"]) > 0:
+                dishes = result["dishes"]
+
+                # Сохраняем коррекцию в базу данных
+                original_recognition = context.user_data.get("original_recognition", {})
+                await FoodCorrectionService.save_correction(
+                    session=session,
+                    user_id=db_user.id,
+                    photo_hash=photo_hash,
+                    original_recognition=original_recognition,
+                    corrected_data=result,
+                    user_clarification=clarification_text
+                )
+
+                # Обновляем recognized_food в контексте
+                context.user_data["recognized_food"] = {
+                    "dishes": dishes,
+                    "total_nutrition": result.get("total_nutrition", {}),
+                    "photo_file_id": context.user_data.get("recognized_food", {}).get("photo_file_id")
+                }
+
+                # Показываем обновленный результат
+                response_text = "✅ *Обновленное распознавание:*\n\n"
+
+                for i, dish in enumerate(dishes, 1):
+                    nutrition = dish["nutrition"]
+                    portion_desc = dish.get("portion_description", f"~{dish['portion_size_grams']}г")
+
+                    response_text += (
+                        f"{'🍽' if i == 1 else '➕'} *{dish['name']}*\n"
+                        f"Порция: {portion_desc}\n"
+                        f"🔥 {nutrition['calories']} ккал | "
+                        f"🥩 Б: {nutrition['proteins']}г | "
+                        f"🧈 Ж: {nutrition['fats']}г | "
+                        f"🍞 У: {nutrition['carbs']}г\n\n"
+                    )
+
+                response_text += "💾 _Сохранил твою коррекцию. В следующий раз распознаю точнее!_\n\n"
+                response_text += "🤔 *Ты собираешься это съесть или просто интересуешься?*"
+
+                from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+                intention_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🍽 Буду есть", callback_data="intention_eat")],
+                    [InlineKeyboardButton("👀 Просто узнать", callback_data="intention_info")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+                ])
+
+                await processing_msg.edit_text(
+                    response_text,
+                    parse_mode="Markdown",
+                    reply_markup=intention_keyboard
+                )
+
+                logger.info(f"Saved correction for user {user.id}, photo_hash: {photo_hash[:10]}...")
+
+                return FoodAddStates.ASKING_INTENTION
+
+            else:
+                await processing_msg.edit_text(
+                    "❌ Не удалось перераспознать с уточнением.\n\n"
+                    "Попробуй отправить фото еще раз.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error in clarification handler: {e}", exc_info=True)
+        await processing_msg.edit_text(
+            "❌ Произошла ошибка при обработке уточнения.",
+            reply_markup=back_to_menu_keyboard()
+        )
         return ConversationHandler.END
 
 

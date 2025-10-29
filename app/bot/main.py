@@ -17,7 +17,14 @@ import sys
 from app.config import settings
 from app.db.session import async_session_maker
 from app.bot.handlers.start import onboarding_conversation
-from app.bot.handlers.photo import photo_handler, handle_food_intention, meal_type_selected, cancel_food_add
+from app.bot.handlers.photo import (
+    photo_handler,
+    handle_verification,
+    handle_clarification,
+    handle_food_intention,
+    meal_type_selected,
+    cancel_food_add
+)
 from app.bot.handlers.chat import (
     chat_message_handler,
     clear_chat_command,
@@ -486,6 +493,16 @@ def main():
     food_add_conversation = ConversationHandler(
         entry_points=[MessageHandler(filters.PHOTO, photo_handler)],
         states={
+            FoodAddStates.ASKING_VERIFICATION: [
+                # Спрашиваем: распознано верно?
+                CallbackQueryHandler(handle_verification, pattern="^verification_"),
+                CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
+            ],
+            FoodAddStates.ASKING_CLARIFICATION: [
+                # Ожидаем текстовое уточнение от пользователя
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_clarification),
+                CallbackQueryHandler(cancel_food_add, pattern="^main_menu$")
+            ],
             FoodAddStates.ASKING_INTENTION: [
                 # Спрашиваем: будет есть или просто узнать
                 CallbackQueryHandler(handle_food_intention, pattern="^intention_"),

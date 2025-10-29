@@ -2,6 +2,7 @@
 Модель пользователя
 """
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum, JSON
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
 import enum
@@ -113,6 +114,9 @@ class User(Base):
 
     # Онбординг
     onboarding_completed = Column(Boolean, default=False)
+
+    # Relationships
+    food_corrections = relationship("FoodRecognitionCorrection", back_populates="user", lazy="dynamic")
 
     def __repr__(self):
         return f"<User(telegram_id={self.telegram_id}, username={self.username})>"
