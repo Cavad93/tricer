@@ -184,6 +184,14 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             target = progress["target"]
             remaining = progress["remaining"]
 
+            # Инициализируем Claude API клиент
+            from anthropic import AsyncAnthropic
+            from app.config import settings
+            import base64
+
+            client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
             # ЭТАП 1: Сначала извлекаем список всех блюд из меню
             extraction_prompt = """Проанализируй фото меню ресторана и извлеки СПИСОК ВСЕХ блюд.
 
