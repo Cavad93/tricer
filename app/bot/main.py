@@ -646,10 +646,11 @@ def main():
     )
 
     # Добавляем обработчики
+    # ВАЖНО: порядок имеет значение! ConversationHandler с более специфичными условиями должны быть первыми
     application.add_handler(onboarding_conversation)
-    application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler
+    application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан" - ПЕРЕД food_add_conversation!
+    application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler (перехватывает ВСЕ фото)
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания
-    application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан"
     application.add_handler(reminder_setup_conversation)  # Обработчик настройки напоминаний
     application.add_handler(get_reports_conversation_handler())  # Обработчик отчетов
     application.add_handler(CommandHandler("help", help_command))
