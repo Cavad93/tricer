@@ -76,12 +76,44 @@ def safe_parse_json(text: str, context_name: str = "response") -> dict:
                 fixed = re.sub(r'\s+', ' ', fixed)
                 return json.loads(fixed)
             except json.JSONDecodeError:
-                # Стратегия 6: Логируем проблемный JSON и выбрасываем ошибку
+                pass
+
+            # Стратегия 6: Усечение обрезанного JSON
+            # Если JSON обрезан на середине (достигнут max_tokens),
+            # найдём последний полный объект и закроем структуру
+            try:
+                # Ищем последнее вхождение закрывающей фигурной скобки объекта
+                # за которой может быть запятая или пробелы
+                last_complete = fixed.rfind('}')
+                if last_complete > 0:
+                    # Обрезаем до последнего полного объекта
+                    truncated = fixed[:last_complete + 1]
+
+                    # Подсчитываем открытые структуры после обрезания
+                    open_braces = truncated.count('{') - truncated.count('}')
+                    open_brackets = truncated.count('[') - truncated.count(']')
+
+                    # Закрываем все открытые массивы и объекты
+                    truncated += ']' * open_brackets
+                    truncated += '}' * open_braces
+
+                    logger.warning(
+                        f"JSON appears truncated in {context_name}. "
+                        f"Attempting to recover by truncating to last complete object. "
+                        f"Original length: {len(fixed)}, Truncated to: {len(truncated)}"
+                    )
+
+                    return json.loads(truncated)
+            except json.JSONDecodeError:
+                # Стратегия 7: Логируем проблемный JSON и выбрасываем ошибку
                 logger.error(
                     f"Failed to parse JSON in {context_name}. "
                     f"Original error: {e}. "
-                    f"Tried 5 different strategies, all failed. "
-                    f"Problematic JSON (first 500 chars): {json_str[:500]}"
+                    f"Tried 6 different strategies, all failed. "
+                    f"Problematic JSON - first 500 chars: {json_str[:500]}"
+                )
+                logger.error(
+                    f"Problematic JSON - last 500 chars: {json_str[-500:]}"
                 )
                 raise
 
@@ -337,9 +369,10 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 - Верни только валидный JSON"""
 
             # Запрос на извлечение блюд
+            # max_tokens увеличен до 4000 для больших меню
             extraction_response = await client.messages.create(
                 model=settings.CLAUDE_MODEL,
-                max_tokens=1500,
+                max_tokens=4000,
                 messages=[
                     {
                         "role": "user",
