@@ -21,6 +21,66 @@ from app.db.session import async_session_maker
 from sqlalchemy import select, and_
 
 
+def safe_parse_json(text: str, context_name: str = "response") -> dict:
+    """
+    Надёжный парсинг JSON с множественными стратегиями очистки
+
+    Args:
+        text: Текст для парсинга
+        context_name: Название контекста для логирования
+
+    Returns:
+        Распарсенный JSON как словарь
+
+    Raises:
+        json.JSONDecodeError: Если все стратегии парсинга неудачны
+    """
+
+    # Стратегия 1: Прямой парсинг
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Стратегия 2: Извлечение JSON из markdown блоков
+    # Ищем ```json ... ``` или ``` ... ```
+    code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', text)
+    if code_block_match:
+        try:
+            return json.loads(code_block_match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Стратегия 3: Извлечение первого JSON объекта
+    json_match = re.search(r'\{[\s\S]*\}', text)
+    if json_match:
+        json_str = json_match.group()
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            # Стратегия 4: Очистка trailing commas
+            # Удаляем запятые перед закрывающими скобками
+            cleaned = re.sub(r',(\s*[}\]])', r'\1', json_str)
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError:
+                # Стратегия 5: Логируем проблемный JSON и выбрасываем ошибку
+                logger.error(
+                    f"Failed to parse JSON in {context_name}. "
+                    f"Original error: {e}. "
+                    f"Problematic JSON (first 500 chars): {json_str[:500]}"
+                )
+                raise
+
+    # Если ничего не сработало
+    logger.error(f"No JSON found in {context_name}. Text (first 500 chars): {text[:500]}")
+    raise json.JSONDecodeError(
+        f"No valid JSON found in {context_name}",
+        text,
+        0
+    )
+
+
 async def send_with_retry(coro, max_retries=4, initial_delay=2.0):
     """
     Выполняет Telegram API вызов с повторными попытками при ошибках сети
@@ -290,12 +350,9 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 
             extraction_text = extraction_response.content[0].text
 
-            # Парсим список блюд
-            json_match = re.search(r'\{[\s\S]*\}', extraction_text)
-            if json_match:
-                dishes_data = json.loads(json_match.group())
-            else:
-                dishes_data = json.loads(extraction_text)
+            # Парсим список блюд с помощью надёжного парсера
+            logger.info(f"Parsing dish extraction response (length: {len(extraction_text)})")
+            dishes_data = safe_parse_json(extraction_text, context_name="dish extraction")
 
             dish_names = [d["name"] for d in dishes_data.get("dishes", [])]
 
@@ -410,13 +467,9 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 
             recommendations_text = response.content[0].text
 
-            # Парсим JSON ответ
-            # Пытаемся извлечь JSON из ответа (на случай если Claude добавил markdown)
-            json_match = re.search(r'\{[\s\S]*\}', recommendations_text)
-            if json_match:
-                recommendations_json = json.loads(json_match.group())
-            else:
-                recommendations_json = json.loads(recommendations_text)
+            # Парсим JSON ответ с помощью надёжного парсера
+            logger.info(f"Parsing recommendations response (length: {len(recommendations_text)})")
+            recommendations_json = safe_parse_json(recommendations_text, context_name="recommendations")
 
             # Формируем текст для пользователя
             final_text = f"🍽 <b>Рекомендации для {meal_type_text}:</b>\n\n"
@@ -471,6 +524,29 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             logger.info(f"Restaurant recommendations provided for user {user.id}, followup scheduled in 5 minutes")
 
             return ConversationHandler.END
+
+    except json.JSONDecodeError as e:
+        logger.error(
+            f"JSON parsing error for user {user.id}: {e}. "
+            f"This usually means Claude AI returned invalid JSON format.",
+            exc_info=True
+        )
+
+        try:
+            await send_with_retry(
+                processing_msg.edit_text(
+                    "❌ Не удалось обработать ответ AI.\n\n"
+                    "Это редкая ошибка форматирования данных. "
+                    "Пожалуйста, попробуй отправить фото меню ещё раз.\n\n"
+                    "<i>Если ошибка повторяется, попробуй сфотографировать меню с другого ракурса.</i>",
+                    parse_mode='HTML',
+                    reply_markup=back_to_menu_keyboard()
+                )
+            )
+        except Exception as send_error:
+            logger.error(f"Failed to send JSON error message to user {user.id}: {send_error}")
+
+        return ConversationHandler.END
 
     except Exception as e:
         logger.error(f"Error analyzing restaurant menu for user {user.id}: {e}", exc_info=True)
