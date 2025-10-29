@@ -16,13 +16,15 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image, Drawing
+from reportlab.graphics.shapes import Rect, String
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from loguru import logger
 
 from app.services.pdf_generator import PDFGeneratorService
+from app.models.micronutrients import MicronutrientTargets
 
 
 class PDFReportGenerator:
@@ -328,74 +330,59 @@ class PDFReportGenerator:
                 story.append(Paragraph(micro_disclaimer, disclaimer_style))
                 story.append(Spacer(1, 0.5*cm))
 
+                # Цветовая индикация
+                info_text = """
+                Цветовая индикация: <font color="#E74C3C">■</font> менее 50% нормы,
+                <font color="#F39C12">■</font> 50-80% нормы,
+                <font color="#27AE60">■</font> 80-120% нормы (оптимально),
+                <font color="#3498DB">■</font> более 120% нормы.
+                """
+                story.append(Paragraph(info_text, styles['CustomSmall']))
+                story.append(Spacer(1, 0.5*cm))
+
                 micronutrients = report_data["micronutrients"]
 
                 # Группируем витамины и минералы
                 vitamins = {k: v for k, v in micronutrients.items() if k.startswith('vitamin') or k == 'beta_carotene' or k == 'choline'}
                 minerals = {k: v for k, v in micronutrients.items() if k not in vitamins}
 
-                # Витамины
-                story.append(Paragraph("Витамины", styles['CustomHeading']))
+                # ВСЕ витамины (15 шт.) с ползунками
+                story.append(Paragraph("Витамины (15)", styles['CustomHeading']))
+                story.append(Spacer(1, 0.3*cm))
 
-                vitamin_table_data = [['Витамин', 'Факт', 'Норма', '%']]
-                for key, data in list(vitamins.items())[:10]:  # Первые 10 витаминов
+                for key, data in vitamins.items():
                     consumed_key = 'consumed' if 'consumed' in data else 'average'
-                    vitamin_table_data.append([
-                        data['name'],
-                        f"{data[consumed_key]:.1f} {data['unit']}",
-                        f"{data['target']} {data['unit']}",
-                        f"{data['percentage']:.0f}%"
-                    ])
+                    value = data[consumed_key]
+                    target = data['target']
+                    name = data['name']
+                    unit = data['unit']
 
-                vitamin_table = Table(vitamin_table_data, colWidths=[6*cm, 3*cm, 3*cm, 2.5*cm])
-                vitamin_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#9B59B6')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), bold_font),
-                    ('FONTSIZE', (0, 0), (-1, 0), 10),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#F4ECF7')),
-                    ('FONTNAME', (0, 1), (-1, -1), regular_font),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BDC3C7')),
-                    ('FONTSIZE', (0, 1), (-1, -1), 9),
-                    ('TOPPADDING', (0, 1), (-1, -1), 5),
-                    ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-                ]))
+                    # Создаём ползунок
+                    progress_bar = PDFGeneratorService._create_progress_bar(
+                        value, target, name, unit
+                    )
+                    story.append(progress_bar)
+                    story.append(Spacer(1, 0.1*cm))
 
-                story.append(vitamin_table)
                 story.append(Spacer(1, 0.5*cm))
 
-                # Минералы
-                story.append(Paragraph("Минералы", styles['CustomHeading']))
+                # ВСЕ минералы (17 шт.) с ползунками
+                story.append(Paragraph("Минералы (17)", styles['CustomHeading']))
+                story.append(Spacer(1, 0.3*cm))
 
-                mineral_table_data = [['Минерал', 'Факт', 'Норма', '%']]
-                for key, data in list(minerals.items())[:12]:  # Первые 12 минералов
+                for key, data in minerals.items():
                     consumed_key = 'consumed' if 'consumed' in data else 'average'
-                    mineral_table_data.append([
-                        data['name'],
-                        f"{data[consumed_key]:.1f} {data['unit']}",
-                        f"{data['target']} {data['unit']}",
-                        f"{data['percentage']:.0f}%"
-                    ])
+                    value = data[consumed_key]
+                    target = data['target']
+                    name = data['name']
+                    unit = data['unit']
 
-                mineral_table = Table(mineral_table_data, colWidths=[6*cm, 3*cm, 3*cm, 2.5*cm])
-                mineral_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E67E22')),
-                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                    ('FONTNAME', (0, 0), (-1, 0), bold_font),
-                    ('FONTSIZE', (0, 0), (-1, 0), 10),
-                    ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-                    ('BACKGROUND', (0, 1), (-1, -1), colors.HexColor('#FDF2E9')),
-                    ('FONTNAME', (0, 1), (-1, -1), regular_font),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#BDC3C7')),
-                    ('FONTSIZE', (0, 1), (-1, -1), 9),
-                    ('TOPPADDING', (0, 1), (-1, -1), 5),
-                    ('BOTTOMPADDING', (0, 1), (-1, -1), 5),
-                ]))
-
-                story.append(mineral_table)
+                    # Создаём ползунок
+                    progress_bar = PDFGeneratorService._create_progress_bar(
+                        value, target, name, unit
+                    )
+                    story.append(progress_bar)
+                    story.append(Spacer(1, 0.1*cm))
 
             # Строим PDF
             doc.build(story)
