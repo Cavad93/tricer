@@ -79,6 +79,10 @@ from app.bot.handlers.reminders import (
 from app.bot.handlers.reports import get_reports_conversation_handler
 from app.bot.handlers.wellness import wellness_survey_conversation
 from app.bot.handlers.medical_analysis import medical_analysis_conversation
+from app.bot.handlers.steps import (
+    handle_steps_skip,
+    handle_steps_range
+)
 from app.services.scheduler_service import init_scheduler
 
 
@@ -962,6 +966,10 @@ def main():
     # Callback handlers для ресторана (отложенные уточнения)
     application.add_handler(CallbackQueryHandler(handle_restaurant_used_response, pattern="^restaurant_used_"))
     application.add_handler(CallbackQueryHandler(handle_restaurant_dish_selection, pattern="^restaurant_dish_"))
+
+    # Callback handlers для учета шагов
+    application.add_handler(CallbackQueryHandler(handle_steps_skip, pattern="^steps_skip$"))
+    application.add_handler(CallbackQueryHandler(handle_steps_range, pattern="^steps_range_"))
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))

@@ -11,6 +11,7 @@ from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from app.models.meal import MealType
 from app.services.reminder_service import ReminderService
 from app.services.diary_check_service import DiaryCheckService
+from app.services.steps_request_service import StepsRequestService
 
 
 class SchedulerService:
@@ -82,6 +83,11 @@ class SchedulerService:
 
             # Проверяем дневники питания
             await DiaryCheckService.check_and_notify_incomplete_diaries(
+                self.bot, current_time
+            )
+
+            # Запрашиваем количество шагов за день
+            await StepsRequestService.request_daily_steps(
                 self.bot, current_time
             )
 

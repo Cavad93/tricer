@@ -110,6 +110,53 @@ class NutritionCalculator:
 
         return int(target)
 
+    @classmethod
+    async def calculate_target_calories_with_activity_bonus(
+        cls,
+        user_id: int,
+        gender: Gender,
+        weight: float,
+        height: int,
+        age: int,
+        activity_level: ActivityLevel,
+        goal: Goal,
+        session
+    ) -> tuple[int, int]:
+        """
+        Расчет целевых калорий с учетом бонусов от шагов вчерашнего дня
+
+        Args:
+            user_id: ID пользователя
+            gender: Пол
+            weight: Вес в кг
+            height: Рост в см
+            age: Возраст в годах
+            activity_level: Уровень активности
+            goal: Цель пользователя
+            session: Сессия БД
+
+        Returns:
+            Кортеж (целевые_калории, бонусные_калории)
+        """
+        from datetime import date, timedelta
+        from app.services.steps_tracking_service import StepsTrackingService
+
+        # Базовые целевые калории
+        base_calories = cls.calculate_target_calories(
+            gender, weight, height, age, activity_level, goal
+        )
+
+        # Получаем бонусные калории от вчерашних шагов
+        yesterday = date.today() - timedelta(days=1)
+        bonus_calories = await StepsTrackingService.calculate_bonus_calories(
+            user_id, session, yesterday
+        )
+
+        # Итоговые калории = базовые + бонус
+        total_calories = base_calories + bonus_calories
+
+        return int(total_calories), int(bonus_calories)
+
     @staticmethod
     def calculate_macros(
         target_calories: int, goal: Goal, weight: float

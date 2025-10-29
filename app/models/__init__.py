@@ -9,6 +9,8 @@ from app.models.chat import ChatMessage
 from app.models.medical_analysis import MedicalAnalysis
 from app.models.wellness_log import WellnessLog
 from app.models.weight_history import WeightHistory
+from app.models.user_steps import UserSteps
+from app.models.temporary_meal_plan import TemporaryMealPlan
 
 __all__ = [
     "User",
@@ -33,4 +35,6 @@ __all__ = [
     "MedicalAnalysis",
     "WellnessLog",
     "WeightHistory",
+    "UserSteps",
+    "TemporaryMealPlan",
 ]
