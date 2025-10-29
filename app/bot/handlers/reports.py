@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from loguru import logger
 
-from app.db.session import get_db
+from app.db.session import async_session_maker
 from app.models.user import User
 from app.services.nutrition_report_service import NutritionReportService
 from app.services.pdf_report_generator import PDFReportGenerator
@@ -70,7 +70,7 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         telegram_id = query.from_user.id
 
-        async with get_db() as db:
+        async with async_session_maker() as db:
             # Получаем пользователя
             result = await db.execute(
                 select(User).where(User.telegram_id == telegram_id)
