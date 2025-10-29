@@ -9,6 +9,8 @@ from app.db.session import async_session_maker
 from app.services.chat_service import ChatService
 from app.services.usage_service import UsageService
 from app.services.claude_ai import claude_service
+from app.services.meal_recommendation_service import MealRecommendationService
+from app.services.temporary_meal_plan_service import TemporaryMealPlanService
 from app.models.chat import MessageRole
 from app.models.user import User
 from sqlalchemy import select
@@ -67,14 +69,51 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             # Получаем историю разговора (последние 10 сообщений)
             conversation_history = await ChatService.get_chat_context(session, db_user.id, message_limit=10)
 
-            # Отправляем запрос к Claude API
-            logger.info(f"Sending chat request to Claude for user {user.id}")
-
-            assistant_response = await claude_service.chat(
+            # ПРОВЕРКА: Спрашивает ли пользователь о еде?
+            logger.info(f"Detecting food inquiry intent for user {user.id}")
+            intent_result = await claude_service.detect_food_inquiry_intent(
                 user_message=message_text,
-                conversation_history=conversation_history,
-                user_context=user_context
+                conversation_history=conversation_history
             )
+
+            # Если это вопрос о еде - обрабатываем специальным образом
+            if intent_result.get("is_food_inquiry", False) and intent_result.get("confidence") in ["high", "medium"]:
+                logger.info(f"Food inquiry detected for user {user.id}, confidence: {intent_result.get('confidence')}")
+
+                # Проверяем есть ли уже временный план на сегодня
+                temp_plan = await TemporaryMealPlanService.get_today_plan(db_user.id, session)
+
+                # Если есть временный план - предлагаем использовать его
+                if temp_plan:
+                    plan_data = temp_plan.get_meal_plan_data()
+                    saved_recommendations = plan_data.get("recommendations", "")
+
+                    if saved_recommendations:
+                        assistant_response = (
+                            "📋 <b>У тебя уже есть рекомендации на сегодня:</b>\n\n"
+                            f"{saved_recommendations}\n\n"
+                            "💡 Хочешь новые рекомендации? Просто напиши еще раз!"
+                        )
+                    else:
+                        # Генерируем новые рекомендации
+                        assistant_response = await generate_meal_recommendations(
+                            db_user, message_text, conversation_history, session
+                        )
+                else:
+                    # Генерируем новые рекомендации
+                    assistant_response = await generate_meal_recommendations(
+                        db_user, message_text, conversation_history, session
+                    )
+
+            else:
+                # Обычный чат через Claude API
+                logger.info(f"Sending regular chat request to Claude for user {user.id}")
+
+                assistant_response = await claude_service.chat(
+                    user_message=message_text,
+                    conversation_history=conversation_history,
+                    user_context=user_context
+                )
 
             # Сохраняем сообщение пользователя
             await ChatService.save_message(
@@ -108,9 +147,13 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     remaining_info += "\n⚠️ _Лимит почти исчерпан!_"
                 response_text += remaining_info
 
+            # Определяем parse_mode на основе контента
+            # Если это рекомендации по еде - используем HTML
+            parse_mode = "HTML" if intent_result.get("is_food_inquiry", False) else "Markdown"
+
             await update.message.reply_text(
                 response_text,
-                parse_mode="Markdown",
+                parse_mode=parse_mode,
                 reply_markup=back_to_menu_keyboard()
             )
 
@@ -128,6 +171,79 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 "Если проблема повторяется, обратитесь в поддержку.",
                 reply_markup=back_to_menu_keyboard()
             )
+
+
+async def generate_meal_recommendations(
+    db_user: User,
+    message_text: str,
+    conversation_history,
+    session
+) -> str:
+    """
+    Генерация рекомендаций по питанию для пользователя
+
+    Args:
+        db_user: Объект пользователя
+        message_text: Сообщение пользователя
+        conversation_history: История разговора
+        session: Сессия БД
+
+    Returns:
+        Текст с рекомендациями
+    """
+    try:
+        # Собираем контекст для рекомендаций
+        recommendation_context = await MealRecommendationService.generate_meal_recommendation_context(
+            db_user, session
+        )
+
+        # Если у пользователя уже есть постоянный план - напоминаем об этом
+        if recommendation_context["has_plan"] and recommendation_context["plan_type"] == "permanent":
+            return (
+                "📋 <b>Обрати внимание!</b>\n\n"
+                "У тебя уже есть <b>план питания</b> на сегодня. "
+                "Рекомендую посмотреть его через главное меню → \"План питания\".\n\n"
+                "Если всё же хочешь получить разовую рекомендацию, напиши мне еще раз!"
+            )
+
+        # Генерируем рекомендации через Claude AI
+        logger.info(f"Generating meal recommendations for user {db_user.id}")
+        recommendations = await claude_service.generate_meal_recommendation(
+            user_message=message_text,
+            recommendation_context=recommendation_context,
+            conversation_history=conversation_history
+        )
+
+        # Сохраняем рекомендации во временный план
+        try:
+            remaining = recommendation_context["remaining"]
+            await TemporaryMealPlanService.create_or_update_plan(
+                user_id=db_user.id,
+                meal_plan_data={
+                    "recommendations": recommendations,
+                    "meal_type": recommendation_context["meal_type"],
+                    "generated_at": recommendation_context["current_time"],
+                    "context": {
+                        "remaining_calories": remaining["remaining_calories"],
+                        "bonus_calories": remaining["bonus_calories"]
+                    }
+                },
+                total_calories=remaining["target_calories"],
+                session=session
+            )
+            logger.info(f"Saved temporary meal plan for user {db_user.id}")
+        except Exception as e:
+            logger.error(f"Error saving temporary meal plan for user {db_user.id}: {e}")
+            # Не прерываем процесс, если не удалось сохранить
+
+        return recommendations
+
+    except Exception as e:
+        logger.error(f"Error generating meal recommendations for user {db_user.id}: {e}", exc_info=True)
+        return (
+            "❌ Произошла ошибка при генерации рекомендаций.\n\n"
+            "Попробуй спросить по-другому или создай полноценный план питания через меню!"
+        )
 
 
 async def clear_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

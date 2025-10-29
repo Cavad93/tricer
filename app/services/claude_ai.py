@@ -564,6 +564,189 @@ class ClaudeAIService:
             logger.error(f"Error in medical analysis OCR: {e}", exc_info=True)
             raise
 
+    async def detect_food_inquiry_intent(
+        self,
+        user_message: str,
+        conversation_history: List[Dict] = None
+    ) -> Dict:
+        """
+        Определить намерение пользователя узнать что поесть
+
+        Args:
+            user_message: Сообщение пользователя
+            conversation_history: История разговора
+
+        Returns:
+            Словарь с результатом определения намерения
+        """
+        try:
+            prompt = f"""Определи, спрашивает ли пользователь рекомендацию о том, что поесть/съесть.
+
+Сообщение пользователя: "{user_message}"
+
+Примеры вопросов о еде:
+- "Что мне поесть?"
+- "Что приготовить на ужин?"
+- "Подскажи что съесть"
+- "Какой завтрак посоветуешь?"
+- "Чем перекусить?"
+- "Что бы такого съесть?"
+
+Верни JSON:
+{{
+    "is_food_inquiry": true/false,
+    "confidence": "high/medium/low",
+    "meal_type_mentioned": "завтрак/обед/ужин/перекус" или null
+}}
+
+Важно: Если пользователь просто обсуждает еду, но не просит рекомендацию - это НЕ food_inquiry."""
+
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=500,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+
+            response_text = response.content[0].text
+            result = self.extract_json_from_response(response_text)
+
+            if not result:
+                return {
+                    "is_food_inquiry": False,
+                    "confidence": "low",
+                    "meal_type_mentioned": None
+                }
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error detecting food inquiry intent: {e}")
+            return {
+                "is_food_inquiry": False,
+                "confidence": "low",
+                "meal_type_mentioned": None
+            }
+
+    async def generate_meal_recommendation(
+        self,
+        user_message: str,
+        recommendation_context: Dict,
+        conversation_history: List[Dict] = None
+    ) -> str:
+        """
+        Генерация рекомендаций по питанию на основе контекста
+
+        Args:
+            user_message: Сообщение пользователя
+            recommendation_context: Контекст для рекомендаций
+            conversation_history: История разговора
+
+        Returns:
+            Текст с рекомендациями
+        """
+        try:
+            # Формируем контекст для промпта
+            daily_status = recommendation_context["daily_status"]
+            remaining = recommendation_context["remaining"]
+            meal_type = recommendation_context["meal_type"]
+            current_time = recommendation_context["current_time"]
+            user_prefs = recommendation_context["user_preferences"]
+            medical = recommendation_context["medical_restrictions"]
+
+            # Формируем информацию о плане
+            has_plan = recommendation_context["has_plan"]
+            plan_type = recommendation_context.get("plan_type")
+
+            plan_info = ""
+            if has_plan and plan_type == "permanent":
+                plan_info = "\n⚠️ У пользователя УЖЕ ЕСТЬ план питания на сегодня. Напомни ему об этом и предложи посмотреть план через меню."
+            elif has_plan and plan_type == "temporary":
+                plan_info = "\n📋 У пользователя есть временные рекомендации на сегодня. Ты можешь их обновить или дать новые."
+
+            # Формируем медицинские ограничения
+            medical_info = ""
+            if medical:
+                medical_info = f"\n\n🏥 Медицинские ограничения:\n"
+                for restriction_type, items in medical.items():
+                    if items:
+                        medical_info += f"- {restriction_type}: {', '.join(items)}\n"
+
+            prompt = f"""Ты AI-нутрициолог помогающий с питанием. Пользователь спрашивает: "{user_message}"
+
+📊 ТЕКУЩАЯ СИТУАЦИЯ:
+⏰ Время: {current_time} (рекомендуемый прием пищи: {meal_type})
+📈 Съедено сегодня: {daily_status['total_calories']} ккал ({remaining['calories_percent']}% от цели)
+   - Белки: {daily_status['total_proteins']}г
+   - Жиры: {daily_status['total_fats']}г
+   - Углеводы: {daily_status['total_carbs']}г
+
+💡 ОСТАЛОСЬ ДО ЦЕЛИ:
+   - Калории: {remaining['remaining_calories']} ккал
+   - Белки: {remaining['remaining_proteins']}г
+   - Жиры: {remaining['remaining_fats']}г
+   - Углеводы: {remaining['remaining_carbs']}г
+
+{f"🎁 Бонус от активности: +{remaining['bonus_calories']} ккал" if remaining['bonus_calories'] > 0 else ""}
+
+👤 ПРЕДПОЧТЕНИЯ ПОЛЬЗОВАТЕЛЯ:
+- Тип питания: {user_prefs['diet_type']}
+- Бюджет: {user_prefs['budget']}
+- Время на готовку: {user_prefs['cooking_time']} минут (если указано)
+{f"- Аллергии: {', '.join(user_prefs['allergies'])}" if user_prefs['allergies'] else ""}
+{f"- Не любит: {', '.join(user_prefs['dislikes'])}" if user_prefs['dislikes'] else ""}
+{medical_info}
+{plan_info}
+
+ТВОЯ ЗАДАЧА:
+1. Предложи 2-3 конкретных варианта блюд на текущий прием пищи ({meal_type})
+2. Для каждого блюда укажи примерные КБЖУ
+3. Учти оставшиеся калории и макронутриенты
+4. Учти предпочтения, аллергии и медицинские ограничения
+5. Дай краткие рекомендации (1-2 предложения)
+
+ФОРМАТ ОТВЕТА:
+🍽️ **Рекомендации на {meal_type}:**
+
+**Вариант 1: [Название блюда]**
+📊 ~XXX ккал | Б: XXг | Ж: XXг | У: XXг
+💭 [Краткое описание почему это подходит]
+
+**Вариант 2: [Название блюда]**
+...
+
+💡 **Совет:** [Общая рекомендация на 1-2 предложения]
+
+Будь дружелюбным и конкретным. Не перегружай текстом."""
+
+            # Добавляем историю разговора если есть
+            messages = []
+            if conversation_history:
+                messages.extend(conversation_history[-6:])  # Последние 3 обмена
+
+            messages.append({
+                "role": "user",
+                "content": prompt
+            })
+
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                messages=messages
+            )
+
+            recommendation_text = response.content[0].text
+
+            logger.info(f"Generated meal recommendation, length: {len(recommendation_text)}")
+
+            return recommendation_text
+
+        except Exception as e:
+            logger.error(f"Error generating meal recommendation: {e}", exc_info=True)
+            raise
+
     @staticmethod
     def extract_json_from_response(response: str) -> Optional[Dict]:
         """
