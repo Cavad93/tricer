@@ -287,11 +287,38 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def check_expired_plans_job(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Периодическая задача для проверки и деактивации истёкших планов питания
+    Запускается каждые 24 часа
+    """
+    from app.db.session import async_session_maker
+    from app.services.meal_plan_service import MealPlanService
+
+    try:
+        async with async_session_maker() as session:
+            count = await MealPlanService.deactivate_expired_plans(session)
+            if count > 0:
+                logger.info(f"Auto-deactivated {count} expired meal plans")
+    except Exception as e:
+        logger.error(f"Error in check_expired_plans_job: {e}", exc_info=True)
+
+
 async def post_init(application: Application) -> None:
-    """Инициализация базы данных после создания приложения"""
+    """Инициализация базы данных и планировщика после создания приложения"""
     from app.db.session import init_db
     await init_db()
     logger.info("Database initialized")
+
+    # Добавляем периодическую задачу для проверки истёкших планов
+    # Запускается каждые 24 часа (86400 секунд)
+    job_queue = application.job_queue
+    if job_queue:
+        # Запускаем первую проверку через 60 секунд после старта
+        job_queue.run_once(check_expired_plans_job, when=60)
+        # Затем запускаем каждые 24 часа
+        job_queue.run_repeating(check_expired_plans_job, interval=86400, first=120)
+        logger.info("Scheduled job for checking expired meal plans (every 24 hours)")
 
 
 def main():

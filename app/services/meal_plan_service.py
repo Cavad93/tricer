@@ -391,6 +391,37 @@ class MealPlanService:
         logger.info(f"Deactivated {len(old_plans)} old meal plans for user {user_id}")
 
     @staticmethod
+    async def deactivate_expired_plans(session: AsyncSession) -> int:
+        """
+        Деактивировать истёкшие планы питания
+
+        Returns:
+            int: Количество деактивированных планов
+        """
+        from datetime import date
+
+        today = date.today()
+
+        # Находим активные планы, которые истекли
+        result = await session.execute(
+            select(MealPlan).where(and_(
+                MealPlan.is_active == 1,
+                MealPlan.end_date < today
+            ))
+        )
+        expired_plans = result.scalars().all()
+
+        # Деактивируем их
+        for plan in expired_plans:
+            plan.is_active = 0
+
+        if expired_plans:
+            await session.commit()
+            logger.info(f"Deactivated {len(expired_plans)} expired meal plans")
+
+        return len(expired_plans)
+
+    @staticmethod
     async def copy_day_from_weekly_plan(
         session: AsyncSession,
         user_id: int,
