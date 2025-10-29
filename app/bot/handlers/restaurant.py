@@ -10,6 +10,7 @@ import json
 import re
 import asyncio
 from datetime import datetime, date
+from difflib import SequenceMatcher
 
 from app.services.claude_ai import claude_service
 from app.services.meal_service import MealService
@@ -124,6 +125,77 @@ def safe_parse_json(text: str, context_name: str = "response") -> dict:
         text,
         0
     )
+
+
+def validate_recommendations_against_menu(recommendations: list, menu_dishes: list, similarity_threshold: float = 0.85) -> dict:
+    """
+    Валидирует рекомендации AI против реального меню ресторана.
+
+    Args:
+        recommendations: Список рекомендованных блюд от AI
+        menu_dishes: Список блюд извлеченных из меню
+        similarity_threshold: Порог схожести для нечеткого сравнения (0.0-1.0)
+
+    Returns:
+        dict с ключами:
+            - is_valid: bool - все ли рекомендации валидны
+            - invalid_dishes: list - список названий невалидных блюд
+            - details: list - детальная информация о каждой проверке
+    """
+    menu_dish_names = [dish["name"].lower().strip() for dish in menu_dishes]
+
+    invalid_dishes = []
+    validation_details = []
+
+    for rec in recommendations:
+        rec_name = rec.get("name", "").lower().strip()
+
+        # Проверяем точное совпадение
+        exact_match = rec_name in menu_dish_names
+
+        if exact_match:
+            validation_details.append({
+                "recommended": rec.get("name"),
+                "status": "valid",
+                "match_type": "exact",
+                "confidence": 1.0
+            })
+            continue
+
+        # Проверяем нечеткое совпадение (для учета опечаток и вариаций)
+        best_match = None
+        best_similarity = 0.0
+
+        for menu_dish_name in menu_dish_names:
+            similarity = SequenceMatcher(None, rec_name, menu_dish_name).ratio()
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_match = menu_dish_name
+
+        if best_similarity >= similarity_threshold:
+            validation_details.append({
+                "recommended": rec.get("name"),
+                "status": "valid",
+                "match_type": "fuzzy",
+                "matched_with": best_match,
+                "confidence": best_similarity
+            })
+        else:
+            invalid_dishes.append(rec.get("name"))
+            validation_details.append({
+                "recommended": rec.get("name"),
+                "status": "invalid",
+                "best_match": best_match if best_match else None,
+                "best_similarity": best_similarity
+            })
+
+    is_valid = len(invalid_dishes) == 0
+
+    return {
+        "is_valid": is_valid,
+        "invalid_dishes": invalid_dishes,
+        "details": validation_details
+    }
 
 
 async def send_with_retry(coro, max_retries=4, initial_delay=2.0):
@@ -419,8 +491,24 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 
             logger.info(f"Web search completed for {len(web_search_results)} dishes")
 
-            # ЭТАП 3: Теперь запрашиваем рекомендации с учетом реальных данных
-            prompt = f"""На основе меню ресторана порекомендуй 2-3 блюда для пользователя.
+            # ЭТАП 3: Запрашиваем рекомендации с валидацией и повторными попытками
+            max_validation_attempts = 3
+            recommendations_json = None
+            validation_result = None
+
+            for attempt in range(max_validation_attempts):
+                # Формируем промпт с учетом предыдущих ошибок
+                correction_note = ""
+                if attempt > 0 and validation_result:
+                    correction_note = f"""
+⚠️ ВНИМАНИЕ! В предыдущем ответе ты рекомендовал блюда, которых НЕТ в меню:
+{', '.join(validation_result['invalid_dishes'])}
+
+ЭТО КРИТИЧЕСКАЯ ОШИБКА! Перечитай список блюд в меню и выбери ТОЛЬКО из него!
+"""
+
+                prompt = f"""{correction_note}
+На основе меню ресторана порекомендуй 2-3 блюда для пользователя.
 
 ВАЖНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:
 - Тип приема пищи: {meal_type_text}
@@ -502,23 +590,61 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 - Учитывай настроение пользователя
 """
 
-            # Отправляем запрос к Claude на финальные рекомендации
-            response = await client.messages.create(
-                model=settings.CLAUDE_MODEL,
-                max_tokens=2000,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            )
+                # Отправляем запрос к Claude на финальные рекомендации
+                response = await client.messages.create(
+                    model=settings.CLAUDE_MODEL,
+                    max_tokens=2000,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ]
+                )
 
-            recommendations_text = response.content[0].text
+                recommendations_text = response.content[0].text
 
-            # Парсим JSON ответ с помощью надёжного парсера
-            logger.info(f"Parsing recommendations response (length: {len(recommendations_text)})")
-            recommendations_json = safe_parse_json(recommendations_text, context_name="recommendations")
+                # Парсим JSON ответ с помощью надёжного парсера
+                logger.info(f"Parsing recommendations response, attempt {attempt + 1} (length: {len(recommendations_text)})")
+                recommendations_json = safe_parse_json(recommendations_text, context_name="recommendations")
+
+                # ВАЛИДАЦИЯ: проверяем что все рекомендованные блюда есть в меню
+                validation_result = validate_recommendations_against_menu(
+                    recommendations=recommendations_json.get("recommendations", []),
+                    menu_dishes=dishes_data.get("dishes", []),
+                    similarity_threshold=0.85
+                )
+
+                logger.info(
+                    f"Validation attempt {attempt + 1}: "
+                    f"valid={validation_result['is_valid']}, "
+                    f"invalid_dishes={validation_result['invalid_dishes']}"
+                )
+
+                # Если валидация успешна - выходим из цикла
+                if validation_result['is_valid']:
+                    logger.info(f"✅ All recommendations validated successfully on attempt {attempt + 1}")
+                    break
+                else:
+                    logger.warning(
+                        f"❌ Validation failed on attempt {attempt + 1}. "
+                        f"Invalid dishes: {validation_result['invalid_dishes']}"
+                    )
+
+                    # Если это последняя попытка - логируем детали
+                    if attempt == max_validation_attempts - 1:
+                        logger.error(
+                            f"All {max_validation_attempts} validation attempts failed. "
+                            f"Details: {json.dumps(validation_result['details'], ensure_ascii=False, indent=2)}"
+                        )
+
+            # Если после всех попыток валидация не прошла, используем последний результат
+            # но логируем предупреждение
+            if not validation_result['is_valid']:
+                logger.error(
+                    f"⚠️ Proceeding with invalid recommendations after {max_validation_attempts} attempts. "
+                    f"User {user.id} may receive dishes not in menu!"
+                )
 
             # Формируем текст для пользователя
             final_text = f"🍽 <b>Рекомендации для {meal_type_text}:</b>\n\n"
