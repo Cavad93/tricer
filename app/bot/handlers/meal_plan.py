@@ -986,6 +986,13 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
     """Генерация плана с учетом предпочтений"""
     period = context.user_data.get("meal_plan_period")
 
+    # Формируем текстовое представление периода для сообщений
+    period_text = {
+        PlanPeriod.DAY: "1 день",
+        PlanPeriod.WEEK: "неделю (7 дней)",
+        PlanPeriod.MONTH: "месяц (30 дней)"
+    }[period]
+
     try:
         # Генерируем план через AI
         async with async_session_maker() as session:
