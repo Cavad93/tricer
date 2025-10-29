@@ -76,9 +76,14 @@ class PDFGeneratorService:
                 # Linux
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                # MacOS
+                # MacOS - User Library (Homebrew Cask installs here)
+                os.path.expanduser("~/Library/Fonts/DejaVuSans.ttf"),
+                # MacOS - System fonts
                 "/Library/Fonts/DejaVuSans.ttf",
                 "/System/Library/Fonts/Supplemental/DejaVuSans.ttf",
+                # MacOS - Homebrew Cellar (alternative location)
+                "/usr/local/share/fonts/dejavu/DejaVuSans.ttf",
+                "/opt/homebrew/share/fonts/dejavu/DejaVuSans.ttf",
                 # Относительный путь (если шрифт скопирован в проект)
                 "fonts/DejaVuSans.ttf",
             ]
@@ -87,9 +92,14 @@ class PDFGeneratorService:
                 # Linux
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-                # MacOS
+                # MacOS - User Library (Homebrew Cask installs here)
+                os.path.expanduser("~/Library/Fonts/DejaVuSans-Bold.ttf"),
+                # MacOS - System fonts
                 "/Library/Fonts/DejaVuSans-Bold.ttf",
                 "/System/Library/Fonts/Supplemental/DejaVuSans-Bold.ttf",
+                # MacOS - Homebrew Cellar (alternative location)
+                "/usr/local/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+                "/opt/homebrew/share/fonts/dejavu/DejaVuSans-Bold.ttf",
                 # Относительный путь
                 "fonts/DejaVuSans-Bold.ttf",
             ]
