@@ -21,11 +21,6 @@ async def reports_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало запроса отчета"""
     try:
         query = update.callback_query
-        if query:
-            await query.answer()
-            message = query.message
-        else:
-            message = update.message
 
         # Клавиатура выбора периода
         keyboard = [
@@ -48,12 +43,23 @@ async def reports_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<i>Примечание: данные о микронутриентах являются приблизительной оценкой</i>"
         )
 
-        await message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        if query:
+            # ИСПРАВЛЕНО: если вызвано из callback (кнопка из меню)
+            # используем edit_message_text для редактирования
+            await query.answer()
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode="HTML")
+        else:
+            # Если вызвано через команду
+            await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="HTML")
+
         return SELECTING_PERIOD
 
     except Exception as e:
         logger.error(f"Error in reports_start: {e}")
-        await message.reply_text("Произошла ошибка. Попробуйте позже.")
+        if query:
+            await query.message.reply_text("Произошла ошибка. Попробуйте позже.")
+        else:
+            await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
         return ConversationHandler.END
 
 
@@ -289,17 +295,22 @@ async def cancel_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         if query:
             await query.answer()
-            message = query.message
+
+            # ИСПРАВЛЕНО: используем edit_message_text вместо reply_text
+            # чтобы заменить текущее сообщение, а не создавать новое
+            from app.bot.keyboards import main_menu_keyboard
+
+            await query.edit_message_text(
+                "Главное меню:",
+                reply_markup=main_menu_keyboard()
+            )
         else:
-            message = update.message
-
-        from app.bot.keyboards import get_main_menu_keyboard
-        keyboard = get_main_menu_keyboard()
-
-        await message.reply_text(
-            "Запрос отчета отменен.",
-            reply_markup=keyboard
-        )
+            # Если вызвано через команду (не callback)
+            from app.bot.keyboards import main_menu_keyboard
+            await update.message.reply_text(
+                "Главное меню:",
+                reply_markup=main_menu_keyboard()
+            )
 
         return ConversationHandler.END
 
