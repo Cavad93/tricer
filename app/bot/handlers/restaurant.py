@@ -181,88 +181,31 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             target = progress["target"]
             remaining = progress["remaining"]
 
-            prompt = f"""Проанализируй меню ресторана на фото и порекомендуй 2-3 блюда для пользователя.
-
-ВАЖНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:
-- Тип приема пищи: {meal_type_text}
-- Настроение/желание: {mood}
-- Целевые калории на день: {target['calories']} ккал
-- Уже потреблено сегодня: {current['calories']} ккал
-- Осталось на сегодня: {remaining['calories']} ккал
-- Осталось белков: {remaining['proteins']:.0f}г
-- Осталось жиров: {remaining['fats']:.0f}г
-- Осталось углеводов: {remaining['carbs']:.0f}г
-- Тип диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}
-- Аллергии: {', '.join(db_user.allergies) if db_user.allergies else 'нет'}
+            # ЭТАП 1: Сначала извлекаем список всех блюд из меню
+            extraction_prompt = """Проанализируй фото меню ресторана и извлеки СПИСОК ВСЕХ блюд.
 
 ЗАДАЧА:
-1. Изучи меню на фото и извлеки названия блюд
-2. Выбери 2-3 блюда, которые:
-   - Соответствуют настроению/желанию пользователя ({mood})
-   - Подходят для {meal_type_text}
-   - Впишутся в оставшийся дневной лимит калорий
-   - Помогут достичь баланса БЖУ
-   - Соответствуют типу диеты и не содержат аллергены
-3. Для каждого блюда укажи:
-   - Название блюда (как в меню)
-   - Примерные КБЖУ
-   - Почему это подходит (с учетом настроения и рациона)
+Просто перечисли все блюда которые видишь в меню с их кратким описанием (если есть).
 
 ФОРМАТ ОТВЕТА - строго JSON:
-{{
-  "recommendations": [
-    {{
-      "number": 1,
-      "name": "Название блюда",
-      "calories": 450,
-      "proteins": 30,
-      "fats": 15,
-      "carbs": 45,
-      "explanation": "Короткое объяснение почему подходит"
-    }},
-    {{
-      "number": 2,
-      "name": "Название блюда",
-      "calories": 350,
-      "proteins": 25,
-      "fats": 12,
-      "carbs": 35,
-      "explanation": "Короткое объяснение"
-    }},
-    {{
-      "number": 3,
-      "name": "Название блюда (опционально)",
-      "calories": 400,
-      "proteins": 28,
-      "fats": 14,
-      "carbs": 40,
-      "explanation": "Короткое объяснение"
-    }}
-  ],
-  "general_advice": "Общий совет с учетом текущего прогресса"
-}}
+{
+  "dishes": [
+    {"name": "Название блюда 1", "description": "краткое описание из меню если есть"},
+    {"name": "Название блюда 2", "description": "краткое описание"},
+    {"name": "Название блюда 3", "description": "краткое описание"}
+  ]
+}
 
 ВАЖНО:
-- Верни только валидный JSON, без markdown форматирования
-- Минимум 2 рекомендации, максимум 3
-- Используй дружелюбный тон в объяснениях
-- Учитывай настроение пользователя
-- Будь честным: если в меню нет хороших вариантов, скажи об этом в general_advice
-- Не ставь диагнозы, используй фразы "может помочь", "поможет сбалансировать"
-"""
+- Извлеки ВСЕ блюда из меню
+- Используй точные названия как в меню
+- Если нет описания - поставь пустую строку
+- Верни только валидный JSON"""
 
-            # Отправляем запрос к Claude
-            from anthropic import AsyncAnthropic
-            from app.config import settings
-
-            client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-
-            import base64
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-
-            response = await client.messages.create(
+            # Запрос на извлечение блюд
+            extraction_response = await client.messages.create(
                 model=settings.CLAUDE_MODEL,
-                max_tokens=2000,
+                max_tokens=1500,
                 messages=[
                     {
                         "role": "user",
@@ -277,9 +220,128 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
                             },
                             {
                                 "type": "text",
-                                "text": prompt
+                                "text": extraction_prompt
                             }
                         ]
+                    }
+                ]
+            )
+
+            extraction_text = extraction_response.content[0].text
+
+            # Парсим список блюд
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', extraction_text)
+            if json_match:
+                dishes_data = json.loads(json_match.group())
+            else:
+                dishes_data = json.loads(extraction_text)
+
+            dish_names = [d["name"] for d in dishes_data.get("dishes", [])]
+
+            logger.info(f"Extracted {len(dish_names)} dishes from menu")
+
+            # ЭТАП 2: Ищем реальные данные о пищевой ценности в интернете
+            from app.services.web_search_service import WebSearchService
+
+            await processing_msg.edit_text(
+                "🔍 Ищу данные о пищевой ценности блюд в интернете...\n\n"
+                "Это займет несколько секунд."
+            )
+
+            web_search_results = await WebSearchService.search_multiple_dishes(dish_names[:10])  # Ограничиваем первыми 10 блюдами
+            web_data_text = WebSearchService.format_search_results_for_prompt(web_search_results)
+
+            logger.info(f"Web search completed for {len(web_search_results)} dishes")
+
+            # ЭТАП 3: Теперь запрашиваем рекомендации с учетом реальных данных
+            prompt = f"""На основе меню ресторана порекомендуй 2-3 блюда для пользователя.
+
+ВАЖНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:
+- Тип приема пищи: {meal_type_text}
+- Настроение/желание: {mood}
+- Целевые калории на день: {target['calories']} ккал
+- Уже потреблено сегодня: {current['calories']} ккал
+- Осталось на сегодня: {remaining['calories']} ккал
+- Осталось белков: {remaining['proteins']:.0f}г
+- Осталось жиров: {remaining['fats']:.0f}г
+- Осталось углеводов: {remaining['carbs']:.0f}г
+- Тип диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}
+- Аллергии: {', '.join(db_user.allergies) if db_user.allergies else 'нет'}
+
+БЛЮДА В МЕНЮ:
+{json.dumps(dishes_data, ensure_ascii=False, indent=2)}
+
+{web_data_text}
+
+ЗАДАЧА:
+1. Выбери 2-3 блюда из списка выше, которые:
+   - Соответствуют настроению/желанию пользователя ({mood})
+   - Подходят для {meal_type_text}
+   - Впишутся в оставшийся дневной лимит калорий
+   - Помогут достичь баланса БЖУ
+   - Соответствуют типу диеты и не содержат аллергены
+
+2. Для каждого блюда укажи:
+   - Название блюда (как в меню)
+   - КБЖУ (ИСПОЛЬЗУЙ РЕАЛЬНЫЕ ДАННЫЕ из интернета выше! Если данных нет - дай приблизительную оценку с пометкой)
+   - Почему это подходит (с учетом настроения и рациона)
+
+ФОРМАТ ОТВЕТА - строго JSON:
+{{
+  "recommendations": [
+    {{
+      "number": 1,
+      "name": "Название блюда",
+      "calories": 450,
+      "proteins": 30,
+      "fats": 15,
+      "carbs": 45,
+      "data_source": "web_search" или "estimate",
+      "explanation": "Короткое объяснение почему подходит"
+    }},
+    {{
+      "number": 2,
+      "name": "Название блюда",
+      "calories": 350,
+      "proteins": 25,
+      "fats": 12,
+      "carbs": 35,
+      "data_source": "web_search" или "estimate",
+      "explanation": "Короткое объяснение"
+    }},
+    {{
+      "number": 3,
+      "name": "Название блюда (опционально)",
+      "calories": 400,
+      "proteins": 28,
+      "fats": 14,
+      "carbs": 40,
+      "data_source": "web_search" или "estimate",
+      "explanation": "Короткое объяснение"
+    }}
+  ],
+  "general_advice": "Общий совет с учетом текущего прогресса"
+}}
+
+КРИТИЧЕСКИ ВАЖНО:
+- ИСПОЛЬЗУЙ РЕАЛЬНЫЕ ДАННЫЕ из веб-поиска выше! Не придумывай цифры!
+- Если для блюда найдены данные - обязательно используй их
+- Если данных нет - укажи data_source: "estimate" и дай приблизительную оценку
+- Верни только валидный JSON, без markdown форматирования
+- Минимум 2 рекомендации, максимум 3
+- Используй дружелюбный тон в объяснениях
+- Учитывай настроение пользователя
+"""
+
+            # Отправляем запрос к Claude на финальные рекомендации
+            response = await client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=2000,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
                     }
                 ]
             )
@@ -301,15 +363,25 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             final_text = f"🍽 <b>Рекомендации для {meal_type_text}:</b>\n\n"
 
             for rec in recommendations_json.get("recommendations", []):
+                # Добавляем индикатор источника данных
+                data_source_indicator = ""
+                if rec.get('data_source') == 'web_search':
+                    data_source_indicator = " ✅"  # Галочка = данные из интернета
+                elif rec.get('data_source') == 'estimate':
+                    data_source_indicator = " ⚠️"  # Предупреждение = оценка
+
                 final_text += (
-                    f"<b>{rec['number']}. {rec['name']}</b>\n"
+                    f"<b>{rec['number']}. {rec['name']}</b>{data_source_indicator}\n"
                     f"~ {rec['calories']} ккал | Б: {rec['proteins']}г | "
                     f"Ж: {rec['fats']}г | У: {rec['carbs']}г\n\n"
                     f"💡 {rec['explanation']}\n\n"
                 )
 
             if recommendations_json.get("general_advice"):
-                final_text += f"---\n📊 {recommendations_json['general_advice']}"
+                final_text += f"---\n📊 {recommendations_json['general_advice']}\n\n"
+
+            # Добавляем легенду
+            final_text += "<i>✅ = данные из интернета | ⚠️ = приблизительная оценка</i>"
 
             await processing_msg.edit_text(
                 final_text,
