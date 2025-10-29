@@ -363,8 +363,6 @@ async def restaurant_followup_callback(context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Создаем кнопки для ответа
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
     keyboard = [
         [InlineKeyboardButton("✅ Да, воспользовался", callback_data="restaurant_used_yes")],
         [InlineKeyboardButton("❌ Нет, выбрал другое", callback_data="restaurant_used_no")]
@@ -417,8 +415,6 @@ async def handle_restaurant_used_response(update: Update, context: ContextTypes.
         return
 
     # Показываем варианты для выбора
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
     text = "Отлично! Что именно ты выбрал?\n\n"
 
     keyboard = []
