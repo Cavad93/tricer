@@ -422,6 +422,148 @@ class ClaudeAIService:
             logger.error(f"Ошибка в Claude text analysis: {e}")
             raise
 
+    async def extract_medical_analysis_from_image(
+        self,
+        image_bytes: bytes
+    ) -> str:
+        """
+        Извлечение текста медицинских анализов с изображения через Claude Vision API
+
+        Args:
+            image_bytes: Изображение в байтах
+
+        Returns:
+            Строка с извлеченными показателями анализов
+        """
+        try:
+            logger.info("Starting medical analysis OCR with Claude Vision API")
+
+            # Конвертация изображения в base64
+            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+            # Промпт для извлечения данных медицинских анализов
+            prompt = """Ты эксперт по распознаванию медицинских документов. Извлеки ВСЕ лабораторные показатели из изображения анализа.
+
+**ЗАДАЧА:**
+Извлеки из изображения все показатели анализа в структурированном виде.
+
+**ЧТО ИСКАТЬ:**
+
+🩸 **Общий анализ крови (ОАК):**
+- Гемоглобин (Hb, HGB)
+- Эритроциты (RBC)
+- Лейкоциты (WBC)
+- Тромбоциты (PLT)
+- Гематокрит (HCT)
+- MCV, MCH, MCHC (эритроцитарные индексы)
+- Цветовой показатель (ЦП)
+- СОЭ (ESR)
+
+🧪 **Биохимический анализ крови:**
+- Глюкоза (Glucose)
+- Холестерин (Cholesterol)
+- ЛПНП, ЛПВП (LDL, HDL)
+- Триглицериды (Triglycerides)
+- Общий белок (Total protein)
+- Альбумин (Albumin)
+- Мочевина (Urea)
+- Креатинин (Creatinine)
+- АЛТ, АСТ (ALT, AST)
+- Билирубин (Bilirubin)
+- Железо (Fe, Iron)
+- Ферритин (Ferritin)
+- Кальций (Ca, Calcium)
+- Магний (Mg, Magnesium)
+- Калий (K, Potassium)
+- Натрий (Na, Sodium)
+- Мочевая кислота (Uric acid)
+
+💧 **Общий анализ мочи (ОАМ):**
+- Цвет
+- Прозрачность
+- Плотность
+- pH
+- Белок (Protein)
+- Глюкоза (Glucose)
+- Кетоновые тела (Ketones)
+- Билирубин
+- Уробилиноген
+- Эритроциты
+- Лейкоциты
+- Эпителий
+- Бактерии
+
+🧬 **Гормоны и витамины (если есть):**
+- ТТГ, Т3, Т4 (щитовидная железа)
+- Витамин D
+- Витамин B12
+- Фолиевая кислота
+- И другие
+
+**ФОРМАТ ВЫВОДА:**
+
+Верни показатели в виде структурированного текста:
+
+Название показателя: значение единица_измерения
+
+Например:
+Гемоглобин: 130 г/л
+Эритроциты: 4.5 ×10¹²/л
+Глюкоза: 5.2 ммоль/л
+Холестерин общий: 5.8 ммоль/л
+
+**ВАЖНО:**
+- Извлекай ВСЕ показатели, которые видишь на изображении
+- Сохраняй точные значения и единицы измерения
+- Если показатель отмечен как выше/ниже нормы, укажи это
+- Если видишь референсные значения (нормы), укажи их
+- Игнорируй служебную информацию (имена, даты рождения, штрихкоды)
+
+**ЕСЛИ ИЗОБРАЖЕНИЕ НЕ МЕДИЦИНСКИЙ АНАЛИЗ:**
+Если это не медицинский анализ (например, фото еды, документ, текст), верни:
+"ОШИБКА: На изображении не обнаружен медицинский анализ"
+
+Начинай извлечение показателей:"""
+
+            # Запрос к Claude Vision API
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=4096,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_base64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ],
+                }]
+            )
+
+            # Извлекаем текст из ответа
+            extracted_text = response.content[0].text
+
+            logger.info(f"Medical analysis OCR completed, extracted {len(extracted_text)} characters")
+
+            # Проверяем, что это действительно медицинский анализ
+            if "ОШИБКА:" in extracted_text:
+                logger.warning("Image is not a medical analysis")
+                return extracted_text
+
+            return extracted_text
+
+        except Exception as e:
+            logger.error(f"Error in medical analysis OCR: {e}", exc_info=True)
+            raise
+
     @staticmethod
     def extract_json_from_response(response: str) -> Optional[Dict]:
         """

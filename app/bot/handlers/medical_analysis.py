@@ -169,31 +169,144 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
     try:
-        # TODO: В будущем можно добавить OCR для извлечения данных из изображений
-        # Пока будем просто сохранять file_id и просить пользователя ввести данные текстом
-
-        await status_message.edit_text(
-            "📄 <b>Файл получен!</b>\n\n"
-            "К сожалению, автоматическое распознавание текста с изображений пока не реализовано. 😔\n\n"
-            "Пожалуйста, введи показатели анализов текстом в следующем сообщении.\n"
-            "Например: \"<i>Гемоглобин 130, Железо 15, Витамин D 25</i>\"",
-            parse_mode=ParseMode.HTML
-        )
-
         # Сохраняем file_id для будущего использования
         context.user_data["analysis_file_id"] = file.file_id
         context.user_data["analysis_file_type"] = file_type
 
-        return MedicalAnalysisStates.WAITING_TEXT_INPUT
+        # Извлекаем текст с помощью OCR через Claude Vision API
+        await status_message.edit_text(
+            "📄 <b>Файл получен!</b>\n\n"
+            "🔬 Извлекаю данные из изображения с помощью AI...\n"
+            "Это может занять 10-15 секунд.",
+            parse_mode=ParseMode.HTML
+        )
+
+        # Скачиваем файл
+        telegram_file = await context.bot.get_file(file.file_id)
+        photo_bytes = await telegram_file.download_as_bytearray()
+
+        # Импортируем ClaudeAIService
+        from app.services.claude_ai import ClaudeAIService
+        claude_service = ClaudeAIService()
+
+        # Извлекаем текст через OCR
+        extracted_text = await claude_service.extract_medical_analysis_from_image(bytes(photo_bytes))
+
+        # Проверяем результат извлечения
+        if "ОШИБКА:" in extracted_text:
+            logger.warning(f"OCR failed for user {user.id}: {extracted_text}")
+            await status_message.edit_text(
+                "❌ <b>Не удалось распознать медицинский анализ</b>\n\n"
+                "На изображении не обнаружены данные медицинских анализов.\n\n"
+                "Пожалуйста, убедись что:\n"
+                "• Фото четкое и читаемое\n"
+                "• На фото виден бланк анализа с показателями\n"
+                "• Текст не размыт и не перевернут\n\n"
+                "Можешь попробовать снова или ввести показатели вручную текстом:\n"
+                "Например: \"<i>Гемоглобин 130, Железо 15, Витамин D 25</i>\"",
+                parse_mode=ParseMode.HTML
+            )
+            return MedicalAnalysisStates.WAITING_TEXT_INPUT
+
+        # Успешное извлечение - продолжаем анализ
+        logger.info(f"OCR successful for user {user.id}, extracted {len(extracted_text)} characters")
+
+        # Сообщение о начале AI-анализа
+        await status_message.edit_text(
+            "✅ <b>Данные успешно извлечены!</b>\n\n"
+            "🔬 Анализирую показатели с помощью AI...\n"
+            "Это займет 10-20 секунд.",
+            parse_mode=ParseMode.HTML
+        )
+
+        # Получаем пользователя из БД
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await status_message.edit_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Формируем сырые данные для сохранения
+            raw_data = {
+                "input_method": "ocr",
+                "extracted_text": extracted_text,
+                "file_id": file.file_id,
+                "file_type": file_type,
+                "timestamp": datetime.now().isoformat()
+            }
+
+            # Анализируем через AI
+            analysis_result = await MedicalAnalysisService.analyze_lab_results(
+                user=db_user,
+                raw_data=raw_data,
+                analysis_type="Общий анализ",
+                analysis_date=datetime.now()
+            )
+
+            if not analysis_result.get("success"):
+                await status_message.edit_text(
+                    "❌ Не удалось проанализировать данные.\n"
+                    f"Ошибка: {analysis_result.get('error', 'Неизвестная ошибка')}\n\n"
+                    "Попробуй ввести показатели вручную текстом.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return MedicalAnalysisStates.WAITING_TEXT_INPUT
+
+            # Сохраняем результаты в БД
+            saved_analysis = await MedicalAnalysisService.save_analysis(
+                db=session,
+                user_id=db_user.id,
+                raw_data=raw_data,
+                ai_analysis=analysis_result.get("ai_analysis"),
+                analysis_type="Общий анализ",
+                analysis_date=datetime.now(),
+                file_url=None
+            )
+
+            # Обновляем медицинские ограничения с учетом новых дефицитов
+            try:
+                await status_message.edit_text(
+                    "🔬 <b>Анализ завершен!</b>\n\n"
+                    "Обновляю рекомендации по питанию на основе выявленных дефицитов...",
+                    parse_mode=ParseMode.HTML
+                )
+
+                # Генерируем/обновляем медицинские ограничения
+                await MedicalAnalysisService.generate_medical_restrictions(db_user, session)
+
+                # Обновляем объект пользователя
+                await session.refresh(db_user)
+
+                logger.info(f"Medical restrictions updated for user {db_user.id} after OCR analysis")
+            except Exception as e:
+                logger.error(f"Error updating medical restrictions after analysis: {e}")
+                # Не прерываем процесс, если не удалось обновить ограничения
+
+            # Формируем красивый ответ
+            await status_message.delete()
+            await show_analysis_results(update, context, analysis_result, saved_analysis.id)
+
+            # Очищаем временные данные
+            context.user_data.pop("analysis_file_id", None)
+            context.user_data.pop("analysis_file_type", None)
+
+            return ConversationHandler.END
 
     except Exception as e:
-        logger.error(f"Error handling file upload: {e}")
+        logger.error(f"Error handling file upload with OCR: {e}", exc_info=True)
         await status_message.edit_text(
             "❌ Произошла ошибка при обработке файла.\n"
-            "Попробуй ввести показатели текстом.",
+            "Попробуй ввести показатели текстом или загрузи другое фото.",
             reply_markup=back_to_menu_keyboard()
         )
-        return ConversationHandler.END
+        return MedicalAnalysisStates.WAITING_TEXT_INPUT
 
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
