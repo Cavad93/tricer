@@ -199,6 +199,34 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
 
                 return MealPlanStates.WAITING_PERIOD  # Остаемся в том же состоянии
 
+    # Проверяем, установлено ли preferred_cooking_time_minutes
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if user and user.preferred_cooking_time_minutes is None:
+            # Спрашиваем о времени на готовку
+            cooking_time_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("⚡️ До 15 минут", callback_data="cooking_time_15")],
+                [InlineKeyboardButton("⏱ 15-30 минут", callback_data="cooking_time_30")],
+                [InlineKeyboardButton("🕐 30-60 минут", callback_data="cooking_time_60")],
+                [InlineKeyboardButton("🕑 Больше часа", callback_data="cooking_time_90")],
+                [InlineKeyboardButton("⏩ Не важно", callback_data="cooking_time_skip")]
+            ])
+
+            await query.edit_message_text(
+                f"✅ Отлично! Создам план на {period_text}.\n\n"
+                f"⏰ <b>Сколько времени ты готов тратить на приготовление одного блюда?</b>\n\n"
+                f"Это поможет мне подобрать рецепты, которые впишутся в твой ритм жизни.\n\n"
+                f"<i>Ты сможешь изменить это в настройках в любое время.</i>",
+                reply_markup=cooking_time_keyboard,
+                parse_mode='HTML'
+            )
+
+            return MealPlanStates.ASKING_COOKING_TIME
+
     # Инициализируем счетчик вопросов и данные
     context.user_data["preference_step"] = 1
     context.user_data["favorite_foods"] = None
@@ -220,6 +248,67 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
 
     await query.edit_message_text(
         f"✅ Отлично! Создам план на {period_text}.\n\n"
+        f"{clarify_phrase}\n\n"
+        "❓ <b>Вопрос 1 из 3:</b> Есть ли у тебя любимые блюда или продукты, которые хотел бы видеть в плане?\n\n"
+        "Напиши их через запятую или нажми 'Пропустить'.",
+        reply_markup=skip_keyboard,
+        parse_mode='HTML'
+    )
+
+    return MealPlanStates.ASKING_PREFERENCES
+
+
+async def handle_cooking_time_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора времени на готовку"""
+    query = update.callback_query
+    await query.answer()
+
+    # Маппинг callback_data на минуты
+    cooking_time_map = {
+        "cooking_time_15": 15,
+        "cooking_time_30": 30,
+        "cooking_time_60": 60,
+        "cooking_time_90": 90,
+        "cooking_time_skip": None
+    }
+
+    cooking_time = cooking_time_map.get(query.data)
+
+    # Сохраняем в БД
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if user:
+            user.preferred_cooking_time_minutes = cooking_time
+            await session.commit()
+            logger.info(f"Set cooking time {cooking_time} min for user {user.telegram_id}")
+
+    # Переходим к вопросам о предпочтениях
+    context.user_data["preference_step"] = 1
+    context.user_data["favorite_foods"] = None
+    context.user_data["additional_dislikes"] = None
+    context.user_data["special_requests"] = None
+
+    from app.bot.texts import FriendlyPhrases
+    import random
+
+    clarify_phrase = random.choice(FriendlyPhrases.CLARIFY_PREFERENCES)
+
+    skip_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("➡️ Пропустить", callback_data="preferences_skip")]
+    ])
+
+    # Формируем текст подтверждения
+    if cooking_time:
+        time_text = f"до {cooking_time} минут"
+    else:
+        time_text = "любое время"
+
+    await query.edit_message_text(
+        f"✅ Отлично! Буду подбирать рецепты на {time_text}.\n\n"
         f"{clarify_phrase}\n\n"
         "❓ <b>Вопрос 1 из 3:</b> Есть ли у тебя любимые блюда или продукты, которые хотел бы видеть в плане?\n\n"
         "Напиши их через запятую или нажми 'Пропустить'.",

@@ -199,6 +199,11 @@ class MealPlanService:
             PlanPeriod.MONTH: "на 30 дней (месяц)"
         }[period_type]
 
+        # Формируем секцию о времени готовки
+        cooking_time_text = ""
+        if user.preferred_cooking_time_minutes:
+            cooking_time_text = f"\n⏰ ВРЕМЯ НА ГОТОВКУ: до {user.preferred_cooking_time_minutes} минут на одно блюдо\n   (Подбирай рецепты, которые можно приготовить за это время)"
+
         # Формируем секцию с предпочтениями пользователя
         preferences_text = ""
         if favorite_foods:
@@ -233,6 +238,7 @@ class MealPlanService:
 - Белки: {user.target_proteins}г
 - Жиры: {user.target_fats}г
 - Углеводы: {user.target_carbs}г
+{cooking_time_text}
 {preferences_text}
 
 📋 ТРЕБОВАНИЯ К ПЛАНУ:

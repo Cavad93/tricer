@@ -89,6 +89,7 @@ class User(Base):
     allergies = Column(JSON, default=list)  # Список аллергий
     dislikes = Column(JSON, default=list)  # Список нелюбимых продуктов
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
+    preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
     # Подписка
     subscription_type = Column(SQLEnum(SubscriptionType), default=SubscriptionType.FREE)

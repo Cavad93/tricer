@@ -27,6 +27,7 @@ from app.bot.handlers.diary import diary_callback, delete_meal_callback
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
     meal_plan_period_selected,
+    handle_cooking_time_selection,
     reuse_weekly_plan_yes,
     reuse_weekly_plan_no,
     handle_preference_response,
@@ -206,33 +207,126 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    user_data = context.user_data
+    # Получаем данные из БД
+    async with async_session_maker() as session:
+        from app.models.user import User
+        from sqlalchemy import select
 
-    if not user_data.get("target_calories"):
-        await query.edit_message_text(
-            "У тебя еще нет профиля.\n"
-            "Используй /start чтобы настроить профиль."
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
         )
-        return
+        user = result.scalar_one_or_none()
 
-    profile_text = (
-        "👤 *Твой профиль*\n\n"
-        f"Возраст: {user_data.get('age')} лет\n"
-        f"Рост: {user_data.get('height')} см\n"
-        f"Текущий вес: {user_data.get('current_weight')} кг\n"
-        f"Целевой вес: {user_data.get('target_weight')} кг\n\n"
-        f"📊 *Целевые показатели на день:*\n"
-        f"🔥 Калории: {user_data.get('target_calories')} ккал\n"
-        f"🥩 Белки: {user_data.get('target_proteins')}г\n"
-        f"🧈 Жиры: {user_data.get('target_fats')}г\n"
-        f"🍞 Углеводы: {user_data.get('target_carbs')}г\n"
-    )
+        if not user or not user.onboarding_completed:
+            await query.edit_message_text(
+                "У тебя еще нет профиля.\n"
+                "Используй /start чтобы настроить профиль.",
+                reply_markup=back_to_menu_keyboard()
+            )
+            return
+
+        # Формируем текст о времени готовки
+        cooking_time_text = ""
+        if user.preferred_cooking_time_minutes:
+            cooking_time_text = f"⏰ Время на готовку: до {user.preferred_cooking_time_minutes} мин\n"
+        else:
+            cooking_time_text = "⏰ Время на готовку: не указано\n"
+
+        profile_text = (
+            "👤 *Твой профиль*\n\n"
+            f"Возраст: {user.age} лет\n"
+            f"Рост: {user.height} см\n"
+            f"Текущий вес: {user.current_weight} кг\n"
+            f"Целевой вес: {user.target_weight} кг\n\n"
+            f"📊 *Целевые показатели на день:*\n"
+            f"🔥 Калории: {user.target_calories} ккал\n"
+            f"🥩 Белки: {user.target_proteins}г\n"
+            f"🧈 Жиры: {user.target_fats}г\n"
+            f"🍞 Углеводы: {user.target_carbs}г\n\n"
+            f"⚙️ *Предпочтения:*\n"
+            f"{cooking_time_text}"
+        )
+
+        # Добавляем кнопку изменения времени готовки
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = [
+            [InlineKeyboardButton("⏰ Изменить время на готовку", callback_data="change_cooking_time")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ]
+
+        await query.edit_message_text(
+            profile_text,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+
+async def change_cooking_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик изменения времени на готовку"""
+    query = update.callback_query
+    await query.answer()
+
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    cooking_time_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⚡️ До 15 минут", callback_data="set_cooking_time_15")],
+        [InlineKeyboardButton("⏱ 15-30 минут", callback_data="set_cooking_time_30")],
+        [InlineKeyboardButton("🕐 30-60 минут", callback_data="set_cooking_time_60")],
+        [InlineKeyboardButton("🕑 Больше часа", callback_data="set_cooking_time_90")],
+        [InlineKeyboardButton("⏩ Не важно", callback_data="set_cooking_time_skip")],
+        [InlineKeyboardButton("❌ Отмена", callback_data="profile")]
+    ])
 
     await query.edit_message_text(
-        profile_text,
-        parse_mode="Markdown",
-        reply_markup=back_to_menu_keyboard()
+        "⏰ <b>Выбери предпочитаемое время на приготовление одного блюда:</b>\n\n"
+        "Это влияет на подбор рецептов в планах питания.",
+        reply_markup=cooking_time_keyboard,
+        parse_mode='HTML'
     )
+
+
+async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение нового времени на готовку"""
+    query = update.callback_query
+    await query.answer()
+
+    # Маппинг callback_data на минуты
+    cooking_time_map = {
+        "set_cooking_time_15": 15,
+        "set_cooking_time_30": 30,
+        "set_cooking_time_60": 60,
+        "set_cooking_time_90": 90,
+        "set_cooking_time_skip": None
+    }
+
+    cooking_time = cooking_time_map.get(query.data)
+
+    # Сохраняем в БД
+    async with async_session_maker() as session:
+        from app.models.user import User
+        from sqlalchemy import select
+
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if user:
+            user.preferred_cooking_time_minutes = cooking_time
+            await session.commit()
+
+            # Формируем текст подтверждения
+            if cooking_time:
+                time_text = f"до {cooking_time} минут"
+            else:
+                time_text = "любое время"
+
+            await query.edit_message_text(
+                f"✅ Отлично! Время на готовку изменено на: {time_text}.\n\n"
+                f"Теперь рецепты в планах питания будут подбираться с учетом этого времени.",
+                reply_markup=back_to_menu_keyboard()
+            )
 
 
 async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -353,6 +447,10 @@ def main():
                 CallbackQueryHandler(reuse_weekly_plan_no, pattern="^reuse_weekly_no$"),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
+            MealPlanStates.ASKING_COOKING_TIME: [
+                CallbackQueryHandler(handle_cooking_time_selection, pattern="^cooking_time_"),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
             MealPlanStates.ASKING_PREFERENCES: [
                 # Единый обработчик для всех вопросов о предпочтениях
                 CallbackQueryHandler(handle_preference_response, pattern="^preferences_skip$"),
@@ -401,6 +499,10 @@ def main():
     # Callback handlers для плана питания
     application.add_handler(CallbackQueryHandler(view_meal_plan, pattern="^view_plan_"))
     application.add_handler(CallbackQueryHandler(view_shopping_list, pattern="^shopping_list_"))
+
+    # Callback handlers для настроек времени готовки
+    application.add_handler(CallbackQueryHandler(change_cooking_time_callback, pattern="^change_cooking_time$"))
+    application.add_handler(CallbackQueryHandler(set_cooking_time_callback, pattern="^set_cooking_time_"))
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))

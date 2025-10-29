@@ -31,6 +31,7 @@ class FoodAddStates(IntEnum):
 class MealPlanStates(IntEnum):
     """Состояния создания плана питания"""
     WAITING_PERIOD = auto()  # Ожидание выбора периода (день/неделя/месяц)
+    ASKING_COOKING_TIME = auto()  # Уточнение времени на готовку
     ASKING_PREFERENCES = auto()  # Уточнение предпочтений перед созданием
     GENERATING = auto()  # Генерация плана
     ASKING_FEEDBACK = auto()  # Запрос обратной связи после создания
