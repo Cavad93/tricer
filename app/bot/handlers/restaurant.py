@@ -123,6 +123,9 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
 
     meal_type_text = meal_type_map.get(query.data, "прием пищи")
 
+    # Извлекаем meal_type из callback_data (например "restaurant_meal_lunch" -> "lunch")
+    meal_type = query.data.replace("restaurant_meal_", "")
+
     # Показываем прогресс
     processing_msg = await query.edit_message_text(
         "🔍 Анализирую меню...\n\n"
