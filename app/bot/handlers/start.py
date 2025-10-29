@@ -251,8 +251,13 @@ async def height_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         context.user_data["height"] = height
 
+        # Рассчитываем рекомендуемый диапазон веса на основе ИМТ
+        min_weight, max_weight = NutritionCalculator.get_healthy_weight_range(height)
+
         await update.message.reply_text(
             f"✅ Рост: {height} см\n\n"
+            f"💡 На основе твоего роста, рекомендуемый диапазон здорового веса:\n"
+            f"📊 {min_weight} - {max_weight} кг (по индексу массы тела ВОЗ)\n\n"
             "Какой у тебя текущий вес? (в килограммах, например, 70):"
         )
 
@@ -657,6 +662,19 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     logger.info(f"Medical restrictions generated for user {user.id}")
                 except Exception as e:
                     logger.error(f"Error generating medical restrictions: {e}")
+
+            # Добавляем начальный вес в историю
+            try:
+                from app.services.weight_service import WeightService
+                await WeightService.add_weight_entry(
+                    user_id=user.id,
+                    weight=user.current_weight,
+                    session=session,
+                    notes="Начальный вес при регистрации"
+                )
+                logger.info(f"Initial weight entry added for user {user.id}")
+            except Exception as e:
+                logger.error(f"Error adding initial weight entry: {e}")
 
         except Exception as e:
             await session.rollback()

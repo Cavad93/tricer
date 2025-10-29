@@ -63,3 +63,8 @@ class MedicalAnalysisStates(IntEnum):
     WAITING_TEXT_INPUT = auto()  # Ожидание текстового ввода показателей
     ANALYZING = auto()  # Анализ данных с помощью AI
     SHOWING_RESULTS = auto()  # Показ результатов анализа
+
+
+class ProfileStates(IntEnum):
+    """Состояния для управления профилем"""
+    WAITING_NEW_WEIGHT = auto()  # Ожидание ввода нового веса

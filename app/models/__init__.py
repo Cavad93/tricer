@@ -8,6 +8,7 @@ from app.models.user_consent import UserConsent
 from app.models.chat import ChatMessage
 from app.models.medical_analysis import MedicalAnalysis
 from app.models.wellness_log import WellnessLog
+from app.models.weight_history import WeightHistory
 
 __all__ = [
     "User",
@@ -31,4 +32,5 @@ __all__ = [
     "ChatMessage",
     "MedicalAnalysis",
     "WellnessLog",
+    "WeightHistory",
 ]

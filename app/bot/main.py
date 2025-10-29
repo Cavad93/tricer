@@ -273,12 +273,32 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             cooking_time_text = "⏰ Время на готовку: не указано\n"
 
+        # Рассчитываем ИМТ и получаем историю веса
+        from app.services.nutrition_calc import NutritionCalculator
+        from app.services.weight_service import WeightService
+
+        bmi = NutritionCalculator.calculate_bmi(user.current_weight, user.height)
+        bmi_category = NutritionCalculator.get_bmi_category(bmi)
+        weight_history = await WeightService.get_weight_history(user.id, session, limit=10)
+
+        # Формируем текст о весе
+        weight_text = f"Текущий вес: {user.current_weight} кг\n"
+        weight_text += f"ИМТ: {bmi} ({bmi_category})\n"
+        weight_text += f"Целевой вес: {user.target_weight} кг\n"
+
+        # Добавляем изменение веса если есть история
+        if len(weight_history) >= 2:
+            weight_change = WeightService.calculate_weight_change(weight_history)
+            if weight_change:
+                change_emoji = "📉" if weight_change < 0 else "📈"
+                change_text = f"{abs(weight_change)} кг" if weight_change < 0 else f"+{weight_change} кг"
+                weight_text += f"{change_emoji} Изменение: {change_text}\n"
+
         profile_text = (
             "👤 *Твой профиль*\n\n"
             f"Возраст: {user.age} лет\n"
             f"Рост: {user.height} см\n"
-            f"Текущий вес: {user.current_weight} кг\n"
-            f"Целевой вес: {user.target_weight} кг\n\n"
+            f"{weight_text}\n"
             f"📊 *Целевые показатели на день:*\n"
             f"🔥 Калории: {user.target_calories} ккал\n"
             f"🥩 Белки: {user.target_proteins}г\n"
@@ -288,10 +308,11 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{cooking_time_text}"
         )
 
-        # Добавляем кнопку изменения времени готовки
+        # Добавляем кнопки управления профилем
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
         keyboard = [
+            [InlineKeyboardButton("⚖️ Изменить вес", callback_data="change_weight")],
             [InlineKeyboardButton("⏰ Изменить время на готовку", callback_data="change_cooking_time")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ]
@@ -368,6 +389,96 @@ async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAUL
                 f"Теперь рецепты в планах питания будут подбираться с учетом этого времени.",
                 reply_markup=back_to_menu_keyboard()
             )
+
+
+async def change_weight_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик изменения веса"""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
+        "⚖️ <b>Введи свой текущий вес в килограммах</b>\n\n"
+        "Например: 75 или 68.5",
+        parse_mode='HTML'
+    )
+
+    from app.bot.states import ProfileStates
+    return ProfileStates.WAITING_NEW_WEIGHT
+
+
+async def handle_new_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ввода нового веса"""
+    try:
+        new_weight = float(update.message.text.replace(",", "."))
+
+        if new_weight < 30 or new_weight > 300:
+            await update.message.reply_text(
+                "❌ Пожалуйста, введи корректный вес в кг (от 30 до 300):"
+            )
+            from app.bot.states import ProfileStates
+            return ProfileStates.WAITING_NEW_WEIGHT
+
+        # Сохраняем новый вес
+        async with async_session_maker() as session:
+            from app.models.user import User
+            from app.services.weight_service import WeightService
+            from app.services.nutrition_calc import NutritionCalculator
+            from sqlalchemy import select
+
+            result = await session.execute(
+                select(User).where(User.telegram_id == update.effective_user.id)
+            )
+            user = result.scalar_one_or_none()
+
+            if user:
+                old_weight = user.current_weight
+
+                # Добавляем запись в историю веса
+                await WeightService.add_weight_entry(
+                    user_id=user.id,
+                    weight=new_weight,
+                    session=session
+                )
+
+                # Обновляем текущий вес пользователя
+                await WeightService.update_user_current_weight(
+                    user=user,
+                    new_weight=new_weight,
+                    session=session
+                )
+
+                # Рассчитываем новый ИМТ
+                bmi = NutritionCalculator.calculate_bmi(new_weight, user.height)
+                bmi_category = NutritionCalculator.get_bmi_category(bmi)
+
+                # Формируем текст подтверждения
+                weight_diff = new_weight - old_weight
+                if weight_diff > 0:
+                    change_text = f"📈 +{abs(weight_diff):.1f} кг"
+                elif weight_diff < 0:
+                    change_text = f"📉 {weight_diff:.1f} кг"
+                else:
+                    change_text = "без изменений"
+
+                await update.message.reply_text(
+                    f"✅ <b>Вес успешно обновлен!</b>\n\n"
+                    f"Предыдущий вес: {old_weight} кг\n"
+                    f"Новый вес: {new_weight} кг\n"
+                    f"Изменение: {change_text}\n\n"
+                    f"📊 Твой ИМТ: {bmi} ({bmi_category})\n"
+                    f"🎯 Целевой вес: {user.target_weight} кг",
+                    reply_markup=back_to_menu_keyboard(),
+                    parse_mode='HTML'
+                )
+
+                return ConversationHandler.END
+
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Пожалуйста, введи вес числом (например, 75 или 68.5):"
+        )
+        from app.bot.states import ProfileStates
+        return ProfileStates.WAITING_NEW_WEIGHT
 
 
 # Reports callback теперь обрабатывается через get_reports_conversation_handler
@@ -764,9 +875,26 @@ def main():
         allow_reentry=True
     )
 
+    # ConversationHandler для изменения веса в профиле
+    from app.bot.states import ProfileStates
+    change_weight_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(change_weight_callback, pattern="^change_weight$")],
+        states={
+            ProfileStates.WAITING_NEW_WEIGHT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_new_weight),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(main_menu_callback, pattern="^main_menu$")
+        ],
+        per_message=False
+    )
+
     # Добавляем обработчики
     # ВАЖНО: порядок имеет значение! ConversationHandler с более специфичными условиями должны быть первыми
     application.add_handler(onboarding_conversation)
+    application.add_handler(change_weight_conversation)  # Обработчик изменения веса
     application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан" - ПЕРЕД food_add_conversation!
     application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler (перехватывает ВСЕ фото)
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания

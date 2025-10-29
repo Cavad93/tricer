@@ -182,3 +182,73 @@ class NutritionCalculator:
             fats=fats,
             carbs=carbs,
         )
+
+    @staticmethod
+    def calculate_bmi(weight: float, height: int) -> float:
+        """
+        Расчет индекса массы тела (ИМТ/BMI)
+
+        Args:
+            weight: Вес в кг
+            height: Рост в см
+
+        Returns:
+            ИМТ (индекс массы тела)
+        """
+        if not height or height <= 0:
+            return 0.0
+
+        height_m = height / 100
+        bmi = weight / (height_m ** 2)
+        return round(bmi, 1)
+
+    @staticmethod
+    def get_healthy_weight_range(height: int) -> tuple[float, float]:
+        """
+        Расчет диапазона здорового веса на основе роста и ИМТ
+        Используется диапазон ИМТ 18.5-24.9 (нормальный вес по ВОЗ)
+
+        Args:
+            height: Рост в см
+
+        Returns:
+            Кортеж (минимальный_вес, максимальный_вес) в кг
+        """
+        if not height or height <= 0:
+            return (0.0, 0.0)
+
+        height_m = height / 100
+
+        # ИМТ 18.5 - нижняя граница нормы
+        min_weight = 18.5 * (height_m ** 2)
+
+        # ИМТ 24.9 - верхняя граница нормы
+        max_weight = 24.9 * (height_m ** 2)
+
+        return (round(min_weight, 1), round(max_weight, 1))
+
+    @staticmethod
+    def get_bmi_category(bmi: float) -> str:
+        """
+        Определение категории ИМТ
+
+        Args:
+            bmi: Индекс массы тела
+
+        Returns:
+            Название категории
+        """
+        if bmi < 16:
+            return "Выраженный дефицит массы тела"
+        elif bmi < 18.5:
+            return "Недостаточная масса тела"
+        elif bmi < 25:
+            return "Норма"
+        elif bmi < 30:
+            return "Избыточная масса тела (предожирение)"
+        elif bmi < 35:
+            return "Ожирение I степени"
+        elif bmi < 40:
+            return "Ожирение II степени"
+        else:
+            return "Ожирение III степени"
