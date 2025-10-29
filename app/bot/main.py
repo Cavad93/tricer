@@ -425,12 +425,40 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик ошибок"""
-    logger.error(f"Update {update} caused error {context.error}")
+    import traceback
+    from telegram.error import TimedOut, NetworkError, RetryAfter, BadRequest
 
+    error = context.error
+
+    # Список некритичных ошибок, которые не требуют уведомления пользователя
+    ignored_errors = (TimedOut, NetworkError, RetryAfter)
+
+    # Логируем все ошибки
+    logger.error(f"Update {update} caused error {error}")
+
+    # Если это некритичная ошибка - не беспокоим пользователя
+    if isinstance(error, ignored_errors):
+        logger.warning(f"Ignored non-critical error: {type(error).__name__}")
+        return
+
+    # Если это BadRequest (например, сообщение уже удалено) - тоже игнорируем
+    if isinstance(error, BadRequest):
+        logger.warning(f"BadRequest error (likely message already deleted): {error}")
+        return
+
+    # Для серьезных ошибок логируем traceback
+    logger.error("".join(traceback.format_exception(type(error), error, error.__traceback__)))
+
+    # Показываем пользователю сообщение только при реальных ошибках
     if update and update.effective_message:
-        await update.effective_message.reply_text(
-            "Произошла ошибка при обработке запроса. Попробуйте позже."
-        )
+        try:
+            await update.effective_message.reply_text(
+                "😔 Что-то пошло не так. Попробуй еще раз.\n\n"
+                "Если проблема повторяется - напиши /start и начни заново."
+            )
+        except Exception as e:
+            # Если не удалось отправить сообщение об ошибке - просто логируем
+            logger.error(f"Failed to send error message to user: {e}")
 
 
 async def check_expired_plans_job(context: ContextTypes.DEFAULT_TYPE):
