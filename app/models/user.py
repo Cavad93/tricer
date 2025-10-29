@@ -91,6 +91,14 @@ class User(Base):
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
+    # Напоминания о приемах пищи
+    reminders_enabled = Column(Boolean, default=True)  # Включены ли напоминания
+    breakfast_reminder_time = Column(String, nullable=True)  # Время напоминания о завтраке (HH:MM)
+    lunch_reminder_time = Column(String, nullable=True)  # Время напоминания об обеде (HH:MM)
+    dinner_reminder_time = Column(String, nullable=True)  # Время напоминания об ужине (HH:MM)
+    snack_reminder_time = Column(String, nullable=True)  # Время напоминания о перекусе (HH:MM, опционально)
+    reminder_timezone = Column(String, default='UTC')  # Часовой пояс пользователя
+
     # Подписка
     subscription_type = Column(SQLEnum(SubscriptionType), default=SubscriptionType.FREE)
     subscription_expires_at = Column(DateTime, nullable=True)

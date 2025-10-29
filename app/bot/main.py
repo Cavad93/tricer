@@ -47,6 +47,17 @@ from app.bot.handlers.restaurant import (
     analyze_menu_and_recommend,
     cancel_restaurant
 )
+from app.bot.handlers.reminders import (
+    ReminderSetupStates,
+    setup_reminders_start,
+    select_meal_for_reminder,
+    set_reminder_time,
+    delete_reminder,
+    toggle_reminders,
+    request_custom_time,
+    cancel_reminder_setup
+)
+from app.services.scheduler_service import init_scheduler
 
 
 # Настройка логирования
@@ -359,16 +370,51 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    user = update.effective_user
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == user.id)
+        )
+        db_user = result.scalar_one_or_none()
+
+        if not db_user:
+            await query.edit_message_text(
+                "❌ Пользователь не найден",
+                reply_markup=back_to_menu_keyboard()
+            )
+            return
+
+        # Формируем текст с текущими настройками
+        reminders_status = "✅ Включены" if db_user.reminders_enabled else "❌ Выключены"
+
+        settings_text = (
+            "⚙️ <b>Настройки</b>\n\n"
+            f"🔔 <b>Напоминания:</b> {reminders_status}\n"
+        )
+
+        if db_user.reminders_enabled:
+            if db_user.breakfast_reminder_time:
+                settings_text += f"  🌅 Завтрак: {db_user.breakfast_reminder_time}\n"
+            if db_user.lunch_reminder_time:
+                settings_text += f"  🌞 Обед: {db_user.lunch_reminder_time}\n"
+            if db_user.dinner_reminder_time:
+                settings_text += f"  🌙 Ужин: {db_user.dinner_reminder_time}\n"
+            if db_user.snack_reminder_time:
+                settings_text += f"  🍎 Перекус: {db_user.snack_reminder_time}\n"
+
+    # Создаем кнопки настроек
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("🔔 Настроить напоминания", callback_data="setup_reminders")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+
     await query.edit_message_text(
-        "⚙️ *Настройки*\n\n"
-        "Эта функция будет доступна в следующей версии!\n"
-        "Здесь ты сможешь:\n"
-        "• Изменить профиль\n"
-        "• Управлять уведомлениями\n"
-        "• Подключить фитнес-трекеры\n"
-        "• Оформить Premium подписку",
-        parse_mode="Markdown",
-        reply_markup=back_to_menu_keyboard()
+        settings_text,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -410,6 +456,11 @@ async def post_init(application: Application) -> None:
     from app.db.session import init_db
     await init_db()
     logger.info("Database initialized")
+
+    # Инициализируем и запускаем планировщик для напоминаний
+    scheduler = init_scheduler(application.bot)
+    scheduler.start()
+    logger.info("Reminder scheduler initialized and started")
 
     # Добавляем периодическую задачу для проверки истёкших планов
     # Запускается каждые 24 часа (86400 секунд)
@@ -472,6 +523,32 @@ def main():
         per_message=False
     )
 
+    # ConversationHandler для настройки напоминаний
+    reminder_setup_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(setup_reminders_start, pattern="^setup_reminders$")],
+        states={
+            ReminderSetupStates.CHOOSING_MEAL: [
+                CallbackQueryHandler(select_meal_for_reminder, pattern="^reminder_meal_"),
+                CallbackQueryHandler(toggle_reminders, pattern="^toggle_reminders$"),
+                CallbackQueryHandler(cancel_reminder_setup, pattern="^main_menu$")
+            ],
+            ReminderSetupStates.ENTERING_TIME: [
+                CallbackQueryHandler(set_reminder_time, pattern="^set_time_"),
+                CallbackQueryHandler(delete_reminder, pattern="^delete_reminder$"),
+                CallbackQueryHandler(request_custom_time, pattern="^custom_time$"),
+                CallbackQueryHandler(select_meal_for_reminder, pattern="^reminder_meal_"),
+                CallbackQueryHandler(setup_reminders_start, pattern="^setup_reminders$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, set_reminder_time),
+                CallbackQueryHandler(cancel_reminder_setup, pattern="^main_menu$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_reminder_setup, pattern="^main_menu$")
+        ],
+        per_message=False,
+        allow_reentry=True
+    )
+
     # ConversationHandler для создания плана питания
     meal_plan_conversation = ConversationHandler(
         entry_points=[CallbackQueryHandler(meal_plan_start, pattern="^meal_plan$|^create_new_plan$")],
@@ -516,6 +593,7 @@ def main():
     application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания
     application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан"
+    application.add_handler(reminder_setup_conversation)  # Обработчик настройки напоминаний
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("profile", profile_command))

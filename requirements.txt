@@ -11,6 +11,7 @@ alembic==1.12.1
 
 # Telegram Bot
 python-telegram-bot==20.7
+APScheduler==3.10.4
 
 # AI - Anthropic Claude
 anthropic>=0.40.0
