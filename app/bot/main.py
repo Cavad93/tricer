@@ -61,7 +61,10 @@ from app.bot.handlers.restaurant import (
     analyze_menu_and_recommend,
     cancel_restaurant,
     handle_restaurant_used_response,
-    handle_restaurant_dish_selection
+    handle_restaurant_dish_selection,
+    handle_restaurant_search_more,
+    handle_restaurant_manual_input,
+    handle_restaurant_manual_dish_name
 )
 from app.bot.handlers.reminders import (
     ReminderSetupStates,
@@ -662,6 +665,13 @@ def main():
             ],
             RestaurantStates.ANALYZING_MENU: [
                 CallbackQueryHandler(analyze_menu_and_recommend, pattern="^restaurant_meal_"),
+                CallbackQueryHandler(handle_restaurant_dish_selection, pattern="^restaurant_dish_"),
+                CallbackQueryHandler(handle_restaurant_search_more, pattern="^restaurant_search_more$"),
+                CallbackQueryHandler(handle_restaurant_manual_input, pattern="^restaurant_manual_input$"),
+                CallbackQueryHandler(cancel_restaurant, pattern="^main_menu$")
+            ],
+            RestaurantStates.WAITING_MANUAL_DISH_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_restaurant_manual_dish_name),
                 CallbackQueryHandler(cancel_restaurant, pattern="^main_menu$")
             ]
         },

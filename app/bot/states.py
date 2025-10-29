@@ -39,6 +39,7 @@ class RestaurantStates(IntEnum):
     ASKING_MOOD = auto()  # Спрашиваем настроение/желание
     ASKING_MEAL_TIME = auto()  # Спрашиваем прием пищи
     ANALYZING_MENU = auto()  # Анализируем меню
+    WAITING_MANUAL_DISH_INPUT = auto()  # Ожидание ввода названия блюда вручную
 
 
 class MealPlanStates(IntEnum):

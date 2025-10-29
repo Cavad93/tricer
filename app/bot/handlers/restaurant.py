@@ -679,37 +679,42 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
                 final_text += f"---\n📊 {recommendations_json['general_advice']}\n\n"
 
             # Добавляем легенду
-            final_text += "<i>✅ = данные из интернета | ⚠️ = приблизительная оценка</i>"
+            final_text += "<i>✅ = данные из интернета | ⚠️ = приблизительная оценка</i>\n\n"
+            final_text += "👇 <b>Выбери действие:</b>"
+
+            # Создаем кнопки для выбора блюда
+            keyboard = []
+            for rec in recommendations_json.get("recommendations", []):
+                # Обрезаем название если слишком длинное
+                dish_name = rec['name'][:35] + "..." if len(rec['name']) > 35 else rec['name']
+                button_text = f"{rec['number']}. {dish_name}"
+                # Используем restaurant_dish_ чтобы использовать существующий обработчик
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"restaurant_dish_{rec['number']}")])
+
+            # Кнопки дополнительных действий
+            keyboard.append([InlineKeyboardButton("🔄 Поищи ещё варианты", callback_data="restaurant_search_more")])
+            keyboard.append([InlineKeyboardButton("✍️ Выберу сам", callback_data="restaurant_manual_input")])
+            keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="main_menu")])
 
             await send_with_retry(
                 processing_msg.edit_text(
                     final_text,
                     parse_mode='HTML',
-                    reply_markup=main_menu_keyboard()
+                    reply_markup=InlineKeyboardMarkup(keyboard)
                 )
             )
 
-            # Сохраняем рекомендации для последующего использования
+            # Сохраняем рекомендации и данные для последующего использования
             context.user_data["restaurant_recommendations"] = recommendations_json
             context.user_data["restaurant_meal_type"] = meal_type
-            context.user_data["restaurant_message_id"] = processing_msg.message_id
-            context.user_data["restaurant_chat_id"] = query.message.chat_id
+            context.user_data["restaurant_dishes_data"] = dishes_data  # Сохраняем список блюд из меню
+            context.user_data["restaurant_mood"] = mood
+            context.user_data["restaurant_web_search_results"] = web_search_results
 
-            # Планируем отложенное уточнение через 5 минут (300 секунд)
-            context.job_queue.run_once(
-                restaurant_followup_callback,
-                when=300,
-                data={
-                    "chat_id": query.message.chat_id,
-                    "user_id": user.id,
-                    "telegram_id": user.id
-                },
-                name=f"restaurant_followup_{user.id}"
-            )
+            logger.info(f"Restaurant recommendations provided for user {user.id} with selection buttons")
 
-            logger.info(f"Restaurant recommendations provided for user {user.id}, followup scheduled in 5 minutes")
-
-            return ConversationHandler.END
+            # НЕ завершаем разговор, ждем выбора пользователя
+            return RestaurantStates.ANALYZING_MENU
 
     except json.JSONDecodeError as e:
         logger.error(
@@ -976,6 +981,420 @@ async def handle_restaurant_dish_selection(update: Update, context: ContextTypes
         )
 
 
+async def handle_restaurant_search_more(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Повторный поиск рекомендаций блюд"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    # Получаем сохраненные данные
+    dishes_data = context.user_data.get("restaurant_dishes_data")
+    meal_type = context.user_data.get("restaurant_meal_type")
+    mood = context.user_data.get("restaurant_mood")
+    web_search_results = context.user_data.get("restaurant_web_search_results", [])
+
+    if not dishes_data or not meal_type:
+        await query.edit_message_text(
+            "❌ Данные меню не найдены. Попробуй загрузить фото меню заново.",
+            reply_markup=main_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+    # Показываем сообщение о поиске
+    processing_msg = await query.edit_message_text(
+        "🔍 Ищу другие подходящие варианты...\n\nПодожди немного."
+    )
+
+    try:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await processing_msg.edit_text(
+                    "❌ Пользователь не найден.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Получаем прогресс
+            progress = await MealService.get_nutrition_progress(
+                session=session,
+                user_id=db_user.id,
+                target_date=date.today()
+            )
+
+            current = progress["current"]
+            target = progress["target"]
+            remaining = progress["remaining"]
+
+            # Определяем meal_type_text
+            meal_type_map = {
+                "breakfast": "завтрак",
+                "lunch": "обед",
+                "dinner": "ужин",
+                "snack": "перекус"
+            }
+            meal_type_text = meal_type_map.get(meal_type, "прием пищи")
+
+            # Формируем промпт с просьбой найти ДРУГИЕ блюда
+            from anthropic import AsyncAnthropic
+            from app.config import settings
+            from app.services.web_search_service import WebSearchService
+
+            client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+            web_data_text = WebSearchService.format_search_results_for_prompt(web_search_results)
+
+            # Получаем предыдущие рекомендации чтобы не повторяться
+            previous_recs = context.user_data.get("restaurant_recommendations", {}).get("recommendations", [])
+            previous_names = [rec.get("name", "") for rec in previous_recs]
+            previous_note = f"\n\nВАЖНО: НЕ рекомендуй следующие блюда (они уже были предложены):\n{', '.join(previous_names)}" if previous_names else ""
+
+            dish_names_list = "\n".join([f"• {dish['name']}" for dish in dishes_data.get("dishes", [])])
+
+            prompt = f"""На основе меню ресторана порекомендуй 2-3 ДРУГИХ блюда для пользователя.
+{previous_note}
+
+⚠️ СПИСОК БЛЮД КОТОРЫЕ ЕСТЬ В МЕНЮ (выбирай ТОЛЬКО из этого списка):
+{dish_names_list}
+
+ВАЖНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:
+- Тип приема пищи: {meal_type_text}
+- Настроение/желание: {mood}
+- Целевые калории на день: {target['calories']} ккал
+- Уже потреблено сегодня: {current['calories']} ккал
+- Осталось на сегодня: {remaining['calories']} ккал
+- Осталось белков: {remaining['proteins']:.0f}г
+- Осталось жиров: {remaining['fats']:.0f}г
+- Осталось углеводов: {remaining['carbs']:.0f}г
+
+БЛЮДА В МЕНЮ (детальная информация):
+{json.dumps(dishes_data, ensure_ascii=False, indent=2)}
+
+{web_data_text}
+
+ЗАДАЧА:
+Выбери 2-3 ДРУГИХ блюда (не те что были предложены ранее!), которые:
+- Соответствуют настроению/желанию ({mood})
+- Подходят для {meal_type_text}
+- Впишутся в оставшийся лимит калорий
+- Помогут достичь баланса БЖУ
+
+ФОРМАТ ОТВЕТА - строго JSON:
+{{
+  "recommendations": [
+    {{
+      "number": 1,
+      "name": "Название блюда",
+      "calories": 450,
+      "proteins": 30,
+      "fats": 15,
+      "carbs": 45,
+      "data_source": "web_search" или "estimate",
+      "explanation": "Короткое объяснение"
+    }}
+  ],
+  "general_advice": "Общий совет"
+}}
+
+КРИТИЧЕСКИ ВАЖНО:
+- Выбирай ТОЛЬКО блюда из списка выше
+- НЕ повторяй блюда которые уже были предложены
+- Используй точные названия из меню
+- Верни валидный JSON"""
+
+            # Отправляем запрос к AI
+            response = await client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=2000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            recommendations_text = response.content[0].text
+            recommendations_json = safe_parse_json(recommendations_text, context_name="search_more_recommendations")
+
+            # Валидация
+            validation_result = validate_recommendations_against_menu(
+                recommendations=recommendations_json.get("recommendations", []),
+                menu_dishes=dishes_data.get("dishes", []),
+                similarity_threshold=0.92
+            )
+
+            if not validation_result['is_valid']:
+                logger.warning(f"Search more validation failed: {validation_result['invalid_dishes']}")
+
+            # Формируем ответ
+            final_text = f"🍽 <b>Другие рекомендации для {meal_type_text}:</b>\n\n"
+
+            for rec in recommendations_json.get("recommendations", []):
+                data_source_indicator = ""
+                if rec.get('data_source') == 'web_search':
+                    data_source_indicator = " ✅"
+                elif rec.get('data_source') == 'estimate':
+                    data_source_indicator = " ⚠️"
+
+                final_text += (
+                    f"<b>{rec['number']}. {rec['name']}</b>{data_source_indicator}\n"
+                    f"~ {rec['calories']} ккал | Б: {rec['proteins']}г | "
+                    f"Ж: {rec['fats']}г | У: {rec['carbs']}г\n\n"
+                    f"💡 {rec['explanation']}\n\n"
+                )
+
+            if recommendations_json.get("general_advice"):
+                final_text += f"---\n📊 {recommendations_json['general_advice']}\n\n"
+
+            final_text += "<i>✅ = данные из интернета | ⚠️ = приблизительная оценка</i>\n\n"
+            final_text += "👇 <b>Выбери действие:</b>"
+
+            # Создаем кнопки
+            keyboard = []
+            for rec in recommendations_json.get("recommendations", []):
+                dish_name = rec['name'][:35] + "..." if len(rec['name']) > 35 else rec['name']
+                button_text = f"{rec['number']}. {dish_name}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"restaurant_dish_{rec['number']}")])
+
+            keyboard.append([InlineKeyboardButton("🔄 Поищи ещё варианты", callback_data="restaurant_search_more")])
+            keyboard.append([InlineKeyboardButton("✍️ Выберу сам", callback_data="restaurant_manual_input")])
+            keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="main_menu")])
+
+            await send_with_retry(
+                processing_msg.edit_text(
+                    final_text,
+                    parse_mode='HTML',
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            )
+
+            # Обновляем рекомендации
+            context.user_data["restaurant_recommendations"] = recommendations_json
+
+            logger.info(f"Search more recommendations provided for user {user.id}")
+
+            return RestaurantStates.ANALYZING_MENU
+
+    except Exception as e:
+        logger.error(f"Error in search more for user {user.id}: {e}", exc_info=True)
+        await send_with_retry(
+            processing_msg.edit_text(
+                "❌ Произошла ошибка при поиске вариантов.\n\nПопробуй позже.",
+                reply_markup=back_to_menu_keyboard()
+            )
+        )
+        return ConversationHandler.END
+
+
+async def handle_restaurant_manual_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Переход к ручному вводу названия блюда"""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
+        "✍️ <b>Ручной ввод блюда</b>\n\n"
+        "Напиши название блюда, которое ты выбрал из меню.\n"
+        "Я проанализирую его КБЖУ и добавлю в твой дневник.\n\n"
+        "<i>Например: \"Цезарь с курицей\" или \"Борщ\"</i>",
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+        ])
+    )
+
+    return RestaurantStates.WAITING_MANUAL_DISH_INPUT
+
+
+async def handle_restaurant_manual_dish_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка ручного ввода названия блюда"""
+    user = update.effective_user
+    dish_name = update.message.text.strip()
+
+    if not dish_name:
+        await update.message.reply_text(
+            "❌ Пожалуйста, напиши название блюда.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+            ])
+        )
+        return RestaurantStates.WAITING_MANUAL_DISH_INPUT
+
+    # Показываем прогресс
+    processing_msg = await update.message.reply_text(
+        f"🔍 Анализирую блюдо <b>«{dish_name}»</b>...\n\nПодожди немного.",
+        parse_mode='HTML'
+    )
+
+    try:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await processing_msg.edit_text(
+                    "❌ Пользователь не найден.",
+                    reply_markup=back_to_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Запрашиваем КБЖУ у AI
+            from anthropic import AsyncAnthropic
+            from app.config import settings
+            from app.services.web_search_service import WebSearchService
+
+            client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+            # Ищем информацию о блюде в интернете
+            web_search_results = await WebSearchService.search_multiple_dishes([dish_name])
+            web_data_text = WebSearchService.format_search_results_for_prompt(web_search_results)
+
+            prompt = f"""Проанализируй блюдо и определи его пищевую ценность.
+
+БЛЮДО: {dish_name}
+
+{web_data_text}
+
+ЗАДАЧА:
+Определи калорийность и БЖУ блюда. Используй данные из веб-поиска выше если есть, иначе дай приблизительную оценку.
+
+ФОРМАТ ОТВЕТА - строго JSON:
+{{
+  "name": "{dish_name}",
+  "calories": 450,
+  "proteins": 30,
+  "fats": 15,
+  "carbs": 45,
+  "data_source": "web_search" или "estimate",
+  "portion_description": "1 порция"
+}}
+
+ВАЖНО:
+- Используй реальные данные если они есть в веб-поиске
+- Если данных нет - дай приблизительную оценку
+- Верни валидный JSON"""
+
+            response = await client.messages.create(
+                model=settings.CLAUDE_MODEL,
+                max_tokens=1000,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            analysis_text = response.content[0].text
+            dish_data = safe_parse_json(analysis_text, context_name="manual_dish_analysis")
+
+            # Получаем meal_type
+            meal_type = context.user_data.get("restaurant_meal_type")
+            if not meal_type:
+                # Если не сохранен, спрашиваем
+                await processing_msg.edit_text(
+                    f"✅ <b>{dish_name}</b>\n"
+                    f"~ {dish_data['calories']} ккал | Б: {dish_data['proteins']}г | "
+                    f"Ж: {dish_data['fats']}г | У: {dish_data['carbs']}г\n\n"
+                    "⏰ <b>К какому приему пищи это относится?</b>",
+                    parse_mode='HTML',
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🌅 Завтрак", callback_data="manual_meal_breakfast")],
+                        [InlineKeyboardButton("🌞 Обед", callback_data="manual_meal_lunch")],
+                        [InlineKeyboardButton("🌙 Ужин", callback_data="manual_meal_dinner")],
+                        [InlineKeyboardButton("🍎 Перекус", callback_data="manual_meal_snack")]
+                    ])
+                )
+                # Сохраняем данные блюда
+                context.user_data["manual_dish_data"] = dish_data
+                return RestaurantStates.WAITING_MANUAL_DISH_INPUT
+
+            # Добавляем в дневник
+            from app.models.meal import MealType
+
+            foods_data = [{
+                "name": dish_data["name"],
+                "portion_size": 1,
+                "portion_description": dish_data.get("portion_description", "1 порция"),
+                "calories": dish_data["calories"],
+                "proteins": dish_data["proteins"],
+                "fats": dish_data["fats"],
+                "carbs": dish_data["carbs"]
+            }]
+
+            meal = await MealService.create_meal_with_foods(
+                session=session,
+                user_id=db_user.id,
+                meal_type=meal_type,
+                meal_date=date.today(),
+                meal_time=datetime.now(),
+                foods_data=foods_data
+            )
+
+            # Получаем прогресс
+            progress = await MealService.get_nutrition_progress(
+                session=session,
+                user_id=db_user.id,
+                target_date=date.today()
+            )
+
+            from app.models.meal import MealType
+            meal_type_names = {
+                MealType.BREAKFAST: "Завтрак",
+                MealType.LUNCH: "Обед",
+                MealType.DINNER: "Ужин",
+                MealType.SNACK: "Перекус"
+            }
+
+            current = progress["current"]
+            target = progress["target"]
+            remaining = progress["remaining"]
+
+            data_source_text = "✅ данные из интернета" if dish_data.get("data_source") == "web_search" else "⚠️ приблизительная оценка"
+
+            success_text = (
+                f"✅ Добавлено в *{meal_type_names[meal_type]}*!\n\n"
+                f"🍽 *{dish_data['name']}*\n"
+                f"~ {dish_data['calories']} ккал | Б: {dish_data['proteins']}г | "
+                f"Ж: {dish_data['fats']}г | У: {dish_data['carbs']}г\n"
+                f"_{data_source_text}_\n\n"
+                f"📊 *Прогресс за сегодня:*\n"
+                f"🔥 Калории: {current['calories']}/{target['calories']} ккал "
+                f"(осталось {remaining['calories']})\n"
+                f"🥩 Белки: {current['proteins']:.0f}/{target['proteins']}г\n"
+                f"🧈 Жиры: {current['fats']:.0f}/{target['fats']}г\n"
+                f"🍞 Углеводы: {current['carbs']:.0f}/{target['carbs']}г\n\n"
+            )
+
+            if current['calories'] > target['calories']:
+                success_text += "⚠️ Ты превысил дневную норму калорий\n"
+            elif remaining['calories'] < 300:
+                success_text += f"💡 Осталось всего {remaining['calories']} ккал на сегодня\n"
+
+            success_text += "\n🎉 Приятного аппетита!"
+
+            await processing_msg.edit_text(
+                success_text,
+                parse_mode="Markdown",
+                reply_markup=main_menu_keyboard()
+            )
+
+            # Очищаем контекст
+            context.user_data.pop("restaurant_recommendations", None)
+            context.user_data.pop("restaurant_meal_type", None)
+            context.user_data.pop("manual_dish_data", None)
+
+            logger.info(f"Manual dish '{dish_name}' added for user {user.id}, meal_id: {meal.id}")
+
+            return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error adding manual dish for user {user.id}: {e}", exc_info=True)
+        await send_with_retry(
+            processing_msg.edit_text(
+                "❌ Ошибка при добавлении блюда.\nПопробуй позже.",
+                reply_markup=back_to_menu_keyboard()
+            )
+        )
+        return ConversationHandler.END
+
+
 async def cancel_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена функции 'Ресторан'"""
     query = update.callback_query
@@ -983,6 +1402,8 @@ async def cancel_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data.pop("restaurant_menu_photo", None)
     context.user_data.pop("restaurant_mood", None)
+    context.user_data.pop("restaurant_recommendations", None)
+    context.user_data.pop("restaurant_meal_type", None)
 
     await query.edit_message_text(
         "❌ Функция 'Ресторан' отменена",
