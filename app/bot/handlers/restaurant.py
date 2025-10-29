@@ -64,10 +64,23 @@ def safe_parse_json(text: str, context_name: str = "response") -> dict:
             try:
                 return json.loads(cleaned)
             except json.JSONDecodeError:
-                # Стратегия 5: Логируем проблемный JSON и выбрасываем ошибку
+                pass
+
+            # Стратегия 5: Исправление неэкранированных переносов строк внутри строковых значений
+            # Заменяем неэкранированные \n внутри строк на пробелы
+            try:
+                # Удаляем все переносы строк и возвраты каретки внутри JSON
+                # Это безопасно, т.к. они не должны быть в JSON без экранирования
+                fixed = cleaned.replace('\n', ' ').replace('\r', ' ')
+                # Удаляем множественные пробелы
+                fixed = re.sub(r'\s+', ' ', fixed)
+                return json.loads(fixed)
+            except json.JSONDecodeError:
+                # Стратегия 6: Логируем проблемный JSON и выбрасываем ошибку
                 logger.error(
                     f"Failed to parse JSON in {context_name}. "
                     f"Original error: {e}. "
+                    f"Tried 5 different strategies, all failed. "
                     f"Problematic JSON (first 500 chars): {json_str[:500]}"
                 )
                 raise
