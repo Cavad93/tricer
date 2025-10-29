@@ -84,6 +84,9 @@ class MealFood(Base):
     ingredients = Column(JSON, default=list)  # Список ингредиентов
     confidence_score = Column(Float, nullable=True)  # Уверенность AI в распознавании (0-1)
 
+    # Микронутриенты (JSON для гибкости, содержит все витамины и минералы)
+    micronutrients = Column(JSON, default=dict)  # Словарь с микронутриентами
+
     created_at = Column(DateTime, default=func.now())
 
     # Relationships
@@ -104,5 +107,6 @@ class MealFood(Base):
             "fats": self.fats,
             "carbs": self.carbs,
             "ingredients": self.ingredients or [],
-            "confidence_score": self.confidence_score
+            "confidence_score": self.confidence_score,
+            "micronutrients": self.micronutrients or {}
         }

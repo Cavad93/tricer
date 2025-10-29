@@ -20,7 +20,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("👤 Профиль", callback_data="profile"),
         ],
         [
-            InlineKeyboardButton("📈 Статистика", callback_data="stats"),
+            InlineKeyboardButton("📊 Отчеты", callback_data="reports"),
             InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
     ]
@@ -154,3 +154,8 @@ def diary_actions_keyboard(meal_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Получить клавиатуру главного меню (алиас для совместимости)"""
+    return main_menu_keyboard()

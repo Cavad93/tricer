@@ -106,6 +106,9 @@ class PlannedMeal(Base):
     # Порция
     serving_size = Column(String(100), nullable=True)  # Описание порции
 
+    # Микронутриенты (JSON для гибкости)
+    micronutrients = Column(JSON, default=dict)  # Словарь с микронутриентами
+
     # Отношения
     day = relationship("MealPlanDay", back_populates="meals")
 
