@@ -27,6 +27,9 @@ from app.bot.handlers.diary import diary_callback, delete_meal_callback
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
     meal_plan_period_selected,
+    collect_favorite_foods,
+    collect_disliked_foods,
+    collect_special_requests,
     view_meal_plan,
     view_shopping_list,
     cancel_meal_plan
@@ -317,12 +320,24 @@ def main():
             MealPlanStates.WAITING_PERIOD: [
                 CallbackQueryHandler(meal_plan_period_selected, pattern="^plan_period_"),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.ASKING_PREFERENCES: [
+                # Обработка кнопки "Пропустить" для первого вопроса
+                CallbackQueryHandler(collect_favorite_foods, pattern="^preferences_skip$"),
+                # Обработка кнопки "Пропустить" для второго вопроса
+                CallbackQueryHandler(collect_disliked_foods, pattern="^preferences_skip2$"),
+                # Обработка кнопки "Пропустить" для третьего вопроса
+                CallbackQueryHandler(collect_special_requests, pattern="^preferences_skip3$"),
+                # Обработка текстовых ответов (порядок важен!)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, collect_favorite_foods),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ]
         },
         fallbacks=[
             CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
         ],
-        per_message=False
+        per_message=False,
+        allow_reentry=True
     )
 
     # Добавляем обработчики
