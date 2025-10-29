@@ -6,6 +6,7 @@ from app.models.micronutrients import DailyMicronutrients, MicronutrientTargets
 from app.models.food_correction import FoodRecognitionCorrection
 from app.models.user_consent import UserConsent
 from app.models.chat import ChatMessage
+from app.models.medical_analysis import MedicalAnalysis
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "FoodRecognitionCorrection",
     "UserConsent",
     "ChatMessage",
+    "MedicalAnalysis",
 ]

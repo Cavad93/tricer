@@ -326,6 +326,75 @@ class ClaudeAIService:
             logger.error(f"Error in Claude chat: {e}")
             return "Извините, произошла ошибка при обработке вашего запроса. Попробуйте позже."
 
+    async def analyze_text(
+        self,
+        prompt: str,
+        max_tokens: int = 2000
+    ) -> str:
+        """
+        Анализ текста с помощью Claude (общий метод)
+
+        Args:
+            prompt: Промпт для анализа
+            max_tokens: Максимальное количество токенов в ответе
+
+        Returns:
+            Ответ от Claude
+        """
+        try:
+            logger.info(f"Отправка текстового анализа в Claude API")
+
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+
+            text_response = response.content[0].text
+            logger.info("Текстовый анализ получен успешно")
+
+            return text_response
+
+        except Exception as e:
+            logger.error(f"Ошибка в Claude text analysis: {e}")
+            raise
+
+    @staticmethod
+    def extract_json_from_response(response: str) -> Optional[Dict]:
+        """
+        Извлечение JSON из ответа Claude
+
+        Args:
+            response: Текст ответа от Claude
+
+        Returns:
+            Словарь с распарсенным JSON или None
+        """
+        try:
+            # Пытаемся найти JSON в тексте
+            import re
+
+            # Ищем JSON блоки в markdown формате
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(1)
+                return json.loads(json_str)
+
+            # Ищем простой JSON блок
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+                return json.loads(json_str)
+
+            # Если не нашли - пытаемся парсить весь ответ
+            return json.loads(response)
+
+        except Exception as e:
+            logger.warning(f"Не удалось извлечь JSON из ответа Claude: {e}")
+            return None
+
 
 # Создаем singleton экземпляр сервиса
 claude_service = ClaudeAIService()

@@ -49,6 +49,7 @@ async def init_db():
     from app.models.user_consent import UserConsent  # noqa
     from app.models.micronutrients import DailyMicronutrients  # noqa
     from app.models.food_correction import FoodRecognitionCorrection  # noqa
+    from app.models.medical_analysis import MedicalAnalysis  # noqa
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

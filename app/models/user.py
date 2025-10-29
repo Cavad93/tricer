@@ -92,6 +92,12 @@ class User(Base):
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
+    # Медицинская информация (Этап 4)
+    chronic_conditions = Column(JSON, default=list)  # Список хронических заболеваний
+    removed_organs = Column(JSON, default=list)  # Список удаленных органов
+    medical_restrictions = Column(JSON, default=dict)  # Медицинские ограничения по питанию (генерируется AI)
+    medical_notes = Column(String(1000), nullable=True)  # Дополнительные медицинские заметки
+
     # Напоминания о приемах пищи
     reminders_enabled = Column(Boolean, default=True)  # Включены ли напоминания
     breakfast_reminder_time = Column(String, nullable=True)  # Время напоминания о завтраке (HH:MM)
