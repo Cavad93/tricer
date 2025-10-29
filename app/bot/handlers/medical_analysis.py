@@ -271,6 +271,25 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 file_url=None
             )
 
+            # Обновляем медицинские ограничения с учетом новых дефицитов
+            try:
+                await status_message.edit_text(
+                    "🔬 <b>Анализ завершен!</b>\n\n"
+                    "Обновляю рекомендации по питанию на основе выявленных дефицитов...",
+                    parse_mode=ParseMode.HTML
+                )
+
+                # Генерируем/обновляем медицинские ограничения
+                await MedicalAnalysisService.generate_medical_restrictions(db_user, session)
+
+                # Обновляем объект пользователя
+                await session.refresh(db_user)
+
+                logger.info(f"Medical restrictions updated for user {db_user.id} after analysis")
+            except Exception as e:
+                logger.error(f"Error updating medical restrictions after analysis: {e}")
+                # Не прерываем процесс, если не удалось обновить ограничения
+
             # Формируем красивый ответ
             await status_message.delete()
             await show_analysis_results(update, context, analysis_result, saved_analysis.id)
@@ -349,6 +368,14 @@ async def show_analysis_results(
         for i, rec in enumerate(recommendations, 1):
             response += f"{i}. {rec}\n"
         response += "\n"
+
+    # Информация об обновлении плана питания
+    if deficiencies:
+        response += (
+            "🍽 <b>Планы питания обновлены!</b>\n"
+            "При создании нового рациона AI будет автоматически учитывать "
+            "выявленные дефициты и подбирать блюда для их восполнения.\n\n"
+        )
 
     # Предупреждение о консультации врача
     if needs_doctor:
