@@ -1,11 +1,11 @@
 # Core Framework
 fastapi==0.104.1
-uvicorn[standard]==0.24.0
+uvicorn==0.24.0  # Без [standard] для совместимости с Python 32-bit (избегает httptools)
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
 # Database (PostgreSQL)
-sqlalchemy==2.0.23
+sqlalchemy>=2.0.0  # >= для совместимости с Python 32-bit (greenlet binary wheels)
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 alembic==1.12.1
@@ -18,7 +18,7 @@ APScheduler==3.10.4
 anthropic>=0.40.0
 
 # Image Processing
-Pillow==10.1.0
+Pillow>=10.0.0  # >= для совместимости с Python 32-bit (binary wheels)
 
 # PDF Generation
 reportlab==4.0.7
