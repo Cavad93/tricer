@@ -483,7 +483,35 @@ docker-compose up -d
 
 ### Windows Server
 
-См. основную инструкцию в README.md
+**Требования:**
+- Windows Server 2016+ или Windows 10/11
+- PowerShell или Command Prompt с правами администратора
+- Python 3.11 или 3.12 (не 3.13, нет бинарных пакетов для pandas)
+- PostgreSQL 12+
+
+**Установка зависимостей:**
+
+```cmd
+# Простой способ (рекомендуется)
+install-windows.bat
+
+# Или вручную:
+python -m pip install --upgrade pip
+pip install pandas numpy matplotlib --only-binary :all:
+pip install -r requirements.txt
+```
+
+**ВАЖНО:** Используйте `install-windows.bat` чтобы избежать ошибок компиляции pandas/numpy/matplotlib, которые требуют Visual Studio Build Tools (10+ GB).
+
+**Настройка:**
+1. Установите PostgreSQL 12+ с https://www.postgresql.org/download/windows/
+2. Создайте базу данных (через pgAdmin или psql)
+3. Скопируйте `.env.example` в `.env` и настройте параметры
+4. Запустите `python init_db.py`
+5. Запустите бота: `python -m app.bot.main`
+
+**Автозапуск через Task Scheduler:**
+Создайте задачу в Task Scheduler с триггером "At system startup" и действием запуска `python -m app.bot.main` в папке проекта.
 
 ---
 
