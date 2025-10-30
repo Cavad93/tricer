@@ -55,7 +55,7 @@ async def reports_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SELECTING_PERIOD
 
     except Exception as e:
-        logger.error("Error in reports_start: %s", str(e))
+        logger.error("Error in reports_start: {}", repr(e))
         if query:
             await query.message.reply_text("Произошла ошибка. Попробуйте позже.")
         else:
@@ -165,7 +165,7 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
 
             except Exception as e:
-                logger.error("Error generating PDF: %s", str(e))
+                logger.error("Error generating PDF: {}", repr(e))
                 await status_message.edit_text(
                     "Произошла ошибка при генерации PDF.\n"
                     "Попробуйте позже или обратитесь в поддержку."
@@ -174,7 +174,7 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error in generate_report: %s", str(e))
+        logger.error("Error in generate_report: {}", repr(e))
         await query.message.reply_text("Произошла ошибка. Попробуйте позже.")
         return ConversationHandler.END
 
@@ -275,7 +275,7 @@ async def generate_weight_chart(update: Update, context: ContextTypes.DEFAULT_TY
                 )
 
             except Exception as e:
-                logger.error("Error generating weight chart: %s", str(e))
+                logger.error("Error generating weight chart: {}", repr(e))
                 await status_message.edit_text(
                     "Произошла ошибка при генерации графика.\n"
                     "Попробуйте позже или обратитесь в поддержку."
@@ -284,7 +284,7 @@ async def generate_weight_chart(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error in generate_weight_chart: %s", str(e))
+        logger.error("Error in generate_weight_chart: {}", repr(e))
         await query.message.reply_text("Произошла ошибка. Попробуйте позже.")
         return ConversationHandler.END
 
@@ -315,7 +315,7 @@ async def cancel_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error in cancel_report: %s", str(e))
+        logger.error("Error in cancel_report: {}", repr(e))
         return ConversationHandler.END
 
 

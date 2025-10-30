@@ -145,7 +145,7 @@ class WeightSupportService:
             return ai_response.strip()
 
         except Exception as e:
-            logger.error("Error generating weight change message: %s", str(e))
+            logger.error("Error generating weight change message: {}", repr(e))
             # Fallback сообщения
             weight_diff = new_weight - old_weight
 

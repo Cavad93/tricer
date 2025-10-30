@@ -46,7 +46,7 @@ async def main():
                 logger.error("✗ Food corrections table NOT found!")
 
     except Exception as e:
-        logger.error("Error initializing database: %s", str(e))
+        logger.error("Error initializing database: {}", repr(e))
         import traceback
         traceback.print_exc()
         sys.exit(1)

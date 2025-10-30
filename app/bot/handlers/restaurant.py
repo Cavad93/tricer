@@ -222,11 +222,11 @@ async def send_with_retry(coro, max_retries=4, initial_delay=2.0):
         except (TimedOut, NetworkError) as e:
             last_exception = e
             if attempt < max_retries - 1:  # Не ждём после последней попытки
-                logger.warning("Network error on attempt %s/%s: %s. Retrying in %ss...", attempt + 1, max_retries, str(e), delay)
+                logger.warning("Network error on attempt {}/{}: {}. Retrying in {}s...", attempt + 1, max_retries, repr(e), delay)
                 await asyncio.sleep(delay)
                 delay *= 2  # Экспоненциальная задержка (2s, 4s, 8s, 16s)
             else:
-                logger.error("All %s attempts failed. Last error: %s", max_retries, str(e))
+                logger.error("All {} attempts failed. Last error: {}", max_retries, repr(e))
         except RetryAfter as e:
             # Telegram просит подождать определённое время
             logger.warning(f"Rate limited. Waiting {e.retry_after}s as requested by Telegram...")
@@ -234,7 +234,7 @@ async def send_with_retry(coro, max_retries=4, initial_delay=2.0):
             return await coro  # Повторяем после ожидания
         except Exception as e:
             # Другие ошибки не повторяем
-            logger.error("Non-retryable error: %s: %s", type(e).__name__, str(e))
+            logger.error("Non-retryable error: {}: {}", type(e).__name__, repr(e))
             raise
 
     # Если все попытки неудачны, выбрасываем последнее исключение
@@ -740,7 +740,7 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
         return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error analyzing restaurant menu for user %s: %s", user.id, str(e), exc_info=True)
+        logger.error("Error analyzing restaurant menu for user {}: {}", user.id, repr(e), exc_info=True)
 
         try:
             await send_with_retry(
@@ -787,7 +787,7 @@ async def restaurant_followup_callback(context: ContextTypes.DEFAULT_TYPE):
         )
         logger.info(f"Restaurant followup sent to user {telegram_id}")
     except Exception as e:
-        logger.error("Failed to send restaurant followup to user %s: %s", telegram_id, str(e))
+        logger.error("Failed to send restaurant followup to user {}: {}", telegram_id, repr(e))
 
 
 async def handle_restaurant_used_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -973,7 +973,7 @@ async def handle_restaurant_dish_selection(update: Update, context: ContextTypes
             logger.info(f"Restaurant dish added to diary for user {user.id}, meal_id: {meal.id}")
 
     except Exception as e:
-        logger.error("Error adding restaurant dish for user %s: %s", user.id, str(e), exc_info=True)
+        logger.error("Error adding restaurant dish for user {}: {}", user.id, repr(e), exc_info=True)
 
         await query.edit_message_text(
             "❌ Ошибка при добавлении в дневник.\nПопробуй позже.",
@@ -1176,7 +1176,7 @@ async def handle_restaurant_search_more(update: Update, context: ContextTypes.DE
             return RestaurantStates.ANALYZING_MENU
 
     except Exception as e:
-        logger.error("Error in search more for user %s: %s", user.id, str(e), exc_info=True)
+        logger.error("Error in search more for user {}: {}", user.id, repr(e), exc_info=True)
         await send_with_retry(
             processing_msg.edit_text(
                 "❌ Произошла ошибка при поиске вариантов.\n\nПопробуй позже.",
@@ -1385,7 +1385,7 @@ async def handle_restaurant_manual_dish_name(update: Update, context: ContextTyp
             return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error adding manual dish for user %s: %s", user.id, str(e), exc_info=True)
+        logger.error("Error adding manual dish for user {}: {}", user.id, repr(e), exc_info=True)
         await send_with_retry(
             processing_msg.edit_text(
                 "❌ Ошибка при добавлении блюда.\nПопробуй позже.",

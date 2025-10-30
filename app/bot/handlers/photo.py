@@ -242,7 +242,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error in photo recognition for user %s: %s", user.id, str(e))
+        logger.error("Error in photo recognition for user {}: {}", user.id, repr(e))
 
         await processing_msg.edit_text(
             "❌ Произошла ошибка при обработке фото.\n\n"
@@ -420,7 +420,7 @@ async def handle_clarification(update: Update, context: ContextTypes.DEFAULT_TYP
                 return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error in clarification handler: %s", str(e), exc_info=True)
+        logger.error("Error in clarification handler: {}", repr(e), exc_info=True)
         await processing_msg.edit_text(
             "❌ Произошла ошибка при обработке уточнения.",
             reply_markup=back_to_menu_keyboard()
@@ -599,7 +599,7 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     )
                     logger.info(f"Scheduled wellness survey for user {update.effective_user.id}, meal {meal.id}")
             except Exception as e:
-                logger.warning("Failed to schedule wellness survey: %s", str(e))
+                logger.warning("Failed to schedule wellness survey: {}", repr(e))
 
             # Обновляем суточные микронутриенты если есть данные
             if recognized_food.get("total_micronutrients"):
@@ -613,7 +613,7 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     )
                     logger.info(f"Updated daily micronutrients for user {db_user.id}")
                 except Exception as e:
-                    logger.warning("Failed to update micronutrients: %s", str(e))
+                    logger.warning("Failed to update micronutrients: {}", repr(e))
 
             # Получаем прогресс за день
             progress = await MealService.get_nutrition_progress(
@@ -699,7 +699,7 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                             if deviation_percent > 0.3:
                                 deviation_detected = True
                 except Exception as e:
-                    logger.warning("Error checking plan deviation: %s", str(e))
+                    logger.warning("Error checking plan deviation: {}", repr(e))
 
             # Предупреждения и психотерапевтический подход
             if current['calories'] > target['calories']:
@@ -746,7 +746,7 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return ConversationHandler.END
 
     except Exception as e:
-        logger.error("Error adding meal for user %s: %s", user.id, str(e))
+        logger.error("Error adding meal for user {}: {}", user.id, repr(e))
 
         await query.edit_message_text(
             "❌ Ошибка при добавлении в дневник.\nПопробуйте позже.",

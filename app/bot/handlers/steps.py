@@ -184,7 +184,7 @@ async def save_user_steps(telegram_id: int, steps: int, message_or_query):
             logger.info(f"Saved steps for user {db_user.id}: {steps} steps, bonus: {bonus_calories} kcal")
 
     except Exception as e:
-        logger.error("Error saving steps for user %s: %s", telegram_id, str(e), exc_info=True)
+        logger.error("Error saving steps for user {}: {}", telegram_id, repr(e), exc_info=True)
         error_text = "❌ Произошла ошибка при сохранении шагов. Попробуй позже."
 
         if hasattr(message_or_query, 'edit_message_text'):

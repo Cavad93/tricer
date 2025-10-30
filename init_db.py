@@ -20,7 +20,7 @@ async def main():
         logger.info("  - chat_messages")
         logger.info("  - daily_usage")
     except Exception as e:
-        logger.error("❌ Failed to initialize database: %s", str(e))
+        logger.error("❌ Failed to initialize database: {}", repr(e))
         raise
 
 

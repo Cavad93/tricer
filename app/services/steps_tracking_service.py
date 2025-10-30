@@ -67,7 +67,7 @@ class StepsTrackingService:
 
         except Exception as e:
             await session.rollback()
-            logger.error("Error saving steps for user {user_id}: %s", str(e))
+            logger.error("Error saving steps for user {user_id}: {}", repr(e))
             raise
 
     @staticmethod
@@ -99,7 +99,7 @@ class StepsTrackingService:
             return result.scalar_one_or_none()
 
         except Exception as e:
-            logger.error("Error getting steps for user {user_id} on {steps_date}: %s", str(e))
+            logger.error("Error getting steps for user {user_id} on {steps_date}: {}", repr(e))
             return None
 
     @staticmethod
@@ -133,7 +133,7 @@ class StepsTrackingService:
             return result.scalars().all()
 
         except Exception as e:
-            logger.error("Error getting steps history for user {user_id}: %s", str(e))
+            logger.error("Error getting steps history for user {user_id}: {}", repr(e))
             return []
 
     @staticmethod
@@ -163,7 +163,7 @@ class StepsTrackingService:
             return int(total_steps / len(history))
 
         except Exception as e:
-            logger.error("Error calculating average steps for user {user_id}: %s", str(e))
+            logger.error("Error calculating average steps for user {user_id}: {}", repr(e))
             return 0
 
     @staticmethod
@@ -197,7 +197,7 @@ class StepsTrackingService:
             return steps_entry.bonus_calories
 
         except Exception as e:
-            logger.error("Error calculating bonus calories for user {user_id}: %s", str(e))
+            logger.error("Error calculating bonus calories for user {user_id}: {}", repr(e))
             return 0
 
     @staticmethod

@@ -88,7 +88,7 @@ def apply_migrations(db_path: str = "./nutriai.db", migrations_dir: str = "./mig
                 logger.info(f"✓ {filename} - applied successfully")
 
             except sqlite3.Error as e:
-                logger.error("✗ %s - failed: %s", filename, str(e))
+                logger.error("✗ {} - failed: {}", filename, repr(e))
                 conn.rollback()
                 continue
 
@@ -99,7 +99,7 @@ def apply_migrations(db_path: str = "./nutriai.db", migrations_dir: str = "./mig
         return True
 
     except sqlite3.Error as e:
-        logger.error("Database error: %s", str(e))
+        logger.error("Database error: {}", repr(e))
         return False
 
 

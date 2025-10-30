@@ -447,7 +447,7 @@ async def reuse_weekly_plan_yes(update: Update, context: ContextTypes.DEFAULT_TY
         logger.info(f"Created daily plan from weekly plan for user {update.effective_user.id}")
 
     except Exception as e:
-        logger.error("Error copying day from weekly plan: %s", str(e), exc_info=True)
+        logger.error("Error copying day from weekly plan: {}", repr(e), exc_info=True)
 
         await progress_message.edit_text(
             "❌ Произошла ошибка при копировании плана.\n\n"
@@ -974,7 +974,7 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
         return MealPlanStates.ASKING_FEEDBACK
 
     except Exception as e:
-        logger.error("Error updating meal plan: %s", str(e), exc_info=True)
+        logger.error("Error updating meal plan: {}", repr(e), exc_info=True)
 
         await progress_message.edit_text(
             "❌ Произошла ошибка при обновлении плана.\n\n"
@@ -1153,7 +1153,7 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
         return MealPlanStates.ASKING_FEEDBACK
 
     except Exception as e:
-        logger.error("Error creating meal plan: %s", str(e), exc_info=True)
+        logger.error("Error creating meal plan: {}", repr(e), exc_info=True)
 
         await progress_message.edit_text(
             f"❌ Произошла ошибка при создании плана питания.\n\n"
@@ -1312,7 +1312,7 @@ async def view_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         caption=f"🛒 Список покупок (~{shopping_list.total_cost:.2f} ₽)"
                     )
             except Exception as e:
-                logger.error("Error sending PDF: %s", str(e))
+                logger.error("Error sending PDF: {}", repr(e))
 
         keyboard = [
             [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{meal_plan.id}")],

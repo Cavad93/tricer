@@ -46,10 +46,10 @@ class DiaryCheckService:
                     try:
                         await DiaryCheckService._check_user_diary(bot, user, session)
                     except Exception as e:
-                        logger.error("Error checking diary for user {user.id}: %s", str(e))
+                        logger.error("Error checking diary for user {user.id}: {}", repr(e))
 
         except Exception as e:
-            logger.error("Error in check_and_notify_incomplete_diaries: %s", str(e))
+            logger.error("Error in check_and_notify_incomplete_diaries: {}", repr(e))
 
     @staticmethod
     async def _check_user_diary(bot: Bot, user: User, session: AsyncSession):
@@ -108,7 +108,7 @@ class DiaryCheckService:
                 logger.info(f"Sent diary reminder to user {user.id}")
 
         except Exception as e:
-            logger.error("Error in _check_user_diary for user {user.id}: %s", str(e))
+            logger.error("Error in _check_user_diary for user {user.id}: {}", repr(e))
             raise
 
     @staticmethod
@@ -171,7 +171,7 @@ class DiaryCheckService:
             return ai_response.strip()
 
         except Exception as e:
-            logger.error("Error generating diary reminder message: %s", str(e))
+            logger.error("Error generating diary reminder message: {}", repr(e))
             # Fallback сообщение
             return (
                 f"📝 <b>Привет, {user.preferred_name or user.first_name}!</b>\n\n"
@@ -239,5 +239,5 @@ class DiaryCheckService:
             }
 
         except Exception as e:
-            logger.error("Error getting diary completion stats: %s", str(e))
+            logger.error("Error getting diary completion stats: {}", repr(e))
             return {"error": str(e)}

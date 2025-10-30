@@ -93,7 +93,7 @@ class MealPlanService:
             logger.info(f"AI generated meal plan for user {user_id}")
 
         except Exception as e:
-            logger.error("Error generating meal plan: %s", str(e))
+            logger.error("Error generating meal plan: {}", repr(e))
             raise
 
         # Парсим ответ AI
@@ -229,7 +229,7 @@ class MealPlanService:
             return plan_data
 
         except Exception as e:
-            logger.error("Error loading old plan {plan_id}: %s", str(e))
+            logger.error("Error loading old plan {plan_id}: {}", repr(e))
             return None
 
     @staticmethod
@@ -663,7 +663,7 @@ class MealPlanService:
             # Пробрасываем ValueError дальше
             raise
         except Exception as e:
-            logger.error("Unexpected error in _parse_ai_meal_plan: %s", str(e))
+            logger.error("Unexpected error in _parse_ai_meal_plan: {}", repr(e))
             raise ValueError(f"Unexpected error parsing AI response: {e}")
 
     @staticmethod

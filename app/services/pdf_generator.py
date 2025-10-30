@@ -66,7 +66,7 @@ class PDFGeneratorService:
             tz = pytz.timezone(timezone_name)
             return datetime.now(tz)
         except Exception as e:
-            logger.warning("Could not get timezone for {city}: %s, using UTC", str(e))
+            logger.warning("Could not get timezone for {city}: {}, using UTC", repr(e))
             return datetime.now(pytz.UTC)
 
     @staticmethod
@@ -92,7 +92,7 @@ class PDFGeneratorService:
             # Конвертируем в местное время
             return utc_time.astimezone(tz)
         except Exception as e:
-            logger.warning("Could not convert time to timezone for {city}: %s, returning original", str(e))
+            logger.warning("Could not convert time to timezone for {city}: {}, returning original", repr(e))
             return utc_time
 
     @staticmethod
@@ -156,7 +156,7 @@ class PDFGeneratorService:
                 logger.warning("Please install DejaVu fonts: sudo apt-get install fonts-dejavu")
 
         except Exception as e:
-            logger.error("Could not register custom fonts: %s", str(e))
+            logger.error("Could not register custom fonts: {}", repr(e))
 
     @staticmethod
     def _get_fonts():

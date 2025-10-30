@@ -160,7 +160,7 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             logger.info(f"AI-chat response sent to user {user.id}")
 
         except Exception as e:
-            logger.error("Error in AI-chat for user %s: %s", user.id, str(e))
+            logger.error("Error in AI-chat for user {}: {}", user.id, repr(e))
 
             await update.message.reply_text(
                 "❌ Произошла ошибка при обработке вашего сообщения.\n\n"
@@ -233,13 +233,13 @@ async def generate_meal_recommendations(
             )
             logger.info(f"Saved temporary meal plan for user {db_user.id}")
         except Exception as e:
-            logger.error("Error saving temporary meal plan for user %s: %s", db_user.id, str(e))
+            logger.error("Error saving temporary meal plan for user {}: {}", db_user.id, repr(e))
             # Не прерываем процесс, если не удалось сохранить
 
         return recommendations
 
     except Exception as e:
-        logger.error("Error generating meal recommendations for user %s: %s", db_user.id, str(e), exc_info=True)
+        logger.error("Error generating meal recommendations for user {}: {}", db_user.id, repr(e), exc_info=True)
         return (
             "❌ Произошла ошибка при генерации рекомендаций.\n\n"
             "Попробуй спросить по-другому или создай полноценный план питания через меню!"
@@ -277,7 +277,7 @@ async def clear_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.info(f"Chat history cleared for user {user.id}, deleted {count} messages")
 
         except Exception as e:
-            logger.error("Error clearing chat history for user %s: %s", user.id, str(e))
+            logger.error("Error clearing chat history for user {}: {}", user.id, repr(e))
 
             await update.message.reply_text(
                 "❌ Произошла ошибка при очистке истории.",
@@ -345,7 +345,7 @@ async def chat_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
 
         except Exception as e:
-            logger.error("Error getting chat stats for user %s: %s", user.id, str(e))
+            logger.error("Error getting chat stats for user {}: {}", user.id, repr(e))
 
             await update.message.reply_text(
                 "❌ Произошла ошибка при получении статистики.",

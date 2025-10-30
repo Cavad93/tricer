@@ -211,12 +211,12 @@ class ClaudeAIService:
             return result
 
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse JSON response from Claude: %s", str(e))
+            logger.error("Failed to parse JSON response from Claude: {}", repr(e))
             logger.error(f"Response content: {content}")
             raise Exception("Failed to parse food recognition response")
 
         except Exception as e:
-            logger.error("Error in Claude API food recognition: %s", str(e))
+            logger.error("Error in Claude API food recognition: {}", repr(e))
             raise
 
     async def chat(
@@ -402,7 +402,7 @@ class ClaudeAIService:
             return assistant_message
 
         except Exception as e:
-            logger.error("Error in Claude chat: %s", str(e))
+            logger.error("Error in Claude chat: {}", repr(e))
             return "Извините, произошла ошибка при обработке вашего запроса. Попробуйте позже."
 
     async def analyze_text(
@@ -437,7 +437,7 @@ class ClaudeAIService:
             return text_response
 
         except Exception as e:
-            logger.error("Ошибка в Claude text analysis: %s", str(e))
+            logger.error("Ошибка в Claude text analysis: {}", repr(e))
             raise
 
     async def extract_medical_analysis_from_image(
@@ -579,7 +579,7 @@ class ClaudeAIService:
             return extracted_text
 
         except Exception as e:
-            logger.error("Error in medical analysis OCR: %s", str(e), exc_info=True)
+            logger.error("Error in medical analysis OCR: {}", repr(e), exc_info=True)
             raise
 
     async def detect_food_inquiry_intent(
@@ -641,7 +641,7 @@ class ClaudeAIService:
             return result
 
         except Exception as e:
-            logger.error("Error detecting food inquiry intent: %s", str(e))
+            logger.error("Error detecting food inquiry intent: {}", repr(e))
             return {
                 "is_food_inquiry": False,
                 "confidence": "low",
@@ -762,7 +762,7 @@ class ClaudeAIService:
             return recommendation_text
 
         except Exception as e:
-            logger.error("Error generating meal recommendation: %s", str(e), exc_info=True)
+            logger.error("Error generating meal recommendation: {}", repr(e), exc_info=True)
             raise
 
     @staticmethod
@@ -796,7 +796,7 @@ class ClaudeAIService:
             return json.loads(response)
 
         except Exception as e:
-            logger.warning("Не удалось извлечь JSON из ответа Claude: %s", str(e))
+            logger.warning("Не удалось извлечь JSON из ответа Claude: {}", repr(e))
             return None
 
 

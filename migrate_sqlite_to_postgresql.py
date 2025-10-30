@@ -48,7 +48,7 @@ def get_sqlite_connection():
         logger.info(f"✅ Подключение к SQLite БД: {SQLITE_DB_PATH}")
         return conn
     except Exception as e:
-        logger.error("❌ Ошибка подключения к SQLite: %s", str(e))
+        logger.error("❌ Ошибка подключения к SQLite: {}", repr(e))
         raise
 
 
@@ -59,7 +59,7 @@ async def get_postgres_engine():
         logger.info("✅ Подключение к PostgreSQL БД")
         return engine
     except Exception as e:
-        logger.error("❌ Ошибка подключения к PostgreSQL: %s", str(e))
+        logger.error("❌ Ошибка подключения к PostgreSQL: {}", repr(e))
         raise
 
 
@@ -135,7 +135,7 @@ async def migrate_table(sqlite_conn, pg_session, table_name):
                 await pg_session.execute(insert_query, row_dict)
                 migrated_count += 1
             except Exception as e:
-                logger.error("❌ Ошибка при вставке строки в %s: %s", table_name, str(e))
+                logger.error("❌ Ошибка при вставке строки в {}: {}", table_name, repr(e))
                 logger.debug(f"Данные строки: {row_dict}")
                 # Продолжаем миграцию остальных строк
                 continue
@@ -145,7 +145,7 @@ async def migrate_table(sqlite_conn, pg_session, table_name):
         return migrated_count
 
     except Exception as e:
-        logger.error("❌ Ошибка при миграции таблицы %s: %s", table_name, str(e))
+        logger.error("❌ Ошибка при миграции таблицы {}: {}", table_name, repr(e))
         await pg_session.rollback()
         return 0
 
@@ -179,7 +179,7 @@ async def reset_sequences(pg_session):
                 )
                 logger.info(f"  ✅ {table}: sequence установлена на {max_id}")
         except Exception as e:
-            logger.warning("  ⚠️  Не удалось обновить sequence для %s: %s", table, str(e))
+            logger.warning("  ⚠️  Не удалось обновить sequence для {}: {}", table, repr(e))
 
     await pg_session.commit()
     logger.success("✅ Последовательности обновлены")
@@ -222,7 +222,7 @@ async def main():
         logger.success(f"   Всего мигрировано записей: {total_migrated}")
 
     except Exception as e:
-        logger.error("❌ Критическая ошибка при миграции: %s", str(e))
+        logger.error("❌ Критическая ошибка при миграции: {}", repr(e))
         raise
 
     finally:

@@ -87,7 +87,7 @@ class PDFReportGenerator:
             return filepath
 
         except Exception as e:
-            logger.error("Error creating pie chart: %s", str(e))
+            logger.error("Error creating pie chart: {}", repr(e))
             return None
 
     @staticmethod
@@ -154,7 +154,7 @@ class PDFReportGenerator:
             return filepath
 
         except Exception as e:
-            logger.error("Error creating progress bars: %s", str(e))
+            logger.error("Error creating progress bars: {}", repr(e))
             return None
 
     @staticmethod
@@ -397,5 +397,5 @@ class PDFReportGenerator:
             return filepath
 
         except Exception as e:
-            logger.error("Error generating nutrition report PDF: %s", str(e))
+            logger.error("Error generating nutrition report PDF: {}", repr(e))
             raise

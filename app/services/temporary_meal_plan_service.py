@@ -42,7 +42,7 @@ class TemporaryMealPlanService:
             return result.scalar_one_or_none()
 
         except Exception as e:
-            logger.error("Error getting temporary meal plan for user {user_id}: %s", str(e))
+            logger.error("Error getting temporary meal plan for user {user_id}: {}", repr(e))
             return None
 
     @staticmethod
@@ -109,7 +109,7 @@ class TemporaryMealPlanService:
 
         except Exception as e:
             await session.rollback()
-            logger.error("Error creating/updating temporary meal plan for user {user_id}: %s", str(e))
+            logger.error("Error creating/updating temporary meal plan for user {user_id}: {}", repr(e))
             raise
 
     @staticmethod
@@ -136,7 +136,7 @@ class TemporaryMealPlanService:
 
         except Exception as e:
             await session.rollback()
-            logger.error("Error deleting expired temporary meal plans: %s", str(e))
+            logger.error("Error deleting expired temporary meal plans: {}", repr(e))
             return 0
 
     @staticmethod
@@ -184,5 +184,5 @@ class TemporaryMealPlanService:
             return False
 
         except Exception as e:
-            logger.error("Error checking permanent meal plan for user {user_id}: %s", str(e))
+            logger.error("Error checking permanent meal plan for user {user_id}: {}", repr(e))
             return False
