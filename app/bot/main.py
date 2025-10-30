@@ -17,6 +17,8 @@ import sys
 
 from app.config import settings
 from app.db.session import async_session_maker
+from sqlalchemy import select
+from app.models.user import User
 from app.bot.handlers.start import onboarding_conversation
 from app.bot.handlers.photo import (
     photo_handler,
