@@ -28,12 +28,12 @@ if errorlevel 1 (
     echo ============================================================
     echo.
     echo This application requires Python 64-bit for full compatibility.
-    echo Some packages (like greenlet) do not have binary wheels for 32-bit Windows.
+    echo Some packages like greenlet do not have binary wheels for 32-bit Windows.
     echo.
     echo Please install Python 3.11 64-bit from:
     echo https://www.python.org/downloads/release/python-3119/
     echo.
-    echo Select: "Windows installer (64-bit)"
+    echo Select: Windows installer 64-bit
     echo ============================================================
     echo.
     pause
