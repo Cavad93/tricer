@@ -7,7 +7,7 @@ from loguru import logger
 import io
 from datetime import datetime, date
 
-from app.services.claude_ai import claude_service
+from app.services.claude_ai import get_claude_service
 from app.services.scheduler_service import get_scheduler
 from app.services.meal_service import MealService
 from app.services.usage_service import UsageService
@@ -88,7 +88,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 # Распознавание через Claude API
                 logger.info(f"No correction found, using AI recognition")
-                result = await claude_service.analyze_food_photo(
+                result = await get_claude_service().analyze_food_photo(
                     image_bytes=image_bytes,
                     additional_context=f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"
                 )
@@ -347,7 +347,7 @@ async def handle_clarification(update: Update, context: ContextTypes.DEFAULT_TYP
                 return ConversationHandler.END
 
             # Перераспознаем с учетом уточнения пользователя
-            result = await claude_service.analyze_food_photo(
+            result = await get_claude_service().analyze_food_photo(
                 image_bytes=photo_bytes,
                 additional_context=f"Пользователь уточнил: {clarification_text}\n"
                                    f"Пользователь придерживается диеты: {db_user.diet_type.value if db_user.diet_type else 'всеядный'}"

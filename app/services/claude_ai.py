@@ -826,5 +826,17 @@ class ClaudeAIService:
             return None
 
 
-# Создаем singleton экземпляр сервиса
-claude_service = ClaudeAIService()
+# Singleton экземпляр сервиса (lazy initialization)
+_claude_service_instance = None
+
+
+def get_claude_service() -> ClaudeAIService:
+    """Получить singleton экземпляр ClaudeAIService с отложенной инициализацией"""
+    global _claude_service_instance
+    if _claude_service_instance is None:
+        _claude_service_instance = ClaudeAIService()
+    return _claude_service_instance
+
+
+# Для обратной совместимости (deprecated, используйте get_claude_service())
+claude_service = None  # type: ignore

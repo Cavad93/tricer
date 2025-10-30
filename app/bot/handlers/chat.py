@@ -8,7 +8,7 @@ from loguru import logger
 from app.db.session import async_session_maker
 from app.services.chat_service import ChatService
 from app.services.usage_service import UsageService
-from app.services.claude_ai import claude_service
+from app.services.claude_ai import get_claude_service
 from app.services.meal_recommendation_service import MealRecommendationService
 from app.services.temporary_meal_plan_service import TemporaryMealPlanService
 from app.models.chat import MessageRole
@@ -71,7 +71,7 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
             # ПРОВЕРКА: Спрашивает ли пользователь о еде?
             logger.info(f"Detecting food inquiry intent for user {user.id}")
-            intent_result = await claude_service.detect_food_inquiry_intent(
+            intent_result = await get_claude_service().detect_food_inquiry_intent(
                 user_message=message_text,
                 conversation_history=conversation_history
             )
@@ -109,7 +109,7 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 # Обычный чат через Claude API
                 logger.info(f"Sending regular chat request to Claude for user {user.id}")
 
-                assistant_response = await claude_service.chat(
+                assistant_response = await get_claude_service().chat(
                     user_message=message_text,
                     conversation_history=conversation_history,
                     user_context=user_context
@@ -208,7 +208,7 @@ async def generate_meal_recommendations(
 
         # Генерируем рекомендации через Claude AI
         logger.info(f"Generating meal recommendations for user {db_user.id}")
-        recommendations = await claude_service.generate_meal_recommendation(
+        recommendations = await get_claude_service().generate_meal_recommendation(
             user_message=message_text,
             recommendation_context=recommendation_context,
             conversation_history=conversation_history

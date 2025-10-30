@@ -12,7 +12,7 @@ import asyncio
 from datetime import datetime, date
 from difflib import SequenceMatcher
 
-from app.services.claude_ai import claude_service
+from app.services.claude_ai import get_claude_service
 from app.services.meal_service import MealService
 from app.bot.keyboards import back_to_menu_keyboard, main_menu_keyboard
 from app.bot.states import RestaurantStates

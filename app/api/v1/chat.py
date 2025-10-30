@@ -17,7 +17,7 @@ from app.schemas.chat import (
 )
 from app.services.chat_service import ChatService
 from app.services.usage_service import UsageService
-from app.services.claude_ai import claude_service
+from app.services.claude_ai import get_claude_service
 from loguru import logger
 
 router = APIRouter()
@@ -69,7 +69,7 @@ async def send_chat_message(
 
         # Отправляем запрос к Claude API
         logger.info(f"Sending chat request for user {telegram_id}")
-        assistant_response = await claude_service.chat(
+        assistant_response = await get_claude_service().chat(
             user_message=request.message,
             conversation_history=conversation_history,
             user_context=user_context
