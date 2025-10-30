@@ -1,7 +1,8 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum, JSON
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -87,15 +88,15 @@ class User(Base):
 
     # Предпочтения
     diet_type = Column(SQLEnum(DietType), default=DietType.OMNIVORE)
-    allergies = Column(JSON, default=list)  # Список аллергий
-    dislikes = Column(JSON, default=list)  # Список нелюбимых продуктов
+    allergies = Column(JSONB, default=list)  # Список аллергий
+    dislikes = Column(JSONB, default=list)  # Список нелюбимых продуктов
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
     # Медицинская информация (Этап 4)
-    chronic_conditions = Column(JSON, default=list)  # Список хронических заболеваний
-    removed_organs = Column(JSON, default=list)  # Список удаленных органов
-    medical_restrictions = Column(JSON, default=dict)  # Медицинские ограничения по питанию (генерируется AI)
+    chronic_conditions = Column(JSONB, default=list)  # Список хронических заболеваний
+    removed_organs = Column(JSONB, default=list)  # Список удаленных органов
+    medical_restrictions = Column(JSONB, default=dict)  # Медицинские ограничения по питанию (генерируется AI)
     medical_notes = Column(String(1000), nullable=True)  # Дополнительные медицинские заметки
 
     # Напоминания о приемах пищи

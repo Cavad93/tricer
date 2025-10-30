@@ -1,7 +1,8 @@
 """
 Модель для хранения медицинских анализов пользователя
 """
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -20,12 +21,12 @@ class MedicalAnalysis(Base):
     analysis_date = Column(DateTime, nullable=True)  # Дата сдачи анализа
 
     # Данные
-    raw_data = Column(JSON, nullable=False)  # Сырые данные анализа (все показатели)
+    raw_data = Column(JSONB, nullable=False)  # Сырые данные анализа (все показатели)
     file_url = Column(String(500), nullable=True)  # URL загруженного файла (если был)
 
     # AI-анализ
-    ai_analysis = Column(JSON, nullable=True)  # Результат анализа от Claude AI
-    detected_deficiencies = Column(JSON, default=list)  # Выявленные дефициты (витамины, минералы и т.д.)
+    ai_analysis = Column(JSONB, nullable=True)  # Результат анализа от Claude AI
+    detected_deficiencies = Column(JSONB, default=list)  # Выявленные дефициты (витамины, минералы и т.д.)
     recommendations = Column(Text, nullable=True)  # Рекомендации от AI (без диагнозов!)
     needs_doctor_consultation = Column(Boolean, default=False)  # Флаг: нужна консультация врача
 

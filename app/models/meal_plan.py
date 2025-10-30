@@ -1,7 +1,8 @@
 """
 Модели для планов питания
 """
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text, JSON, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -36,7 +37,7 @@ class MealPlan(Base):
 
     # Параметры генерации
     budget_category = Column(String(20), nullable=True)  # economy/normal/premium
-    diet_preferences = Column(JSON, default=dict)  # Предпочтения при генерации
+    diet_preferences = Column(JSONB, default=dict)  # Предпочтения при генерации
 
     # Метаданные
     created_at = Column(DateTime, default=func.now())
@@ -91,7 +92,7 @@ class PlannedMeal(Base):
     recipe_name = Column(String(255), nullable=False)
 
     # Ингредиенты
-    ingredients = Column(JSON, default=list)  # [{name, quantity, unit, calories, proteins, fats, carbs}]
+    ingredients = Column(JSONB, default=list)  # [{name, quantity, unit, calories, proteins, fats, carbs}]
 
     # КБЖУ блюда
     calories = Column(Integer, nullable=True)
@@ -107,7 +108,7 @@ class PlannedMeal(Base):
     serving_size = Column(String(100), nullable=True)  # Описание порции
 
     # Микронутриенты (JSON для гибкости)
-    micronutrients = Column(JSON, default=dict)  # Словарь с микронутриентами
+    micronutrients = Column(JSONB, default=dict)  # Словарь с микронутриентами
 
     # Отношения
     day = relationship("MealPlanDay", back_populates="meals")

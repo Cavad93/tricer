@@ -1,7 +1,8 @@
 """
 Модели для дневника питания
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Date, JSON, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Date, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime, date
@@ -81,11 +82,11 @@ class MealFood(Base):
     carbs = Column(Float, nullable=False)
 
     # Дополнительные данные
-    ingredients = Column(JSON, default=list)  # Список ингредиентов
+    ingredients = Column(JSONB, default=list)  # Список ингредиентов
     confidence_score = Column(Float, nullable=True)  # Уверенность AI в распознавании (0-1)
 
     # Микронутриенты (JSON для гибкости, содержит все витамины и минералы)
-    micronutrients = Column(JSON, default=dict)  # Словарь с микронутриентами
+    micronutrients = Column(JSONB, default=dict)  # Словарь с микронутриентами
 
     created_at = Column(DateTime, default=func.now())
 

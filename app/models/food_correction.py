@@ -1,7 +1,8 @@
 """
 Модель для хранения исправлений распознавания еды
 """
-from sqlalchemy import Column, Integer, String, JSON, DateTime, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Index
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 
@@ -19,10 +20,10 @@ class FoodRecognitionCorrection(Base):
     photo_hash = Column(String, nullable=False, index=True)
 
     # Оригинальное распознавание от AI
-    original_recognition = Column(JSON, nullable=False)
+    original_recognition = Column(JSONB, nullable=False)
 
     # Скорректированные данные от пользователя
-    corrected_data = Column(JSON, nullable=False)
+    corrected_data = Column(JSONB, nullable=False)
 
     # Текстовое уточнение от пользователя
     user_clarification = Column(String, nullable=True)

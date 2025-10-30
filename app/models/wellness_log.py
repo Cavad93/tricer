@@ -1,7 +1,8 @@
 """
 Модель для отслеживания самочувствия и корреляции с питанием
 """
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime
@@ -33,7 +34,7 @@ class WellnessLog(Base):
 
     # Физические симптомы (JSON массив)
     # Примеры: ["вздутие", "усталость", "головная боль", "тяжесть в желудке", "изжога"]
-    physical_symptoms = Column(JSON, default=list)
+    physical_symptoms = Column(JSONB, default=list)
 
     # Заметки пользователя
     notes = Column(Text, nullable=True)
