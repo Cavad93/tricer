@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 
+    # Cloudflare Worker для обхода геоблокировки (опционально)
+    # Если указан, все запросы к Claude API пойдут через этот прокси
+    # Формат: https://your-worker.your-subdomain.workers.dev
+    CLOUDFLARE_WORKER_URL: Optional[str] = None
+
     # Database (PostgreSQL)
     DATABASE_URL: str = "postgresql+asyncpg://nutriai:nutriai@localhost:5432/nutriai"
 

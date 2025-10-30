@@ -5,6 +5,7 @@ import anthropic
 from anthropic import Anthropic, AsyncAnthropic
 import base64
 import json
+import httpx
 from typing import Dict, List, Optional
 from loguru import logger
 
@@ -16,8 +17,33 @@ class ClaudeAIService:
 
     def __init__(self):
         """Инициализация клиента Claude"""
-        self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        self.async_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        # Если указан Cloudflare Worker, используем его как прокси
+        if settings.CLOUDFLARE_WORKER_URL:
+            logger.info("Using Cloudflare Worker proxy: {}", settings.CLOUDFLARE_WORKER_URL)
+
+            # Создаем HTTP клиент с кастомным base_url
+            http_client = httpx.Client(
+                base_url=settings.CLOUDFLARE_WORKER_URL,
+                timeout=60.0
+            )
+            async_http_client = httpx.AsyncClient(
+                base_url=settings.CLOUDFLARE_WORKER_URL,
+                timeout=60.0
+            )
+
+            self.client = Anthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                http_client=http_client
+            )
+            self.async_client = AsyncAnthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                http_client=async_http_client
+            )
+        else:
+            # Стандартное подключение без прокси
+            self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+            self.async_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
         self.model = settings.CLAUDE_MODEL
 
     async def analyze_food_photo(
