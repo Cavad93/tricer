@@ -100,7 +100,7 @@ class MealService:
 
         except Exception as e:
             await session.rollback()
-            logger.error(f"Error creating meal: {e}")
+            logger.error("Error creating meal: %s", str(e))
             raise
 
     @staticmethod

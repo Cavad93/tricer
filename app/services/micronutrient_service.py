@@ -67,7 +67,7 @@ class MicronutrientService:
             return daily_record
 
         except Exception as e:
-            logger.error(f"Error updating daily micronutrients: {e}")
+            logger.error("Error updating daily micronutrients: %s", str(e))
             await db.rollback()
             raise
 
@@ -98,7 +98,7 @@ class MicronutrientService:
             return result.scalar_one_or_none()
 
         except Exception as e:
-            logger.error(f"Error getting daily micronutrients: {e}")
+            logger.error("Error getting daily micronutrients: %s", str(e))
             return None
 
     @staticmethod
@@ -133,7 +133,7 @@ class MicronutrientService:
             return list(result.scalars().all())
 
         except Exception as e:
-            logger.error(f"Error getting period micronutrients: {e}")
+            logger.error("Error getting period micronutrients: %s", str(e))
             return []
 
     @staticmethod
@@ -184,7 +184,7 @@ class MicronutrientService:
             return averages
 
         except Exception as e:
-            logger.error(f"Error calculating period average: {e}")
+            logger.error("Error calculating period average: %s", str(e))
             return {}
 
     @staticmethod
@@ -219,7 +219,7 @@ class MicronutrientService:
             return MicronutrientTargets.get_all_targets(gender)
 
         except Exception as e:
-            logger.error(f"Error getting micronutrient targets: {e}")
+            logger.error("Error getting micronutrient targets: %s", str(e))
             return MicronutrientTargets.get_all_targets("male")
 
     @staticmethod
@@ -317,6 +317,6 @@ class MicronutrientService:
             return daily_record
 
         except Exception as e:
-            logger.error(f"Error recalculating daily totals: {e}")
+            logger.error("Error recalculating daily totals: %s", str(e))
             await db.rollback()
             raise

@@ -155,7 +155,7 @@ class ShoppingListService:
                     total_cost += estimated_price
 
                 except Exception as e:
-                    logger.warning(f"Failed to search price for {product_name}: {e}")
+                    logger.warning("Failed to search price for {product_name}: %s", str(e))
 
             shopping_item = ShoppingItem(
                 shopping_list_id=shopping_list.id,
@@ -662,7 +662,7 @@ class ShoppingListService:
                 raise ValueError("Could not parse AI price response")
 
         except Exception as e:
-            logger.warning(f"AI price search failed for {product_name}: {e}. Using fallback estimation.")
+            logger.warning("AI price search failed for {product_name}: %s. Using fallback estimation.", str(e))
 
             # Fallback - используем простую оценку
             base_prices = {

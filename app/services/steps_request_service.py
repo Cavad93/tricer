@@ -67,10 +67,10 @@ class StepsRequestService:
                         await StepsRequestService._send_steps_request(bot, user)
 
                     except Exception as e:
-                        logger.error(f"Error requesting steps from user {user.id}: {e}")
+                        logger.error("Error requesting steps from user {user.id}: %s", str(e))
 
         except Exception as e:
-            logger.error(f"Error in request_daily_steps: {e}")
+            logger.error("Error in request_daily_steps: %s", str(e))
 
     @staticmethod
     async def _send_steps_request(bot: Bot, user: User):
@@ -125,7 +125,7 @@ class StepsRequestService:
             logger.info(f"Sent steps request to user {user.id}")
 
         except Exception as e:
-            logger.error(f"Error sending steps request to user {user.id}: {e}")
+            logger.error("Error sending steps request to user {user.id}: %s", str(e))
 
     @staticmethod
     def get_steps_from_range(range_value: str) -> int:

@@ -70,7 +70,7 @@ class WebSearchService:
                                 return result
 
                 except Exception as e:
-                    logger.warning(f"DuckDuckGo search failed: {e}")
+                    logger.warning("DuckDuckGo search failed: %s", str(e))
 
                 # 2. Общий веб-поиск через HTML scraping (fallback)
                 # Используем простой поиск по сайтам с пищевой ценностью
@@ -106,7 +106,7 @@ class WebSearchService:
                                     return result
 
                     except Exception as e:
-                        logger.warning(f"Search engine {search_url} failed: {e}")
+                        logger.warning("Search engine {search_url} failed: %s", str(e))
                         continue
 
             # Если ничего не нашли
@@ -122,7 +122,7 @@ class WebSearchService:
             }
 
         except Exception as e:
-            logger.error(f"Error searching nutrition data for {dish_name}: {e}")
+            logger.error("Error searching nutrition data for {dish_name}: %s", str(e))
             return {
                 "source": "error",
                 "dish_name": dish_name,

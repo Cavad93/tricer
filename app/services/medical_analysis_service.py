@@ -298,7 +298,7 @@ class MedicalAnalysisService:
             }
 
         except Exception as e:
-            logger.error(f"Ошибка анализа медицинских данных: {e}")
+            logger.error("Ошибка анализа медицинских данных: %s", str(e))
             return {
                 "success": False,
                 "error": str(e),
@@ -457,7 +457,7 @@ class MedicalAnalysisService:
             return restrictions
 
         except Exception as e:
-            logger.error(f"Ошибка генерации медицинских ограничений: {e}")
+            logger.error("Ошибка генерации медицинских ограничений: %s", str(e))
             return {
                 "foods_to_increase": [],
                 "foods_to_limit": [],

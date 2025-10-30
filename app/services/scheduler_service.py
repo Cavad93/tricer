@@ -44,7 +44,7 @@ class SchedulerService:
             logger.info("Scheduler service started successfully")
 
         except Exception as e:
-            logger.error(f"Error starting scheduler: {e}")
+            logger.error("Error starting scheduler: %s", str(e))
 
     def stop(self):
         """Остановить планировщик"""
@@ -53,7 +53,7 @@ class SchedulerService:
                 self.scheduler.shutdown(wait=False)
                 logger.info("Scheduler service stopped")
         except Exception as e:
-            logger.error(f"Error stopping scheduler: {e}")
+            logger.error("Error stopping scheduler: %s", str(e))
 
     async def _check_and_send_reminders(self):
         """
@@ -81,7 +81,7 @@ class SchedulerService:
             )
 
         except Exception as e:
-            logger.error(f"Error in _check_and_send_reminders: {e}")
+            logger.error("Error in _check_and_send_reminders: %s", str(e))
 
     def schedule_wellness_survey(self, telegram_id: int, meal_id: int, delay_minutes: int = 30):
         """
@@ -108,7 +108,7 @@ class SchedulerService:
             logger.info(f"Scheduled wellness survey for user {telegram_id}, meal {meal_id} at {run_time}")
 
         except Exception as e:
-            logger.error(f"Error scheduling wellness survey: {e}")
+            logger.error("Error scheduling wellness survey: %s", str(e))
 
     async def _send_wellness_survey(self, telegram_id: int, meal_id: int):
         """
@@ -157,7 +157,7 @@ class SchedulerService:
             await message.edit_reply_markup(reply_markup=reply_markup)
 
         except Exception as e:
-            logger.error(f"Error sending wellness survey: {e}")
+            logger.error("Error sending wellness survey: %s", str(e))
 
 
 # Глобальный экземпляр планировщика

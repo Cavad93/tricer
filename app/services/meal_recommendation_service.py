@@ -101,7 +101,7 @@ class MealRecommendationService:
             }
 
         except Exception as e:
-            logger.error(f"Error getting daily nutrition status for user {user_id}: {e}")
+            logger.error("Error getting daily nutrition status for user {user_id}: %s", str(e))
             return {
                 "total_calories": 0,
                 "total_proteins": 0,
@@ -167,7 +167,7 @@ class MealRecommendationService:
             }
 
         except Exception as e:
-            logger.error(f"Error calculating remaining nutrients for user {user.id}: {e}")
+            logger.error("Error calculating remaining nutrients for user {user.id}: %s", str(e))
             return {
                 "target_calories": 2000,
                 "bonus_calories": 0,
@@ -214,7 +214,7 @@ class MealRecommendationService:
             return False, None
 
         except Exception as e:
-            logger.error(f"Error checking existing plan for user {user_id}: {e}")
+            logger.error("Error checking existing plan for user {user_id}: %s", str(e))
             return False, None
 
     @staticmethod
@@ -270,5 +270,5 @@ class MealRecommendationService:
             }
 
         except Exception as e:
-            logger.error(f"Error generating meal recommendation context for user {user.id}: {e}")
+            logger.error("Error generating meal recommendation context for user {user.id}: %s", str(e))
             raise

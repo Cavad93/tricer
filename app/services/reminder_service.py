@@ -111,10 +111,10 @@ class ReminderService:
                         try:
                             await DiaryCheckService._check_user_diary(bot, user, session)
                         except Exception as e:
-                            logger.error(f"Error checking diary for user {user.id}: {e}")
+                            logger.error("Error checking diary for user {user.id}: %s", str(e))
 
         except Exception as e:
-            logger.error(f"Error in send_all_reminders_for_time: {e}")
+            logger.error("Error in send_all_reminders_for_time: %s", str(e))
 
     @staticmethod
     async def send_meal_reminder(bot: Bot, user: User, meal_type: MealType):
@@ -212,7 +212,7 @@ class ReminderService:
                             f"{FriendlyPhrases.get_encouragement()}"
                         )
                 except Exception as e:
-                    logger.warning(f"Error parsing meal plan data for reminder: {e}")
+                    logger.warning("Error parsing meal plan data for reminder: %s", str(e))
                     message = (
                         f"{emoji} <b>Время для приема пищи: {meal_name}!</b>\n\n"
                         f"📋 У тебя есть активный план питания на сегодня.\n"
@@ -241,7 +241,7 @@ class ReminderService:
             logger.info(f"Meal reminder sent to user {user.telegram_id} for {meal_type.value}")
 
         except TelegramError as e:
-            logger.error(f"Telegram error sending reminder to user {user.telegram_id}: {e}")
+            logger.error("Telegram error sending reminder to user {user.telegram_id}: %s", str(e))
             # Если пользователь заблокировал бота, отключаем напоминания
             if "blocked" in str(e).lower() or "chat not found" in str(e).lower():
                 async with async_session_maker() as session:
@@ -250,7 +250,7 @@ class ReminderService:
                     await session.commit()
                     logger.info(f"Disabled reminders for user {user.telegram_id} (bot blocked)")
         except Exception as e:
-            logger.error(f"Error sending reminder to user {user.telegram_id}: {e}")
+            logger.error("Error sending reminder to user {user.telegram_id}: %s", str(e))
 
     @staticmethod
     async def send_reminders_for_meal_type(bot: Bot, meal_type: MealType, target_time: str):
@@ -295,7 +295,7 @@ class ReminderService:
                     await ReminderService.send_meal_reminder(bot, user, meal_type)
 
         except Exception as e:
-            logger.error(f"Error in send_reminders_for_meal_type: {e}")
+            logger.error("Error in send_reminders_for_meal_type: %s", str(e))
 
     @staticmethod
     def parse_time(time_str: Optional[str]) -> Optional[time]:

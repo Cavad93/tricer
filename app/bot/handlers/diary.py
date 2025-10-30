@@ -131,7 +131,7 @@ async def diary_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Diary shown for user {user.id}, {len(meals)} meals")
 
     except Exception as e:
-        logger.error(f"Error showing diary for user {user.id}: {e}")
+        logger.error("Error showing diary for user %s: %s", user.id, str(e))
 
         await query.edit_message_text(
             "❌ Ошибка при загрузке дневника.\nПопробуйте позже.",
@@ -189,7 +189,7 @@ async def delete_meal_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
 
     except Exception as e:
-        logger.error(f"Error deleting meal {meal_id} for user {user.id}: {e}")
+        logger.error("Error deleting meal %s for user %s: %s", meal_id, user.id, str(e))
 
         await query.edit_message_text(
             "❌ Ошибка при удалении.\nПопробуйте позже.",

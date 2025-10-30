@@ -731,7 +731,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     await MedicalAnalysisService.generate_medical_restrictions(user, session)
                     logger.info(f"Medical restrictions generated for user {user.id}")
                 except Exception as e:
-                    logger.error(f"Error generating medical restrictions: {e}")
+                    logger.error("Error generating medical restrictions: %s", str(e))
 
             # Добавляем начальный вес в историю
             try:
@@ -744,11 +744,11 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 )
                 logger.info(f"Initial weight entry added for user {user.id}")
             except Exception as e:
-                logger.error(f"Error adding initial weight entry: {e}")
+                logger.error("Error adding initial weight entry: %s", str(e))
 
         except Exception as e:
             await session.rollback()
-            logger.error(f"Error saving user profile: {e}")
+            logger.error("Error saving user profile: %s", str(e))
             raise
 
     # Показываем результаты

@@ -105,7 +105,7 @@ async def send_chat_message(
         )
 
     except Exception as e:
-        logger.error(f"Error in chat for user {telegram_id}: {e}")
+        logger.error("Error in chat for user %s: %s", telegram_id, str(e))
         raise HTTPException(status_code=500, detail="Failed to process chat message")
 
 

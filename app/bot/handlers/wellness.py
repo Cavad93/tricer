@@ -478,7 +478,7 @@ async def handle_notes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
                 await update.message.reply_text(success_text, parse_mode="HTML")
 
         except Exception as e:
-            logger.error(f"Error saving wellness log: {e}")
+            logger.error("Error saving wellness log: %s", str(e))
             error_text = "Произошла ошибка при сохранении данных. Попробуйте позже."
             if message_to_edit:
                 await message_to_edit.edit_text(error_text)

@@ -286,7 +286,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
                 logger.info(f"Medical restrictions updated for user {db_user.id} after OCR analysis")
             except Exception as e:
-                logger.error(f"Error updating medical restrictions after analysis: {e}")
+                logger.error("Error updating medical restrictions after analysis: %s", str(e))
                 # Не прерываем процесс, если не удалось обновить ограничения
 
             # Формируем красивый ответ
@@ -300,7 +300,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return ConversationHandler.END
 
     except Exception as e:
-        logger.error(f"Error handling file upload with OCR: {e}", exc_info=True)
+        logger.error("Error handling file upload with OCR: %s", str(e), exc_info=True)
         await status_message.edit_text(
             "❌ Произошла ошибка при обработке файла.\n"
             "Попробуй ввести показатели текстом или загрузи другое фото.",
@@ -400,7 +400,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
                 logger.info(f"Medical restrictions updated for user {db_user.id} after analysis")
             except Exception as e:
-                logger.error(f"Error updating medical restrictions after analysis: {e}")
+                logger.error("Error updating medical restrictions after analysis: %s", str(e))
                 # Не прерываем процесс, если не удалось обновить ограничения
 
             # Формируем красивый ответ
@@ -414,7 +414,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             return ConversationHandler.END
 
     except Exception as e:
-        logger.error(f"Error analyzing lab results: {e}", exc_info=True)
+        logger.error("Error analyzing lab results: %s", str(e), exc_info=True)
         await status_message.edit_text(
             "❌ Произошла ошибка при анализе данных.\n"
             "Попробуй еще раз позже.",

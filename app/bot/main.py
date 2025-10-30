@@ -497,7 +497,7 @@ async def handle_new_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             reply_markup=back_to_menu_keyboard()
                         )
                     except Exception as e:
-                        logger.error(f"Error generating AI weight message: {e}")
+                        logger.error("Error generating AI weight message: %s", str(e))
                         # Если AI не сработал, просто показываем меню
                         await update.message.reply_text(
                             "Что хочешь сделать дальше?",
@@ -713,7 +713,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             # Если не удалось отправить сообщение об ошибке - просто логируем
-            logger.error(f"Failed to send error message to user: {e}")
+            logger.error("Failed to send error message to user: %s", str(e))
 
 
 async def check_expired_plans_job(context: ContextTypes.DEFAULT_TYPE):
@@ -730,7 +730,7 @@ async def check_expired_plans_job(context: ContextTypes.DEFAULT_TYPE):
             if count > 0:
                 logger.info(f"Auto-deactivated {count} expired meal plans")
     except Exception as e:
-        logger.error(f"Error in check_expired_plans_job: {e}", exc_info=True)
+        logger.error("Error in check_expired_plans_job: %s", str(e), exc_info=True)
 
 
 async def post_init(application: Application) -> None:

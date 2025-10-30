@@ -52,7 +52,7 @@ class WeightService:
 
         except Exception as e:
             await session.rollback()
-            logger.error(f"Error adding weight entry for user {user_id}: {e}")
+            logger.error("Error adding weight entry for user {user_id}: %s", str(e))
             raise
 
     @staticmethod
@@ -84,7 +84,7 @@ class WeightService:
 
         except Exception as e:
             await session.rollback()
-            logger.error(f"Error updating user {user.id} weight: {e}")
+            logger.error("Error updating user {user.id} weight: %s", str(e))
             raise
 
     @staticmethod
@@ -116,7 +116,7 @@ class WeightService:
             return list(weight_history)
 
         except Exception as e:
-            logger.error(f"Error getting weight history for user {user_id}: {e}")
+            logger.error("Error getting weight history for user {user_id}: %s", str(e))
             raise
 
     @staticmethod
@@ -145,7 +145,7 @@ class WeightService:
             return result.scalar_one_or_none()
 
         except Exception as e:
-            logger.error(f"Error getting latest weight entry for user {user_id}: {e}")
+            logger.error("Error getting latest weight entry for user {user_id}: %s", str(e))
             raise
 
     @staticmethod

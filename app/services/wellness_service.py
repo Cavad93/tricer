@@ -242,7 +242,7 @@ class WellnessService:
             return analysis_result
 
         except Exception as e:
-            logger.error(f"Error analyzing wellness patterns: {e}")
+            logger.error("Error analyzing wellness patterns: %s", str(e))
             return {
                 "status": "error",
                 "message": f"Ошибка при анализе: {str(e)}"
@@ -401,7 +401,7 @@ class WellnessService:
             return insights
 
         except Exception as e:
-            logger.error(f"Error getting meal correlation insights: {e}")
+            logger.error("Error getting meal correlation insights: %s", str(e))
             return {
                 "status": "error",
                 "message": str(e)

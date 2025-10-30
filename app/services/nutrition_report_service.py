@@ -149,7 +149,7 @@ class NutritionReportService:
             return report
 
         except Exception as e:
-            logger.error(f"Error generating daily report: {e}")
+            logger.error("Error generating daily report: %s", str(e))
             raise
 
     @staticmethod
@@ -312,7 +312,7 @@ class NutritionReportService:
             return report
 
         except Exception as e:
-            logger.error(f"Error generating period report: {e}")
+            logger.error("Error generating period report: %s", str(e))
             raise
 
     @staticmethod
@@ -413,5 +413,5 @@ class NutritionReportService:
             return comparison
 
         except Exception as e:
-            logger.error(f"Error generating plan comparison: {e}")
+            logger.error("Error generating plan comparison: %s", str(e))
             raise
