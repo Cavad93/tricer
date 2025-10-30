@@ -1,7 +1,7 @@
 """
 Модели для планов питания
 """
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Float, Date, DateTime, ForeignKey, Text, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -42,7 +42,7 @@ class MealPlan(Base):
     # Метаданные
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    is_active = Column(Integer, default=1)  # Активный план
+    is_active = Column(Boolean, default=True)  # Активный план
 
     # Отношения
     days = relationship("MealPlanDay", back_populates="meal_plan", cascade="all, delete-orphan")
