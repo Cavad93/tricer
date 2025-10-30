@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:12-alpine
+    container_name: nutriai_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nutriai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nutriai}
+      POSTGRES_DB: ${POSTGRES_DB:-nutriai}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nutriai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+
+  # Дополнительный контейнер для удобного просмотра БД (опционально)
+  adminer:
+    image: adminer:latest
+    container_name: nutriai_adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  nutriai_network:
+    driver: bridge

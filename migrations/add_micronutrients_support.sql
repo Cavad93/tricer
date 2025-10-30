@@ -4,7 +4,7 @@
 
 -- 1. Создание таблицы для хранения суточной статистики по микронутриентам
 CREATE TABLE IF NOT EXISTS daily_micronutrients (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     date DATE NOT NULL,
 
@@ -55,12 +55,11 @@ CREATE TABLE IF NOT EXISTS daily_micronutrients (
 CREATE INDEX IF NOT EXISTS idx_daily_micronutrients_user_date ON daily_micronutrients(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_daily_micronutrients_date ON daily_micronutrients(date);
 
--- 2. Добавление поля micronutrients в таблицу meal_foods (JSON)
--- SQLite не поддерживает ALTER COLUMN, поэтому используем ADD COLUMN
-ALTER TABLE meal_foods ADD COLUMN micronutrients TEXT DEFAULT '{}';
+-- 2. Добавление поля micronutrients в таблицу meal_foods (JSONB)
+ALTER TABLE meal_foods ADD COLUMN IF NOT EXISTS micronutrients JSONB DEFAULT '{}'::jsonb;
 
--- 3. Добавление поля micronutrients в таблицу planned_meals (JSON)
-ALTER TABLE planned_meals ADD COLUMN micronutrients TEXT DEFAULT '{}';
+-- 3. Добавление поля micronutrients в таблицу planned_meals (JSONB)
+ALTER TABLE planned_meals ADD COLUMN IF NOT EXISTS micronutrients JSONB DEFAULT '{}'::jsonb;
 
 -- Комментарии:
 -- - daily_micronutrients хранит агрегированные данные за день для быстрого доступа

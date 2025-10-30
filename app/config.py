@@ -20,8 +20,15 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 
-    # Database (SQLite)
-    DATABASE_URL: str = "sqlite+aiosqlite:///./nutriai.db"
+    # Database (PostgreSQL)
+    DATABASE_URL: str = "postgresql+asyncpg://nutriai:nutriai@localhost:5432/nutriai"
+
+    # PostgreSQL connection settings (optional, for advanced configuration)
+    POSTGRES_USER: str = "nutriai"
+    POSTGRES_PASSWORD: str = "nutriai"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = "nutriai"
 
     # Security
     SECRET_KEY: str

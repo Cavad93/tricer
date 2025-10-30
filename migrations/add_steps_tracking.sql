@@ -1,9 +1,9 @@
 -- Добавление поля timezone для пользователей
-ALTER TABLE users ADD COLUMN timezone VARCHAR(50) DEFAULT 'UTC';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'UTC';
 
 -- Создание таблицы для учета шагов пользователей
 CREATE TABLE IF NOT EXISTS user_steps (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     date DATE NOT NULL,
     steps INTEGER NOT NULL,

@@ -2,26 +2,26 @@
 -- Добавляет поддержку хранения медицинской информации и анализов
 
 -- 1. Добавляем медицинские поля в таблицу users
-ALTER TABLE users ADD COLUMN chronic_conditions TEXT DEFAULT '[]';
-ALTER TABLE users ADD COLUMN removed_organs TEXT DEFAULT '[]';
-ALTER TABLE users ADD COLUMN medical_restrictions TEXT DEFAULT '{}';
-ALTER TABLE users ADD COLUMN medical_notes TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS chronic_conditions JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS removed_organs JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS medical_restrictions JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS medical_notes TEXT;
 
 -- 2. Создаем таблицу для хранения медицинских анализов
 CREATE TABLE IF NOT EXISTS medical_analyses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL,
     analysis_type VARCHAR(100),
-    analysis_date DATETIME,
-    raw_data TEXT NOT NULL,  -- JSON с сырыми данными анализа
+    analysis_date TIMESTAMP,
+    raw_data JSONB NOT NULL,  -- JSON с сырыми данными анализа
     file_url VARCHAR(500),
-    ai_analysis TEXT,  -- JSON с результатом анализа от AI
-    detected_deficiencies TEXT DEFAULT '[]',  -- JSON список дефицитов
-    needs_doctor_consultation BOOLEAN DEFAULT 0,
+    ai_analysis JSONB,  -- JSON с результатом анализа от AI
+    detected_deficiencies JSONB DEFAULT '[]'::jsonb,  -- JSON список дефицитов
+    needs_doctor_consultation BOOLEAN DEFAULT FALSE,
     recommendations TEXT,
     user_notes TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

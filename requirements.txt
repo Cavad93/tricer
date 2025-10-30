@@ -4,9 +4,10 @@ uvicorn[standard]==0.24.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
-# Database (SQLite instead of PostgreSQL)
+# Database (PostgreSQL)
 sqlalchemy==2.0.23
-aiosqlite==0.19.0
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
 alembic==1.12.1
 
 # Telegram Bot

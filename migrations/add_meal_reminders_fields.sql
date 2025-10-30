@@ -1,8 +1,8 @@
 -- Migration: Add meal reminder fields to users table
 
-ALTER TABLE users ADD COLUMN reminders_enabled BOOLEAN DEFAULT 1;
-ALTER TABLE users ADD COLUMN breakfast_reminder_time VARCHAR(5) NULL;
-ALTER TABLE users ADD COLUMN lunch_reminder_time VARCHAR(5) NULL;
-ALTER TABLE users ADD COLUMN dinner_reminder_time VARCHAR(5) NULL;
-ALTER TABLE users ADD COLUMN snack_reminder_time VARCHAR(5) NULL;
-ALTER TABLE users ADD COLUMN reminder_timezone VARCHAR(50) DEFAULT 'UTC';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reminders_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS breakfast_reminder_time VARCHAR(5) NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS lunch_reminder_time VARCHAR(5) NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS dinner_reminder_time VARCHAR(5) NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS snack_reminder_time VARCHAR(5) NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reminder_timezone VARCHAR(50) DEFAULT 'UTC';

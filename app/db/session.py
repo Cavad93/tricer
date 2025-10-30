@@ -1,15 +1,18 @@
 """
-Конфигурация SQLAlchemy для работы с SQLite
+Конфигурация SQLAlchemy для работы с PostgreSQL
 """
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
 from app.config import settings
 
-# Создаем async engine для SQLite
+# Создаем async engine для PostgreSQL
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     future=True,
+    pool_pre_ping=True,  # Проверка соединения перед использованием
+    pool_size=10,  # Размер пула соединений
+    max_overflow=20,  # Максимальное количество дополнительных соединений
 )
 
 # Создаем фабрику сессий
