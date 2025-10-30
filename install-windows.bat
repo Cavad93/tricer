@@ -51,7 +51,7 @@ echo.
 
 echo [2/5] Installing packages that require binary wheels (pandas, numpy, matplotlib)...
 echo This avoids C++ compilation which requires Visual Studio Build Tools
-pip install pandas numpy matplotlib --only-binary :all: --upgrade
+pip install pandas numpy matplotlib --only-binary=:all: --upgrade
 if errorlevel 1 (
     echo ERROR: Failed to install pandas/numpy/matplotlib
     echo Make sure you have Python 3.11 64-bit
@@ -62,7 +62,7 @@ echo.
 
 echo [3/5] Installing Pillow (binary wheels only)...
 echo This avoids C++ compilation which requires Visual Studio Build Tools
-pip install Pillow --only-binary :all: --upgrade
+pip install Pillow --only-binary=:all: --upgrade
 if errorlevel 1 (
     echo ERROR: Failed to install Pillow
     pause
