@@ -71,4 +71,10 @@ dmypy.json
 # Temporary files
 tmp/
 temp/
+temp_fonts/
 *.tmp
+
+# Fonts (DejaVu fonts can be installed locally)
+fonts/
+*.ttf
+*.otf

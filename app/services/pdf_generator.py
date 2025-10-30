@@ -102,6 +102,11 @@ class PDFGeneratorService:
             # Пытаемся найти и зарегистрировать шрифты DejaVu (они поддерживают кириллицу)
             # Возможные пути к шрифтам в разных ОС
             font_paths = [
+                # Windows - System fonts
+                r"C:\Windows\Fonts\DejaVuSans.ttf",
+                os.path.expanduser(r"~\AppData\Local\Microsoft\Windows\Fonts\DejaVuSans.ttf"),
+                # Windows - проект
+                os.path.join(os.getcwd(), "fonts", "DejaVuSans.ttf"),
                 # Linux
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                 "/usr/share/fonts/dejavu/DejaVuSans.ttf",
@@ -118,6 +123,11 @@ class PDFGeneratorService:
             ]
 
             font_bold_paths = [
+                # Windows - System fonts
+                r"C:\Windows\Fonts\DejaVuSans-Bold.ttf",
+                os.path.expanduser(r"~\AppData\Local\Microsoft\Windows\Fonts\DejaVuSans-Bold.ttf"),
+                # Windows - проект
+                os.path.join(os.getcwd(), "fonts", "DejaVuSans-Bold.ttf"),
                 # Linux
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
