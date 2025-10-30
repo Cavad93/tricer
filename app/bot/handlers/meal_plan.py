@@ -167,7 +167,7 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
                 select(MealPlan).where(and_(
                     MealPlan.user_id == user.telegram_id,
                     MealPlan.period_type == PlanPeriod.WEEK,
-                    MealPlan.is_active == 1
+                    MealPlan.is_active == True
                 ))
             )
             weekly_plan = weekly_plan_result.scalar_one_or_none()

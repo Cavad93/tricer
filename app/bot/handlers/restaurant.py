@@ -385,7 +385,7 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
             active_plan_result = await session.execute(
                 select(MealPlan).where(and_(
                     MealPlan.user_id == db_user.telegram_id,
-                    MealPlan.is_active == 1
+                    MealPlan.is_active == True
                 ))
             )
             active_plan = active_plan_result.scalar_one_or_none()

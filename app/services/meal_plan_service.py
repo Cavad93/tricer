@@ -673,7 +673,7 @@ class MealPlanService:
             select(MealPlan)
             .where(and_(
                 MealPlan.user_id == user_id,
-                MealPlan.is_active == 1,
+                MealPlan.is_active == True,
                 MealPlan.end_date >= date.today()
             ))
             .order_by(MealPlan.created_at.desc())
@@ -720,13 +720,13 @@ class MealPlanService:
         result = await session.execute(
             select(MealPlan).where(and_(
                 MealPlan.user_id == user_id,
-                MealPlan.is_active == 1
+                MealPlan.is_active == True
             ))
         )
         old_plans = result.scalars().all()
 
         for plan in old_plans:
-            plan.is_active = 0
+            plan.is_active = False
 
         await session.commit()
         logger.info(f"Deactivated {len(old_plans)} old meal plans for user {user_id}")
@@ -746,7 +746,7 @@ class MealPlanService:
         # Находим активные планы, которые истекли
         result = await session.execute(
             select(MealPlan).where(and_(
-                MealPlan.is_active == 1,
+                MealPlan.is_active == True,
                 MealPlan.end_date < today
             ))
         )
@@ -754,7 +754,7 @@ class MealPlanService:
 
         # Деактивируем их
         for plan in expired_plans:
-            plan.is_active = 0
+            plan.is_active = False
 
         if expired_plans:
             await session.commit()

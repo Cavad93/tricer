@@ -352,7 +352,7 @@ class NutritionReportService:
             result = await db.execute(
                 select(MealPlan).where(
                     MealPlan.user_id == user_id,
-                    MealPlan.is_active == 1,
+                    MealPlan.is_active == True,
                     MealPlan.start_date <= target_date,
                     MealPlan.end_date >= target_date
                 )
