@@ -20,15 +20,21 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 
-    # Cloudflare Worker для обхода геоблокировки (опционально)
-    # Если указан, все запросы к Claude API пойдут через этот прокси
+    # ===== ОБХОД ГЕОБЛОКИРОВКИ =====
+    # ВНИМАНИЕ: Эти параметры нужны ТОЛЬКО если ваш сервер в России!
+    # Если сервер за пределами России (США, Европа, Азия) - оставьте None
+
+    # Вариант 1: Cloudflare Worker (для облачных сервисов)
     # Формат: https://your-worker.your-subdomain.workers.dev
+    # Используйте если не можете установить VPN на сервере
     CLOUDFLARE_WORKER_URL: Optional[str] = None
 
-    # WARP Proxy для обхода геоблокировки (опционально)
-    # Если указан, все запросы к Claude API пойдут через WARP прокси
+    # Вариант 2: WARP/VPN Proxy (для VDS/VPS с возможностью установки VPN)
     # Формат: socks5://127.0.0.1:40000
+    # Используйте если установили Cloudflare WARP или другой SOCKS5 прокси
     WARP_PROXY_URL: Optional[str] = None
+
+    # Приоритет: CLOUDFLARE_WORKER_URL > WARP_PROXY_URL > Прямое подключение
 
     # Database (PostgreSQL)
     DATABASE_URL: str = "postgresql+asyncpg://nutriai:nutriai@localhost:5432/nutriai"
