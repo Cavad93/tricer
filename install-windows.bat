@@ -28,7 +28,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [2/4] Installing pandas, numpy, matplotlib (binary wheels only)...
+echo [2/5] Installing packages that require binary wheels (pandas, numpy, matplotlib)...
 echo This avoids C++ compilation which requires Visual Studio Build Tools
 echo Note: For 32-bit Python, available versions may differ from requirements.txt
 pip install pandas numpy matplotlib --only-binary :all: --upgrade
@@ -40,7 +40,17 @@ if errorlevel 1 (
 )
 echo.
 
-echo [3/4] Installing remaining dependencies from requirements.txt...
+echo [3/5] Installing greenlet and Pillow (binary wheels only)...
+echo These packages also require compilation if installed from source
+pip install greenlet Pillow --only-binary :all: --upgrade
+if errorlevel 1 (
+    echo ERROR: Failed to install greenlet/Pillow
+    pause
+    exit /b 1
+)
+echo.
+
+echo [4/5] Installing remaining dependencies from requirements.txt...
 pip install -r requirements.txt
 if errorlevel 1 (
     echo ERROR: Failed to install requirements
@@ -49,7 +59,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [4/4] Verifying installation...
+echo [5/5] Verifying installation...
 python -c "import pandas, numpy, matplotlib; print('SUCCESS: pandas, numpy, matplotlib imported successfully')"
 if errorlevel 1 (
     echo WARNING: Package verification failed
