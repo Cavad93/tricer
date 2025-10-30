@@ -39,6 +39,28 @@ class ClaudeAIService:
                 api_key=settings.ANTHROPIC_API_KEY,
                 http_client=async_http_client
             )
+        # Если указан WARP прокси, используем его
+        elif settings.WARP_PROXY_URL:
+            logger.info("Using WARP proxy: {}", settings.WARP_PROXY_URL)
+
+            # Создаем HTTP клиент с SOCKS5 прокси
+            http_client = httpx.Client(
+                proxies=settings.WARP_PROXY_URL,
+                timeout=60.0
+            )
+            async_http_client = httpx.AsyncClient(
+                proxies=settings.WARP_PROXY_URL,
+                timeout=60.0
+            )
+
+            self.client = Anthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                http_client=http_client
+            )
+            self.async_client = AsyncAnthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                http_client=async_http_client
+            )
         else:
             # Стандартное подключение без прокси
             self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)

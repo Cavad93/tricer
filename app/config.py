@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Формат: https://your-worker.your-subdomain.workers.dev
     CLOUDFLARE_WORKER_URL: Optional[str] = None
 
+    # WARP Proxy для обхода геоблокировки (опционально)
+    # Если указан, все запросы к Claude API пойдут через WARP прокси
+    # Формат: socks5://127.0.0.1:40000
+    WARP_PROXY_URL: Optional[str] = None
+
     # Database (PostgreSQL)
     DATABASE_URL: str = "postgresql+asyncpg://nutriai:nutriai@localhost:5432/nutriai"
 

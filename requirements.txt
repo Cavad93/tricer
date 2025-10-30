@@ -29,7 +29,7 @@ passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 
 # HTTP Client
-httpx==0.25.2
+httpx[socks]==0.25.2  # [socks] для поддержки SOCKS5 прокси (Cloudflare WARP)
 aiohttp==3.9.1
 
 # Utils
