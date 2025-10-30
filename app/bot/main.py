@@ -739,6 +739,9 @@ async def post_init(application: Application) -> None:
     await init_db()
     logger.info("Database initialized")
 
+    # Debug: показываем значение CLOUDFLARE_WORKER_URL
+    logger.info("CLOUDFLARE_WORKER_URL = {}", settings.CLOUDFLARE_WORKER_URL)
+
     # Инициализируем и запускаем планировщик для напоминаний
     scheduler = init_scheduler(application.bot)
     scheduler.start()
