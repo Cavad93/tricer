@@ -19,7 +19,28 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/4] Upgrading pip...
+REM Check if Python is 64-bit
+python -c "import struct; import sys; sys.exit(0 if struct.calcsize('P') * 8 == 64 else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo.
+    echo ============================================================
+    echo WARNING: Python 32-bit detected!
+    echo ============================================================
+    echo.
+    echo This application requires Python 64-bit for full compatibility.
+    echo Some packages (like greenlet) do not have binary wheels for 32-bit Windows.
+    echo.
+    echo Please install Python 3.11 64-bit from:
+    echo https://www.python.org/downloads/release/python-3119/
+    echo.
+    echo Select: "Windows installer (64-bit)"
+    echo ============================================================
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [1/5] Upgrading pip...
 python -m pip install --upgrade pip
 if errorlevel 1 (
     echo ERROR: Failed to upgrade pip
@@ -30,21 +51,20 @@ echo.
 
 echo [2/5] Installing packages that require binary wheels (pandas, numpy, matplotlib)...
 echo This avoids C++ compilation which requires Visual Studio Build Tools
-echo Note: For 32-bit Python, available versions may differ from requirements.txt
 pip install pandas numpy matplotlib --only-binary :all: --upgrade
 if errorlevel 1 (
     echo ERROR: Failed to install pandas/numpy/matplotlib
-    echo Make sure you have Python 3.11 64-bit or 32-bit (binary wheels available)
+    echo Make sure you have Python 3.11 64-bit
     pause
     exit /b 1
 )
 echo.
 
-echo [3/5] Installing greenlet and Pillow (binary wheels only)...
-echo These packages also require compilation if installed from source
-pip install greenlet Pillow --only-binary :all: --upgrade
+echo [3/5] Installing Pillow (binary wheels only)...
+echo This avoids C++ compilation which requires Visual Studio Build Tools
+pip install Pillow --only-binary :all: --upgrade
 if errorlevel 1 (
-    echo ERROR: Failed to install greenlet/Pillow
+    echo ERROR: Failed to install Pillow
     pause
     exit /b 1
 )

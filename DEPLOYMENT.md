@@ -486,10 +486,13 @@ docker-compose up -d
 **Требования:**
 - Windows Server 2016+ или Windows 10/11
 - PowerShell или Command Prompt с правами администратора
-- Python 3.11 64-bit или 32-bit (рекомендуется 64-bit для лучшей совместимости)
+- **Python 3.11 64-bit** (ОБЯЗАТЕЛЬНО! 32-bit не поддерживается)
 - PostgreSQL 12+
 
-**Примечание:** Python 32-bit поддерживается, но некоторые пакеты будут установлены в более старых версиях из-за ограниченной доступности binary wheels.
+**ВАЖНО:** Python 32-bit НЕ ПОДДЕРЖИВАЕТСЯ, так как некоторые критические пакеты (greenlet для SQLAlchemy) не имеют binary wheels для 32-bit Windows. Используйте только Python 64-bit!
+
+**Скачать Python 3.11 64-bit:**
+https://www.python.org/downloads/release/python-3119/ - выберите "Windows installer (64-bit)"
 
 **Установка зависимостей:**
 
