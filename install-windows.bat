@@ -30,10 +30,11 @@ echo.
 
 echo [2/4] Installing pandas, numpy, matplotlib (binary wheels only)...
 echo This avoids C++ compilation which requires Visual Studio Build Tools
-pip install pandas numpy matplotlib --only-binary :all:
+echo Note: For 32-bit Python, available versions may differ from requirements.txt
+pip install pandas numpy matplotlib --only-binary :all: --upgrade
 if errorlevel 1 (
     echo ERROR: Failed to install pandas/numpy/matplotlib
-    echo Make sure you have Python 3.11 or 3.12 (binary wheels available)
+    echo Make sure you have Python 3.11 64-bit or 32-bit (binary wheels available)
     pause
     exit /b 1
 )
