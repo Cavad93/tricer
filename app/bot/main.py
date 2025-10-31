@@ -50,8 +50,13 @@ from app.bot.handlers.diary import (
     diary_delete_list_callback,
     diary_edit_meal_callback,
     diary_delete_meal_callback,
+    edit_portion_start_callback,
     edit_portion_input,
     cancel_edit_portion,
+    remove_food_from_meal_callback,
+    delete_food_callback,
+    delete_whole_meal_callback,
+    add_food_to_meal_callback,
     WAITING_PORTION_INPUT
 )
 from app.bot.handlers.meal_plan import (
@@ -1053,6 +1058,14 @@ def main():
     application.add_handler(CallbackQueryHandler(diary_edit_list_callback, pattern="^diary_edit_list$"))
     application.add_handler(CallbackQueryHandler(diary_delete_list_callback, pattern="^diary_delete_list$"))
     application.add_handler(CallbackQueryHandler(diary_delete_meal_callback, pattern="^diary_delete_"))
+
+    # Callback handlers для редактирования приемов пищи
+    application.add_handler(CallbackQueryHandler(remove_food_from_meal_callback, pattern="^remove_food_from_meal_"))
+    application.add_handler(CallbackQueryHandler(delete_food_callback, pattern="^delete_food_"))
+    application.add_handler(CallbackQueryHandler(delete_whole_meal_callback, pattern="^delete_whole_meal_"))
+    application.add_handler(CallbackQueryHandler(add_food_to_meal_callback, pattern="^add_food_to_meal_"))
+    application.add_handler(CallbackQueryHandler(diary_edit_meal_callback, pattern="^diary_edit_"))
+
     application.add_handler(CallbackQueryHandler(ai_chat_callback, pattern="^ai_chat$"))
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
@@ -1103,7 +1116,7 @@ def main():
 
     # ConversationHandler для редактирования порции
     edit_portion_conversation = ConversationHandler(
-        entry_points=[CallbackQueryHandler(diary_edit_meal_callback, pattern="^diary_edit_")],
+        entry_points=[CallbackQueryHandler(edit_portion_start_callback, pattern="^edit_portion_")],
         states={
             WAITING_PORTION_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_portion_input)]
         },

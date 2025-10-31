@@ -11,7 +11,9 @@ from app.bot.keyboards import (
     main_menu_keyboard,
     diary_main_keyboard,
     diary_meal_list_keyboard,
-    back_to_menu_keyboard
+    back_to_menu_keyboard,
+    meal_edit_menu_keyboard,
+    meal_food_list_keyboard
 )
 from app.models.user import User
 from app.models.meal import MealType
@@ -313,7 +315,7 @@ async def diary_delete_list_callback(update: Update, context: ContextTypes.DEFAU
 
 async def diary_edit_meal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Начать редактирование порции приема пищи
+    Показать меню редактирования приема пищи
     """
     query = update.callback_query
     await query.answer()
@@ -323,6 +325,102 @@ async def diary_edit_meal_callback(update: Update, context: ContextTypes.DEFAULT
     # Извлекаем meal_id из callback_data
     try:
         meal_id = int(query.data.replace("diary_edit_", ""))
+    except ValueError:
+        await query.edit_message_text(
+            "❌ Неверный ID приема пищи",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    try:
+        async with async_session_maker() as session:
+            # Получаем пользователя
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Получаем прием пищи
+            from app.models.meal import Meal
+            from sqlalchemy.orm import selectinload
+
+            meal_result = await session.execute(
+                select(Meal)
+                .where(Meal.id == meal_id, Meal.user_id == db_user.id)
+                .options(selectinload(Meal.foods))
+            )
+            meal = meal_result.scalar_one_or_none()
+
+            if not meal:
+                await query.edit_message_text(
+                    "❌ Прием пищи не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Сохраняем meal_id в context для следующего шага
+            context.user_data["editing_meal_id"] = meal_id
+
+            # Показываем информацию о блюде
+            meal_type_names = {
+                MealType.BREAKFAST: "Завтрак",
+                MealType.LUNCH: "Обед",
+                MealType.DINNER: "Ужин",
+                MealType.SNACK: "Перекус"
+            }
+
+            meal_name = meal_type_names.get(meal.meal_type, "Прием пищи")
+            time_str = meal.meal_time.strftime("%H:%M")
+
+            edit_text = f"✏️ *Редактирование: {meal_name} ({time_str})*\n\n"
+            edit_text += "*Продукты:*\n"
+
+            for i, food in enumerate(meal.foods, 1):
+                edit_text += (
+                    f"{i}. {food.name} - {food.portion_description or f'{food.portion_size}г'}\n"
+                    f"   {food.calories} ккал | Б: {food.proteins:.0f}г | "
+                    f"Ж: {food.fats:.0f}г | У: {food.carbs:.0f}г\n"
+                )
+
+            edit_text += f"\n📊 *Итого:* {meal.total_calories} ккал\n\n"
+            edit_text += "Выберите действие:"
+
+            await query.edit_message_text(
+                edit_text,
+                parse_mode="Markdown",
+                reply_markup=meal_edit_menu_keyboard(meal_id)
+            )
+
+            logger.info(f"Showing edit menu for meal {meal_id}, user {user.id}")
+
+    except Exception as e:
+        logger.error("Error starting meal edit {} for user {}: {}", meal_id, user.id, repr(e))
+
+        await query.edit_message_text(
+            "❌ Ошибка при загрузке приема пищи.\nПопробуйте позже.",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+async def edit_portion_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Начать изменение порции приема пищи
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    # Извлекаем meal_id из callback_data
+    try:
+        meal_id = int(query.data.replace("edit_portion_", ""))
     except ValueError:
         await query.edit_message_text(
             "❌ Неверный ID приема пищи",
@@ -363,32 +461,11 @@ async def diary_edit_meal_callback(update: Update, context: ContextTypes.DEFAULT
                 )
                 return ConversationHandler.END
 
-            # Сохраняем meal_id в context для следующего шага
+            # Сохраняем meal_id в context
             context.user_data["editing_meal_id"] = meal_id
 
-            # Показываем информацию о блюде
-            meal_type_names = {
-                MealType.BREAKFAST: "Завтрак",
-                MealType.LUNCH: "Обед",
-                MealType.DINNER: "Ужин",
-                MealType.SNACK: "Перекус"
-            }
-
-            meal_name = meal_type_names.get(meal.meal_type, "Прием пищи")
-            time_str = meal.meal_time.strftime("%H:%M")
-
-            edit_text = f"✏️ *Редактирование: {meal_name} ({time_str})*\n\n"
-            edit_text += "*Продукты:*\n"
-
-            for i, food in enumerate(meal.foods, 1):
-                edit_text += (
-                    f"{i}. {food.name} - {food.portion_description or f'{food.portion_size}г'}\n"
-                    f"   {food.calories} ккал | Б: {food.proteins:.0f}г | "
-                    f"Ж: {food.fats:.0f}г | У: {food.carbs:.0f}г\n"
-                )
-
-            edit_text += f"\n📊 *Итого:* {meal.total_calories} ккал\n\n"
-            edit_text += (
+            edit_text = (
+                "📏 *Изменение размера порции*\n\n"
                 "📝 *Введите новый размер порции в процентах*\n\n"
                 "Например:\n"
                 "• `50` - уменьшить порцию вдвое (съел только половину)\n"
@@ -408,13 +485,313 @@ async def diary_edit_meal_callback(update: Update, context: ContextTypes.DEFAULT
             return WAITING_PORTION_INPUT
 
     except Exception as e:
-        logger.error("Error starting meal edit {} for user {}: {}", meal_id, user.id, repr(e))
+        logger.error("Error starting portion edit {} for user {}: {}", meal_id, user.id, repr(e))
 
         await query.edit_message_text(
             "❌ Ошибка при загрузке приема пищи.\nПопробуйте позже.",
             reply_markup=main_menu_keyboard()
         )
         return ConversationHandler.END
+
+
+async def remove_food_from_meal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Показать список продуктов для удаления из приема пищи
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    # Извлекаем meal_id из callback_data
+    try:
+        meal_id = int(query.data.replace("remove_food_from_meal_", ""))
+    except ValueError:
+        await query.edit_message_text(
+            "❌ Неверный ID приема пищи",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    try:
+        async with async_session_maker() as session:
+            # Получаем пользователя
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Получаем прием пищи
+            from app.models.meal import Meal
+            from sqlalchemy.orm import selectinload
+
+            meal_result = await session.execute(
+                select(Meal)
+                .where(Meal.id == meal_id, Meal.user_id == db_user.id)
+                .options(selectinload(Meal.foods))
+            )
+            meal = meal_result.scalar_one_or_none()
+
+            if not meal:
+                await query.edit_message_text(
+                    "❌ Прием пищи не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            if not meal.foods:
+                await query.edit_message_text(
+                    "❌ В этом приеме пищи нет продуктов",
+                    reply_markup=meal_edit_menu_keyboard(meal_id)
+                )
+                return
+
+            edit_text = "🗑️ *Выберите продукт для удаления:*\n\n"
+
+            await query.edit_message_text(
+                edit_text,
+                parse_mode="Markdown",
+                reply_markup=meal_food_list_keyboard(meal_id, meal.foods)
+            )
+
+            logger.info(f"Showing food list for removal from meal {meal_id}, user {user.id}")
+
+    except Exception as e:
+        logger.error("Error showing food list {} for user {}: {}", meal_id, user.id, repr(e))
+
+        await query.edit_message_text(
+            "❌ Ошибка при загрузке списка продуктов.\nПопробуйте позже.",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+async def delete_food_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Удалить конкретный продукт из приема пищи с перерасчетом калорий
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    # Извлекаем meal_id и food_id из callback_data
+    try:
+        parts = query.data.replace("delete_food_", "").split("_")
+        meal_id = int(parts[0])
+        food_id = int(parts[1])
+    except (ValueError, IndexError):
+        await query.edit_message_text(
+            "❌ Неверный ID",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    try:
+        async with async_session_maker() as session:
+            # Получаем пользователя
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Получаем прием пищи
+            from app.models.meal import Meal, MealFood
+            from sqlalchemy.orm import selectinload
+
+            meal_result = await session.execute(
+                select(Meal)
+                .where(Meal.id == meal_id, Meal.user_id == db_user.id)
+                .options(selectinload(Meal.foods))
+            )
+            meal = meal_result.scalar_one_or_none()
+
+            if not meal:
+                await query.edit_message_text(
+                    "❌ Прием пищи не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Находим и удаляем продукт
+            food_result = await session.execute(
+                select(MealFood).where(MealFood.id == food_id, MealFood.meal_id == meal_id)
+            )
+            food = food_result.scalar_one_or_none()
+
+            if not food:
+                await query.edit_message_text(
+                    "❌ Продукт не найден",
+                    reply_markup=meal_edit_menu_keyboard(meal_id)
+                )
+                return
+
+            food_name = food.name
+
+            # Удаляем продукт
+            await session.delete(food)
+
+            # Перерасчитываем калории приема пищи
+            meal.total_calories = sum(f.calories for f in meal.foods if f.id != food_id)
+            meal.total_proteins = sum(f.proteins for f in meal.foods if f.id != food_id)
+            meal.total_fats = sum(f.fats for f in meal.foods if f.id != food_id)
+            meal.total_carbs = sum(f.carbs for f in meal.foods if f.id != food_id)
+
+            await session.commit()
+
+            # Если больше нет продуктов, удаляем весь прием пищи
+            if len(meal.foods) <= 1:  # Остался только удаляемый продукт
+                await session.delete(meal)
+                await session.commit()
+
+                await query.edit_message_text(
+                    f"✅ Продукт *{food_name}* удален\n\n"
+                    f"Прием пищи был полностью удален, так как это был последний продукт.",
+                    parse_mode="Markdown",
+                    reply_markup=main_menu_keyboard()
+                )
+            else:
+                await query.edit_message_text(
+                    f"✅ Продукт *{food_name}* удален\n\n"
+                    f"📊 Новое количество калорий: {meal.total_calories} ккал",
+                    parse_mode="Markdown",
+                    reply_markup=meal_edit_menu_keyboard(meal_id)
+                )
+
+            logger.info(f"Food {food_id} deleted from meal {meal_id} by user {user.id}")
+
+    except Exception as e:
+        logger.error("Error deleting food {} from meal {} for user {}: {}", food_id, meal_id, user.id, repr(e))
+
+        await query.edit_message_text(
+            "❌ Ошибка при удалении продукта.\nПопробуйте позже.",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+async def delete_whole_meal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Удалить весь прием пищи
+    """
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    # Извлекаем meal_id из callback_data
+    try:
+        meal_id = int(query.data.replace("delete_whole_meal_", ""))
+    except ValueError:
+        await query.edit_message_text(
+            "❌ Неверный ID приема пищи",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    try:
+        async with async_session_maker() as session:
+            # Получаем пользователя
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.id)
+            )
+            db_user = result.scalar_one_or_none()
+
+            if not db_user:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Получаем прием пищи
+            from app.models.meal import Meal
+
+            meal_result = await session.execute(
+                select(Meal)
+                .where(Meal.id == meal_id, Meal.user_id == db_user.id)
+            )
+            meal = meal_result.scalar_one_or_none()
+
+            if not meal:
+                await query.edit_message_text(
+                    "❌ Прием пищи не найден",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Показываем информацию о приеме пищи
+            meal_type_names = {
+                MealType.BREAKFAST: "Завтрак",
+                MealType.LUNCH: "Обед",
+                MealType.DINNER: "Ужин",
+                MealType.SNACK: "Перекус"
+            }
+
+            meal_name = meal_type_names.get(meal.meal_type, "Прием пищи")
+            time_str = meal.meal_time.strftime("%H:%M")
+
+            # Удаляем прием пищи (продукты удалятся каскадно)
+            await session.delete(meal)
+            await session.commit()
+
+            await query.edit_message_text(
+                f"✅ {meal_name} ({time_str}) полностью удален из дневника\n\n"
+                f"📊 Удалено {meal.total_calories} ккал",
+                reply_markup=main_menu_keyboard()
+            )
+
+            logger.info(f"Meal {meal_id} completely deleted by user {user.id}")
+
+    except Exception as e:
+        logger.error("Error deleting whole meal {} for user {}: {}", meal_id, user.id, repr(e))
+
+        await query.edit_message_text(
+            "❌ Ошибка при удалении приема пищи.\nПопробуйте позже.",
+            reply_markup=main_menu_keyboard()
+        )
+
+
+async def add_food_to_meal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Добавить продукт к существующему приему пищи
+    """
+    query = update.callback_query
+    await query.answer()
+
+    # Извлекаем meal_id из callback_data
+    try:
+        meal_id = int(query.data.replace("add_food_to_meal_", ""))
+    except ValueError:
+        await query.edit_message_text(
+            "❌ Неверный ID приема пищи",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    # Сохраняем meal_id в context для последующего добавления
+    context.user_data["adding_to_meal_id"] = meal_id
+
+    await query.edit_message_text(
+        "➕ *Добавление продукта*\n\n"
+        "Отправьте фото или текстовое описание продукта, который хотите добавить к этому приему пищи.\n\n"
+        "Для отмены нажмите /cancel",
+        parse_mode="Markdown"
+    )
+
+    logger.info(f"Started adding food to meal {meal_id}")
 
 
 async def edit_portion_input(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -225,6 +225,31 @@ def diary_actions_keyboard(meal_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def meal_edit_menu_keyboard(meal_id: int) -> InlineKeyboardMarkup:
+    """Меню редактирования приема пищи"""
+    keyboard = [
+        [InlineKeyboardButton("📏 Изменить порцию", callback_data=f"edit_portion_{meal_id}")],
+        [InlineKeyboardButton("➕ Добавить продукт", callback_data=f"add_food_to_meal_{meal_id}")],
+        [InlineKeyboardButton("🗑️ Удалить продукт", callback_data=f"remove_food_from_meal_{meal_id}")],
+        [InlineKeyboardButton("❌ Удалить весь прием пищи", callback_data=f"delete_whole_meal_{meal_id}")],
+        [InlineKeyboardButton("🔙 Назад к дневнику", callback_data="diary")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def meal_food_list_keyboard(meal_id: int, foods: list) -> InlineKeyboardMarkup:
+    """Клавиатура со списком продуктов для удаления"""
+    keyboard = []
+
+    for i, food in enumerate(foods, 1):
+        button_text = f"{food.name} - {food.portion_description or f'{food.portion_size}г'}"
+        callback_data = f"delete_food_{meal_id}_{food.id}"
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data=f"diary_edit_{meal_id}")])
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Получить клавиатуру главного меню (алиас для совместимости)"""
     return main_menu_keyboard()
