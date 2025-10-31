@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.db.session import async_session_maker
 from app.models.user import User
 from app.services.claude_ai import get_claude_service
-from app.bot.keyboards import back_to_menu_keyboard
+from app.bot.keyboards import back_to_menu_keyboard, meal_choice_after_warning_keyboard
 
 # Состояния conversation handler
 WAITING_CUSTOM_MEAL = 1
@@ -76,9 +76,18 @@ async def handle_meal_variant_choice(update: Update, context: ContextTypes.DEFAU
             )
 
             if not safety_check.get("is_safe", True):
-                # Есть предупреждения
+                # Есть предупреждения - сохраняем данные и показываем выбор
                 warnings = safety_check.get("warnings", [])
                 alternative = safety_check.get("alternative")
+
+                # Сохраняем данные для последующей обработки
+                context.user_data["pending_meal_choice"] = {
+                    "type": "variant",
+                    "meal": selected_variant,
+                    "warnings": warnings,
+                    "alternative": alternative,
+                    "user_context": user_context
+                }
 
                 warning_text = "⚠️ <b>Внимание!</b>\n\n"
                 warning_text += f"Выбранное блюдо <b>{selected_variant['name']}</b> может вам навредить:\n\n"
@@ -95,10 +104,12 @@ async def handle_meal_variant_choice(update: Update, context: ContextTypes.DEFAU
                     warning_text += f"У: {alternative['carbs']}г\n\n"
                     warning_text += f"💭 {alternative['description']}"
 
+                warning_text += "\n\n<b>Что ты хочешь сделать?</b>"
+
                 await query.edit_message_text(
                     warning_text,
                     parse_mode="HTML",
-                    reply_markup=back_to_menu_keyboard()
+                    reply_markup=meal_choice_after_warning_keyboard()
                 )
             else:
                 # Блюдо безопасно, подтверждаем выбор
@@ -187,9 +198,18 @@ async def handle_custom_meal_input(update: Update, context: ContextTypes.DEFAULT
             )
 
             if not safety_check.get("is_safe", True):
-                # Есть предупреждения
+                # Есть предупреждения - сохраняем данные и показываем выбор
                 warnings = safety_check.get("warnings", [])
                 alternative = safety_check.get("alternative")
+
+                # Сохраняем данные для последующей обработки
+                context.user_data["pending_meal_choice"] = {
+                    "type": "custom",
+                    "meal_name": meal_choice,
+                    "warnings": warnings,
+                    "alternative": alternative,
+                    "user_context": user_context
+                }
 
                 warning_text = "⚠️ <b>Внимание!</b>\n\n"
                 warning_text += f"Выбранное блюдо <b>{meal_choice}</b> может вам навредить:\n\n"
@@ -206,11 +226,16 @@ async def handle_custom_meal_input(update: Update, context: ContextTypes.DEFAULT
                     warning_text += f"У: {alternative['carbs']}г\n\n"
                     warning_text += f"💭 {alternative['description']}"
 
+                warning_text += "\n\n<b>Что ты хочешь сделать?</b>"
+
                 await update.message.reply_text(
                     warning_text,
                     parse_mode="HTML",
-                    reply_markup=back_to_menu_keyboard()
+                    reply_markup=meal_choice_after_warning_keyboard()
                 )
+
+                # Не завершаем conversation - ждем ответа на callback
+                return ConversationHandler.END
             else:
                 # Блюдо безопасно
                 response_text = f"✅ <b>Отличный выбор!</b>\n\n"
@@ -255,6 +280,101 @@ async def handle_meal_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data.pop("meal_recommendations", None)
 
 
+async def handle_risky_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработка выбора "Всё равно съем это" (вредный вариант)
+    """
+    query = update.callback_query
+    await query.answer()
+
+    pending_choice = context.user_data.get("pending_meal_choice")
+
+    if not pending_choice:
+        await query.edit_message_text(
+            "❌ Данные выбора устарели. Пожалуйста, попросите новые рекомендации.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    warnings = pending_choice.get("warnings", [])
+    user_context = pending_choice.get("user_context", {})
+
+    # Определяем название блюда
+    if pending_choice["type"] == "variant":
+        meal_name = pending_choice["meal"]["name"]
+    else:  # custom
+        meal_name = pending_choice["meal_name"]
+
+    # Показываем индикатор "печатает..."
+    await query.message.chat.send_action("typing")
+
+    # Генерируем поддерживающие рекомендации
+    advice = await get_claude_service().generate_harm_minimization_advice(
+        meal_choice=meal_name,
+        warnings=warnings,
+        user_context=user_context
+    )
+
+    response_text = f"{advice}\n\n"
+    response_text += "💡 <i>Не забудь добавить это блюдо в дневник через меню \"Добавить еду\"</i>"
+
+    await query.edit_message_text(
+        response_text,
+        parse_mode="HTML",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+    # Очищаем данные
+    context.user_data.pop("pending_meal_choice", None)
+    context.user_data.pop("meal_recommendations", None)
+
+
+async def handle_safe_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработка выбора "Выберу альтернативу" (безопасный вариант)
+    """
+    query = update.callback_query
+    await query.answer()
+
+    pending_choice = context.user_data.get("pending_meal_choice")
+
+    if not pending_choice:
+        await query.edit_message_text(
+            "❌ Данные выбора устарели. Пожалуйста, попросите новые рекомендации.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    alternative = pending_choice.get("alternative")
+
+    if not alternative:
+        await query.edit_message_text(
+            "❌ Альтернатива не найдена.",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    response_text = f"✅ <b>Отличный и безопасный выбор!</b>\n\n"
+    response_text += f"🍽 <b>{alternative['name']}</b>\n\n"
+    response_text += f"📊 <b>Пищевая ценность:</b>\n"
+    response_text += f"• Калории: {alternative['calories']} ккал\n"
+    response_text += f"• Белки: {alternative['proteins']}г\n"
+    response_text += f"• Жиры: {alternative['fats']}г\n"
+    response_text += f"• Углеводы: {alternative['carbs']}г\n\n"
+    response_text += f"💭 {alternative['description']}\n\n"
+    response_text += "🍴 Приятного аппетита!"
+
+    await query.edit_message_text(
+        response_text,
+        parse_mode="HTML",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+    # Очищаем данные
+    context.user_data.pop("pending_meal_choice", None)
+    context.user_data.pop("meal_recommendations", None)
+
+
 async def cancel_custom_meal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Отмена ввода своего варианта
@@ -266,5 +386,6 @@ async def cancel_custom_meal(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # Очищаем сохраненные рекомендации
     context.user_data.pop("meal_recommendations", None)
+    context.user_data.pop("pending_meal_choice", None)
 
     return ConversationHandler.END

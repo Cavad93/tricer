@@ -140,6 +140,16 @@ def meal_recommendations_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def meal_choice_after_warning_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора после предупреждения о вреде"""
+    keyboard = [
+        [InlineKeyboardButton("💪 Всё равно съем это", callback_data="meal_choice_risky")],
+        [InlineKeyboardButton("✅ Выберу альтернативу", callback_data="meal_choice_safe")],
+        [InlineKeyboardButton("🚫 Передумал есть", callback_data="meal_rec_cancel")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def meal_type_keyboard() -> InlineKeyboardMarkup:
     """Выбор типа приема пищи"""
     keyboard = [

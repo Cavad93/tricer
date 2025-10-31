@@ -908,6 +908,94 @@ class ClaudeAIService:
             # В случае ошибки считаем безопасным
             return {"is_safe": True, "warnings": [], "alternative": None}
 
+    async def generate_harm_minimization_advice(
+        self,
+        meal_choice: str,
+        warnings: List[str],
+        user_context: Dict
+    ) -> str:
+        """
+        Генерация поддерживающих рекомендаций по минимизации вреда
+
+        Args:
+            meal_choice: Выбранное блюдо
+            warnings: Список предупреждений
+            user_context: Контекст пользователя
+
+        Returns:
+            Текст с рекомендациями в поддерживающем тоне
+        """
+        try:
+            medical = user_context.get("medical_restrictions", {})
+
+            medical_info = ""
+            if medical:
+                medical_info = "Медицинский контекст:\n"
+                for restriction_type, items in medical.items():
+                    if items:
+                        medical_info += f"- {restriction_type}: {', '.join(items)}\n"
+
+            warnings_text = "\n".join(f"- {w}" for w in warnings)
+
+            prompt = f"""Пользователь выбрал блюдо, которое может ему навредить, но это его выбор и мы его уважаем.
+
+ВЫБРАННОЕ БЛЮДО: {meal_choice}
+
+ПРЕДУПРЕЖДЕНИЯ:
+{warnings_text}
+
+{medical_info if medical_info else ""}
+
+ТВОЯ ЗАДАЧА:
+1. Сгенерировать поддерживающее сообщение БЕЗ осуждения
+2. Признать право человека на свой выбор
+3. Дать конкретные рекомендации как минимизировать негативный эффект
+4. Привести 1-2 факта из актуальных исследований о влиянии на здоровье (с годом)
+5. Закончить позитивным настроем
+
+ТОН: Понимающий, поддерживающий, дружелюбный, без осуждения или "чтения морали"
+
+ФОРМАТ ОТВЕТА (HTML):
+<b>Твой выбор - твоя свобода! 💪</b>
+
+Я понимаю, что иногда душа просит именно это. Давай посмотрим, как сделать это максимально безопасно:
+
+<b>💡 Как минимизировать риски:</b>
+• [Конкретная рекомендация 1]
+• [Конкретная рекомендация 2]
+• [Конкретная рекомендация 3]
+
+<b>📚 Что говорит наука:</b>
+[1-2 факта из исследований с годами, без запугивания]
+
+<b>🌟 Главное:</b>
+[Позитивное завершение, поддержка]
+
+Будь конкретным, практичным и поддерживающим."""
+
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=1500,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+
+            advice_text = response.content[0].text
+
+            logger.info("Generated harm minimization advice")
+
+            return advice_text
+
+        except Exception as e:
+            logger.error("Error generating harm minimization advice: {}", repr(e), exc_info=True)
+            return (
+                "<b>Твой выбор - твоя свобода! 💪</b>\n\n"
+                "Я понимаю твой выбор. Главное - прислушивайся к своему организму "
+                "и помни, что баланс - это ключ к здоровью. 🌟"
+            )
+
     @staticmethod
     def extract_json_from_response(response: str) -> Optional[Dict]:
         """

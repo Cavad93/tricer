@@ -38,6 +38,8 @@ from app.bot.handlers.meal_choice import (
     handle_custom_meal_start,
     handle_custom_meal_input,
     handle_meal_cancel,
+    handle_risky_choice,
+    handle_safe_choice,
     cancel_custom_meal,
     WAITING_CUSTOM_MEAL
 )
@@ -987,6 +989,8 @@ def main():
     # Callback handlers для выбора рекомендованных блюд
     application.add_handler(CallbackQueryHandler(handle_meal_variant_choice, pattern="^meal_rec_variant_"))
     application.add_handler(CallbackQueryHandler(handle_meal_cancel, pattern="^meal_rec_cancel$"))
+    application.add_handler(CallbackQueryHandler(handle_risky_choice, pattern="^meal_choice_risky$"))
+    application.add_handler(CallbackQueryHandler(handle_safe_choice, pattern="^meal_choice_safe$"))
 
     # ConversationHandler для ввода своего варианта блюда
     custom_meal_conversation = ConversationHandler(
