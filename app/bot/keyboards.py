@@ -172,6 +172,49 @@ def add_meal_confirm_keyboard(meal_id: int = None) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def diary_main_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для дневника с действиями"""
+    keyboard = [
+        [InlineKeyboardButton("✏️ Редактировать запись", callback_data="diary_edit_list")],
+        [InlineKeyboardButton("🗑️ Удалить запись", callback_data="diary_delete_list")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def diary_meal_list_keyboard(meals: list, action: str) -> InlineKeyboardMarkup:
+    """Клавиатура со списком приемов пищи для выбора действия"""
+    keyboard = []
+
+    meal_type_emoji = {
+        "BREAKFAST": "🌅",
+        "LUNCH": "🌞",
+        "DINNER": "🌙",
+        "SNACK": "🍎"
+    }
+
+    meal_type_names = {
+        "BREAKFAST": "Завтрак",
+        "LUNCH": "Обед",
+        "DINNER": "Ужин",
+        "SNACK": "Перекус"
+    }
+
+    for meal in meals:
+        emoji = meal_type_emoji.get(meal.meal_type.value, "🍽")
+        name = meal_type_names.get(meal.meal_type.value, "Прием пищи")
+        time_str = meal.meal_time.strftime("%H:%M")
+
+        button_text = f"{emoji} {name} ({time_str}) - {meal.total_calories} ккал"
+        callback_data = f"diary_{action}_{meal.id}"
+
+        keyboard.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+    keyboard.append([InlineKeyboardButton("🔙 Назад к дневнику", callback_data="diary")])
+
+    return InlineKeyboardMarkup(keyboard)
+
+
 def diary_actions_keyboard(meal_id: int) -> InlineKeyboardMarkup:
     """Действия с приемом пищи в дневнике"""
     keyboard = [

@@ -292,3 +292,68 @@ class MealService:
                 "carbs": max(0, (user.target_carbs or 0) - daily_totals["carbs"])
             }
         }
+
+    @staticmethod
+    async def update_meal_portion(
+        session: AsyncSession,
+        meal_id: int,
+        user_id: int,
+        portion_percent: int
+    ) -> bool:
+        """
+        Обновить размер порции приема пищи
+
+        Args:
+            session: Сессия БД
+            meal_id: ID приема пищи
+            user_id: ID пользователя (для проверки прав)
+            portion_percent: Новый размер порции в процентах (например, 50 = половина, 100 = без изменений)
+
+        Returns:
+            True если обновлено успешно, False если не найдено
+        """
+        try:
+            # Получаем прием пищи с продуктами
+            result = await session.execute(
+                select(Meal).where(and_(
+                    Meal.id == meal_id,
+                    Meal.user_id == user_id
+                ))
+            )
+            meal = result.scalar_one_or_none()
+
+            if not meal:
+                return False
+
+            # Загружаем связанные foods
+            await session.refresh(meal, ["foods"])
+
+            if not meal.foods:
+                return False
+
+            # Коэффициент изменения порции
+            multiplier = portion_percent / 100.0
+
+            # Обновляем каждый продукт
+            for food in meal.foods:
+                food.portion_size = round(food.portion_size * multiplier, 1)
+                food.calories = round(food.calories * multiplier)
+                food.proteins = round(food.proteins * multiplier, 2)
+                food.fats = round(food.fats * multiplier, 2)
+                food.carbs = round(food.carbs * multiplier, 2)
+
+            # Пересчитываем итоги приема пищи
+            meal.total_calories = sum(food.calories for food in meal.foods)
+            meal.total_proteins = round(sum(food.proteins for food in meal.foods), 2)
+            meal.total_fats = round(sum(food.fats for food in meal.foods), 2)
+            meal.total_carbs = round(sum(food.carbs for food in meal.foods), 2)
+
+            await session.commit()
+
+            logger.info(f"Updated meal {meal_id} portion to {portion_percent}% for user {user_id}")
+            return True
+
+        except Exception as e:
+            await session.rollback()
+            logger.error("Error updating meal portion {} for user {}: {}", meal_id, user_id, repr(e))
+            return False

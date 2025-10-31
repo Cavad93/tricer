@@ -43,7 +43,17 @@ from app.bot.handlers.meal_choice import (
     cancel_custom_meal,
     WAITING_CUSTOM_MEAL
 )
-from app.bot.handlers.diary import diary_callback, delete_meal_callback
+from app.bot.handlers.diary import (
+    diary_callback,
+    delete_meal_callback,
+    diary_edit_list_callback,
+    diary_delete_list_callback,
+    diary_edit_meal_callback,
+    diary_delete_meal_callback,
+    edit_portion_input,
+    cancel_edit_portion,
+    WAITING_PORTION_INPUT
+)
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
     meal_plan_period_selected,
@@ -966,6 +976,9 @@ def main():
     application.add_handler(CallbackQueryHandler(add_food_callback, pattern="^add_food$"))
     application.add_handler(CallbackQueryHandler(diary_callback, pattern="^diary$"))
     application.add_handler(CallbackQueryHandler(delete_meal_callback, pattern="^delete_meal_"))
+    application.add_handler(CallbackQueryHandler(diary_edit_list_callback, pattern="^diary_edit_list$"))
+    application.add_handler(CallbackQueryHandler(diary_delete_list_callback, pattern="^diary_delete_list$"))
+    application.add_handler(CallbackQueryHandler(diary_delete_meal_callback, pattern="^diary_delete_"))
     application.add_handler(CallbackQueryHandler(ai_chat_callback, pattern="^ai_chat$"))
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
@@ -1002,6 +1015,17 @@ def main():
         allow_reentry=True
     )
     application.add_handler(custom_meal_conversation)
+
+    # ConversationHandler для редактирования порции
+    edit_portion_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(diary_edit_meal_callback, pattern="^diary_edit_")],
+        states={
+            WAITING_PORTION_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_portion_input)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_edit_portion)],
+        allow_reentry=True
+    )
+    application.add_handler(edit_portion_conversation)
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))
