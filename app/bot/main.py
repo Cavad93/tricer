@@ -819,7 +819,8 @@ def main():
     )
 
     # Создаем приложение с post_init hook для инициализации БД и кастомными таймаутами
-    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).build()
+    # concurrent_updates=True позволяет обрабатывать обновления от разных пользователей параллельно
+    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).concurrent_updates(True).build()
 
     # ConversationHandler для добавления еды по фото
     food_add_conversation = ConversationHandler(
