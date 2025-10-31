@@ -10,10 +10,11 @@ from telegram.error import TelegramError
 
 from app.models.user import User
 from app.models.meal import MealType
-from app.models.meal_plan import MealPlan
+from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal
 from app.db.session import async_session_maker
 from app.bot.texts import FriendlyPhrases
 from app.services.diary_check_service import DiaryCheckService
+from app.bot.keyboards import main_menu_keyboard
 
 
 class ReminderService:
@@ -141,84 +142,81 @@ class ReminderService:
 
             meal_name, emoji = meal_names.get(meal_type, ("прием пищи", "🍽"))
 
-            # Получаем активный план питания на сегодня
+            # Получаем активный план питания и блюда на сегодня
             async with async_session_maker() as session:
-                # Проверяем есть ли план на сегодня
+                today = datetime.now().date()
+
+                # Получаем активный план на сегодня
                 result = await session.execute(
                     select(MealPlan).where(
                         MealPlan.user_id == user.id,
                         MealPlan.is_active == True,
-                        MealPlan.start_date <= datetime.now().date(),
-                        MealPlan.end_date >= datetime.now().date()
+                        MealPlan.start_date <= today,
+                        MealPlan.end_date >= today
                     ).limit(1)
                 )
                 active_plan = result.scalar_one_or_none()
 
-            # Формируем сообщение
-            if active_plan and active_plan.plan_data:
-                # Есть активный план - показываем что запланировано
-                try:
-                    plan_data = active_plan.plan_data
-                    today = datetime.now().date()
-
-                    # Для дневного плана - берем данные напрямую
-                    if active_plan.period == "day":
-                        meals = plan_data.get("meals", [])
-                    # Для недельного/месячного - находим текущий день
-                    else:
-                        days = plan_data.get("days", [])
-                        current_day = None
-                        for day in days:
-                            if day.get("date") == today.isoformat():
-                                current_day = day
-                                break
-                        meals = current_day.get("meals", []) if current_day else []
-
-                    # Ищем блюдо для текущего приема пищи
-                    meal_info = None
-                    for meal in meals:
-                        if meal.get("type") == meal_type.value:
-                            meal_info = meal
-                            break
-
-                    if meal_info:
-                        message = (
-                            f"{emoji} <b>Время для приема пищи: {meal_name}!</b>\n\n"
-                            f"📋 <b>Запланировано:</b>\n"
-                        )
-
-                        dishes = meal_info.get("dishes", [])
-                        for dish in dishes:
-                            dish_name = dish.get("name", "Блюдо")
-                            message += f"• {dish_name}\n"
-
-                        nutrition = meal_info.get("total_nutrition", {})
-                        if nutrition:
-                            message += (
-                                f"\n📊 <b>КБЖУ:</b>\n"
-                                f"🔥 {nutrition.get('calories', 0)} ккал | "
-                                f"Б: {nutrition.get('proteins', 0)}г | "
-                                f"Ж: {nutrition.get('fats', 0)}г | "
-                                f"У: {nutrition.get('carbs', 0)}г\n"
-                            )
-
-                        message += f"\n{FriendlyPhrases.get_encouragement()}"
-                    else:
-                        # План есть, но нет блюда для этого приема пищи
-                        message = (
-                            f"{emoji} <b>Время для приема пищи: {meal_name}!</b>\n\n"
-                            f"💡 В твоем плане не запланирован {meal_name} на сегодня.\n"
-                            f"Но если проголодаешься - я всегда помогу подобрать что-то полезное!\n\n"
-                            f"{FriendlyPhrases.get_encouragement()}"
-                        )
-                except Exception as e:
-                    logger.warning("Error parsing meal plan data for reminder: {}", repr(e))
-                    message = (
-                        f"{emoji} <b>Время для приема пищи: {meal_name}!</b>\n\n"
-                        f"📋 У тебя есть активный план питания на сегодня.\n"
-                        f"Посмотри его через меню 🍽 Рацион!\n\n"
-                        f"{FriendlyPhrases.get_encouragement()}"
+                planned_meals = []
+                if active_plan:
+                    # Получаем день плана для сегодняшней даты
+                    day_result = await session.execute(
+                        select(MealPlanDay).where(
+                            MealPlanDay.meal_plan_id == active_plan.id,
+                            MealPlanDay.day_date == today
+                        ).limit(1)
                     )
+                    meal_plan_day = day_result.scalar_one_or_none()
+
+                    if meal_plan_day:
+                        # Получаем запланированные приемы пищи на сегодня
+                        meals_result = await session.execute(
+                            select(PlannedMeal).where(
+                                PlannedMeal.meal_plan_day_id == meal_plan_day.id,
+                                PlannedMeal.meal_type == meal_type.value
+                            )
+                        )
+                        planned_meals = meals_result.scalars().all()
+
+            # Формируем сообщение
+            if planned_meals:
+                # Есть запланированные блюда для этого приема пищи
+                message = (
+                    f"{emoji} <b>Время для приема пищи: {meal_name}!</b>\n\n"
+                    f"📋 <b>Запланировано:</b>\n"
+                )
+
+                total_calories = 0
+                total_proteins = 0
+                total_fats = 0
+                total_carbs = 0
+
+                for meal in planned_meals:
+                    message += f"• {meal.recipe_name}\n"
+                    total_calories += meal.calories or 0
+                    total_proteins += meal.proteins or 0
+                    total_fats += meal.fats or 0
+                    total_carbs += meal.carbs or 0
+
+                if total_calories > 0:
+                    message += (
+                        f"\n📊 <b>КБЖУ:</b>\n"
+                        f"🔥 {total_calories} ккал | "
+                        f"Б: {total_proteins:.0f}г | "
+                        f"Ж: {total_fats:.0f}г | "
+                        f"У: {total_carbs:.0f}г\n"
+                    )
+
+                message += f"\n{FriendlyPhrases.get_encouragement()}"
+
+            elif active_plan:
+                # План есть, но нет блюда для этого приема пищи на сегодня
+                message = (
+                    f"{emoji} <b>Время для приема пищи: {meal_name}!</b>\n\n"
+                    f"💡 В твоем плане не запланирован {meal_name} на сегодня.\n"
+                    f"Но если проголодаешься - я всегда помогу подобрать что-то полезное!\n\n"
+                    f"{FriendlyPhrases.get_encouragement()}"
+                )
             else:
                 # Нет активного плана
                 message = (
@@ -231,11 +229,18 @@ class ReminderService:
                     f"{FriendlyPhrases.get_encouragement()}"
                 )
 
-            # Отправляем сообщение
+            # Отправляем уведомление
             await bot.send_message(
                 chat_id=user.telegram_id,
                 text=message,
                 parse_mode='HTML'
+            )
+
+            # Отправляем клавиатуру отдельным сообщением, чтобы она спускалась вниз
+            await bot.send_message(
+                chat_id=user.telegram_id,
+                text="Что будем делать?",
+                reply_markup=main_menu_keyboard()
             )
 
             logger.info(f"Meal reminder sent to user {user.telegram_id} for {meal_type.value}")
