@@ -10,8 +10,9 @@ from loguru import logger
 
 from app.models.user import User
 from app.models.meal import Meal, MealType
-from app.models.meal_plan import MealPlan
+from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal
 from app.services.temporary_meal_plan_service import TemporaryMealPlanService
+from app.services.meal_plan_service import MealPlanService
 from app.services.nutrition_calc import NutritionCalculator
 
 
@@ -218,6 +219,76 @@ class MealRecommendationService:
             return False, None
 
     @staticmethod
+    async def get_planned_meal_for_today(
+        user_id: int,
+        meal_type: str,
+        session: AsyncSession
+    ) -> Optional[Dict]:
+        """
+        Получить блюдо из активного плана питания (день/неделя/месяц) на сегодня для указанного приёма пищи
+
+        Args:
+            user_id: ID пользователя
+            meal_type: Тип приема пищи (breakfast/lunch/dinner/snack)
+            session: Сессия БД
+
+        Returns:
+            Словарь с данными о блюде из плана или None
+        """
+        try:
+            # Получаем активный план (любой период: день/неделя/месяц)
+            active_plan = await MealPlanService.get_active_meal_plan(session, user_id)
+
+            if not active_plan:
+                return None
+
+            # Получаем день плана на сегодня
+            today = date.today()
+            result = await session.execute(
+                select(MealPlanDay)
+                .where(MealPlanDay.meal_plan_id == active_plan.id)
+                .where(MealPlanDay.day_date == today)
+            )
+            today_plan_day = result.scalar_one_or_none()
+
+            if not today_plan_day:
+                return None
+
+            # Загружаем приемы пищи для этого дня
+            await session.refresh(today_plan_day, ["meals"])
+
+            # Маппинг типов приемов пищи
+            meal_type_map = {
+                "завтрак": "breakfast",
+                "обед": "lunch",
+                "ужин": "dinner",
+                "перекус": "snack"
+            }
+
+            # Находим блюдо для указанного типа приема пищи
+            target_meal_type = meal_type_map.get(meal_type.lower(), meal_type.lower())
+
+            for planned_meal in today_plan_day.meals:
+                if planned_meal.meal_type == target_meal_type:
+                    return {
+                        "name": planned_meal.recipe_name,
+                        "calories": planned_meal.calories or 0,
+                        "proteins": planned_meal.proteins or 0,
+                        "fats": planned_meal.fats or 0,
+                        "carbs": planned_meal.carbs or 0,
+                        "description": planned_meal.cooking_instructions or "",
+                        "cooking_time": planned_meal.cooking_time_minutes,
+                        "ingredients": planned_meal.ingredients or [],
+                        "plan_period": active_plan.period_type.value  # day/week/month
+                    }
+
+            return None
+
+        except Exception as e:
+            logger.error("Error getting planned meal for user {} and meal type {}: {}", user_id, meal_type, repr(e))
+            return None
+
+    @staticmethod
     async def generate_meal_recommendation_context(
         user: User,
         session: AsyncSession
@@ -252,6 +323,11 @@ class MealRecommendationService:
                 user.id, session
             )
 
+            # Получаем блюдо из активного плана на сегодня (день/неделя/месяц)
+            planned_meal = await MealRecommendationService.get_planned_meal_for_today(
+                user.id, meal_type, session
+            )
+
             return {
                 "current_time": datetime.now().strftime("%H:%M"),
                 "meal_type": meal_type,
@@ -259,6 +335,7 @@ class MealRecommendationService:
                 "remaining": remaining,
                 "has_plan": has_plan,
                 "plan_type": plan_type,
+                "planned_meal": planned_meal,  # Блюдо из плана (если есть)
                 "user_preferences": {
                     "diet_type": user.diet_type.value if user.diet_type else "omnivore",
                     "allergies": user.allergies or [],

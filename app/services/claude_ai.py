@@ -739,12 +739,32 @@ class ClaudeAIService:
             # Формируем информацию о плане
             has_plan = recommendation_context["has_plan"]
             plan_type = recommendation_context.get("plan_type")
+            planned_meal = recommendation_context.get("planned_meal")
 
             plan_info = ""
             if has_plan and plan_type == "permanent":
                 plan_info = "\n⚠️ У пользователя УЖЕ ЕСТЬ план питания на сегодня. Напомни ему об этом и предложи посмотреть план через меню."
             elif has_plan and plan_type == "temporary":
                 plan_info = "\n📋 У пользователя есть временные рекомендации на сегодня. Ты можешь их обновить или дать новые."
+
+            # Формируем информацию о блюде из плана питания (день/неделя/месяц)
+            planned_meal_info = ""
+            if planned_meal:
+                period_names = {
+                    "day": "дневного",
+                    "week": "недельного",
+                    "month": "месячного"
+                }
+                period_name = period_names.get(planned_meal.get("plan_period", "week"), "плана")
+
+                planned_meal_info = f"""
+📋 БЛЮДО ИЗ {period_name.upper()} ПЛАНА ПИТАНИЯ НА ЭТОТ ПРИЕМ ПИЩИ:
+- Название: {planned_meal['name']}
+- КБЖУ: {planned_meal['calories']} ккал | Б: {planned_meal['proteins']}г | Ж: {planned_meal['fats']}г | У: {planned_meal['carbs']}г
+{f"- Время готовки: {planned_meal['cooking_time']} мин" if planned_meal.get('cooking_time') else ""}
+
+ВАЖНО: Это блюдо ДОЛЖНО быть первым вариантом в твоих рекомендациях (установи from_plan: true)!
+"""
 
             # Формируем медицинские ограничения
             medical_info = ""
@@ -779,10 +799,11 @@ class ClaudeAIService:
 {f"- Не любит: {', '.join(user_prefs['dislikes'])}" if user_prefs['dislikes'] else ""}
 {medical_info}
 {plan_info}
+{planned_meal_info}
 
 ТВОЯ ЗАДАЧА:
 1. Предложи РОВНО 3 конкретных варианта блюд на текущий прием пищи ({meal_type})
-2. Первый вариант должен быть из недельного рациона (если есть план) или классическим вариантом
+2. Первый вариант должен быть из плана питания (если есть блюдо выше) или классическим вариантом
 3. Второй и третий - альтернативные полезные варианты
 4. Для каждого блюда укажи точные КБЖУ
 5. Учти оставшиеся калории и макронутриенты
