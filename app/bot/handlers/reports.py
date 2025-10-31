@@ -113,18 +113,32 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Проверяем наличие данных
             if period_type == "day":
                 if not report_data.get("meals"):
+                    keyboard = [
+                        [InlineKeyboardButton("📊 Другой отчёт", callback_data="another_report")],
+                        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+
                     await status_message.edit_text(
                         "У вас пока нет данных о питании за сегодня.\n"
-                        "Добавьте приемы пищи и попробуйте снова!"
+                        "Добавьте приемы пищи и попробуйте снова!",
+                        reply_markup=reply_markup
                     )
-                    return ConversationHandler.END
+                    return SELECTING_PERIOD
             else:
                 if report_data["period"]["days_with_data"] == 0:
+                    keyboard = [
+                        [InlineKeyboardButton("📊 Другой отчёт", callback_data="another_report")],
+                        [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+
                     await status_message.edit_text(
                         f"У вас пока нет данных о питании за выбранный период.\n"
-                        f"Добавьте приемы пищи и попробуйте снова!"
+                        f"Добавьте приемы пищи и попробуйте снова!",
+                        reply_markup=reply_markup
                     )
-                    return ConversationHandler.END
+                    return SELECTING_PERIOD
 
             # Генерируем PDF
             try:
@@ -155,13 +169,16 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 await status_message.delete()
 
-                # Показываем главное меню
-                from app.bot.keyboards import get_main_menu_keyboard
-                keyboard = get_main_menu_keyboard()
+                # Показываем кнопки для продолжения
+                keyboard = [
+                    [InlineKeyboardButton("📊 Другой отчёт", callback_data="another_report")],
+                    [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
 
                 await query.message.reply_text(
                     "Что бы вы хотели сделать дальше?",
-                    reply_markup=keyboard
+                    reply_markup=reply_markup
                 )
 
             except Exception as e:
@@ -170,8 +187,9 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "Произошла ошибка при генерации PDF.\n"
                     "Попробуйте позже или обратитесь в поддержку."
                 )
+                return ConversationHandler.END
 
-        return ConversationHandler.END
+        return SELECTING_PERIOD
 
     except Exception as e:
         logger.error("Error in generate_report: {}", repr(e))
@@ -215,13 +233,20 @@ async def generate_weight_chart(update: Update, context: ContextTypes.DEFAULT_TY
             weight_history = sorted(weight_history, key=lambda x: x.measured_at)
 
             if not weight_history or len(weight_history) < 2:
+                keyboard = [
+                    [InlineKeyboardButton("📊 Другой отчёт", callback_data="another_report")],
+                    [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
                 await status_message.edit_text(
                     "📊 <b>Недостаточно данных для графика</b>\n\n"
                     "Для построения графика нужно минимум 2 измерения веса.\n\n"
                     "Добавьте новый вес через профиль (👤 Профиль → ⚖️ Изменить вес)",
-                    parse_mode='HTML'
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
                 )
-                return ConversationHandler.END
+                return SELECTING_PERIOD
 
             # Генерируем график
             try:
@@ -265,13 +290,16 @@ async def generate_weight_chart(update: Update, context: ContextTypes.DEFAULT_TY
 
                 await status_message.delete()
 
-                # Показываем главное меню
-                from app.bot.keyboards import get_main_menu_keyboard
-                keyboard = get_main_menu_keyboard()
+                # Показываем кнопки для продолжения
+                keyboard = [
+                    [InlineKeyboardButton("📊 Другой отчёт", callback_data="another_report")],
+                    [InlineKeyboardButton("🏠 Главное меню", callback_data="back_to_menu")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
 
                 await query.message.reply_text(
                     "Что бы вы хотели сделать дальше?",
-                    reply_markup=keyboard
+                    reply_markup=reply_markup
                 )
 
             except Exception as e:
@@ -280,8 +308,9 @@ async def generate_weight_chart(update: Update, context: ContextTypes.DEFAULT_TY
                     "Произошла ошибка при генерации графика.\n"
                     "Попробуйте позже или обратитесь в поддержку."
                 )
+                return ConversationHandler.END
 
-        return ConversationHandler.END
+        return SELECTING_PERIOD
 
     except Exception as e:
         logger.error("Error in generate_weight_chart: {}", repr(e))
@@ -330,6 +359,7 @@ def get_reports_conversation_handler():
             SELECTING_PERIOD: [
                 CallbackQueryHandler(generate_weight_chart, pattern="^report_weight_chart$"),
                 CallbackQueryHandler(generate_report, pattern="^report_(day|week|month)$"),
+                CallbackQueryHandler(reports_start, pattern="^another_report$"),
                 CallbackQueryHandler(cancel_report, pattern="^back_to_menu$"),
             ],
         },
