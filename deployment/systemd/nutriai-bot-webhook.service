@@ -1,0 +1,41 @@
+[Unit]
+Description=NutriAI Telegram Bot (Webhook Mode)
+After=network.target postgresql.service redis.service nginx.service
+Requires=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=nutriai
+Group=nutriai
+WorkingDirectory=/home/nutriai/tricer
+
+# Environment
+Environment="PATH=/home/nutriai/tricer/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=/home/nutriai/tricer/.env
+
+# Start command
+ExecStart=/home/nutriai/tricer/venv/bin/python -m app.bot.main
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=0
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nutriai-bot
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/nutriai/tricer/logs /home/nutriai/tricer/pdfs
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

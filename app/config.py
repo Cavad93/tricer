@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     # Redis (for Celery task queue)
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Webhook Mode Settings
+    USE_WEBHOOK: bool = False
+    WEBHOOK_LISTEN: str = "0.0.0.0"
+    WEBHOOK_PORT: int = 8443
+    WEBHOOK_PATH: str = "webhook"
+    WEBHOOK_URL: str = ""  # Example: "https://bot.example.com/webhook"
+    WEBHOOK_SECRET: str = ""  # Generate with: openssl rand -hex 32
+    WEBHOOK_SSL_CERT: str = ""  # Path to SSL certificate (optional if using nginx)
+    WEBHOOK_SSL_KEY: str = ""  # Path to SSL private key (optional if using nginx)
+
     # PostgreSQL connection settings (optional, for advanced configuration)
     POSTGRES_USER: str = "nutriai"
     POSTGRES_PASSWORD: str = "nutriai"
@@ -71,6 +81,10 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+
+    # Monitoring (Prometheus + Grafana)
+    METRICS_PORT: int = 8000  # Port for Prometheus metrics HTTP endpoint
+    ENVIRONMENT: str = "production"  # Environment: development/staging/production
 
     model_config = SettingsConfigDict(
         env_file=".env",

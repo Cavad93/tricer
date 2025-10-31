@@ -19,6 +19,7 @@ from tenacity import (
 import asyncio
 
 from app.config import settings
+from app.metrics import track_api_call
 
 
 class ClaudeAIService:
@@ -133,6 +134,7 @@ class ClaudeAIService:
                 logger.error(f"Claude API error (non-retryable): {e}")
                 raise
 
+    @track_api_call('analyze_food_photo')
     async def analyze_food_photo(
         self,
         image_bytes: bytes,
@@ -333,6 +335,7 @@ class ClaudeAIService:
             logger.error("Error in Claude API food recognition: {}", repr(e))
             raise
 
+    @track_api_call('chat')
     async def chat(
         self,
         user_message: str,
@@ -520,6 +523,7 @@ class ClaudeAIService:
             logger.error("Error in Claude chat: {}", repr(e))
             return "Извините, произошла ошибка при обработке вашего запроса. Попробуйте позже."
 
+    @track_api_call('analyze_text')
     async def analyze_text(
         self,
         prompt: str,
@@ -556,6 +560,7 @@ class ClaudeAIService:
             logger.error("Ошибка в Claude text analysis: {}", repr(e))
             raise
 
+    @track_api_call('extract_medical_analysis')
     async def extract_medical_analysis_from_image(
         self,
         image_bytes: bytes
@@ -699,6 +704,7 @@ class ClaudeAIService:
             logger.error("Error in medical analysis OCR: {}", repr(e), exc_info=True)
             raise
 
+    @track_api_call('detect_food_inquiry')
     async def detect_food_inquiry_intent(
         self,
         user_message: str,
@@ -780,6 +786,7 @@ class ClaudeAIService:
                 "meal_type_mentioned": None
             }
 
+    @track_api_call('generate_meal_recommendation')
     async def generate_meal_recommendation(
         self,
         user_message: str,
@@ -934,6 +941,7 @@ class ClaudeAIService:
             logger.error("Error generating meal recommendation: {}", repr(e), exc_info=True)
             raise
 
+    @track_api_call('check_meal_safety')
     async def check_meal_safety(
         self,
         meal_choice: str,
@@ -1015,6 +1023,7 @@ class ClaudeAIService:
             # В случае ошибки считаем безопасным
             return {"is_safe": True, "warnings": [], "alternative": None}
 
+    @track_api_call('generate_harm_minimization_advice')
     async def generate_harm_minimization_advice(
         self,
         meal_choice: str,

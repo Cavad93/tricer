@@ -27,8 +27,10 @@ from app.bot.handlers.disclaimer import disclaimer_accept_callback, disclaimer_d
 from app.models.user import Gender, Goal, ActivityLevel, DietType, BudgetCategory
 from app.services.nutrition_calc import NutritionCalculator
 from loguru import logger
+from app.metrics import track_command, track_user_registration
 
 
+@track_command('start')
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработчик команды /start"""
     user = update.effective_user
@@ -726,6 +728,8 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     onboarding_completed=True,
                 )
                 session.add(user)
+                # Track new user registration in metrics
+                track_user_registration()
 
             await session.commit()
             await session.refresh(user)

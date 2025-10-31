@@ -1,0 +1,67 @@
+# Prometheus Configuration for NutriAI Bot Monitoring
+
+global:
+  scrape_interval: 15s  # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  external_labels:
+    cluster: 'nutriai'
+    environment: 'production'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - 'alertmanager:9093'
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alerts/*.yml"
+
+# Scrape configurations
+scrape_configs:
+  # ===== NutriAI Bot Metrics =====
+  - job_name: 'nutriai-bot'
+    static_configs:
+      - targets: ['nutriai-bot:8000']  # Bot metrics endpoint
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'nutriai-bot'
+
+  # ===== Node Exporter (System Metrics) =====
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+
+  # ===== PostgreSQL Exporter =====
+  - job_name: 'postgres-exporter'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+
+  # ===== Redis Exporter =====
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+
+  # ===== Prometheus Self-Monitoring =====
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+
+  # ===== Celery Flower (if used) =====
+  # - job_name: 'celery-flower'
+  #   static_configs:
+  #     - targets: ['flower:5555']
+  #   scrape_interval: 15s
+  #   metrics_path: '/metrics'

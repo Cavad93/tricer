@@ -133,6 +133,13 @@ from app.bot.handlers.reminder_settings import (
     cancel_reminder_setup
 )
 from app.services.scheduler_service import init_scheduler
+from prometheus_client import start_http_server
+from app.metrics import (
+    MetricsUpdater,
+    set_bot_info,
+    track_command,
+    user_registrations_total
+)
 
 
 # Настройка логирования
@@ -144,6 +151,7 @@ logger.add(
 )
 
 
+@track_command('help')
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /help"""
     help_text = (
@@ -176,6 +184,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@track_command('menu')
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /menu"""
     await update.message.reply_text(
@@ -184,6 +193,7 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@track_command('profile')
 async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /profile"""
     # TODO: Получить профиль из БД
@@ -570,6 +580,7 @@ async def handle_new_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Reports callback теперь обрабатывается через get_reports_conversation_handler
 
 
+@track_command('wellness_insights')
 async def wellness_insights_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Команда для получения AI-анализа паттернов самочувствия
@@ -782,7 +793,7 @@ async def check_expired_plans_job(context: ContextTypes.DEFAULT_TYPE):
 
 async def post_init(application: Application) -> None:
     """Инициализация базы данных и планировщика после создания приложения"""
-    from app.db.session import init_db
+    from app.db.session import init_db, engine
     await init_db()
     logger.info("Database initialized")
 
@@ -804,10 +815,43 @@ async def post_init(application: Application) -> None:
         job_queue.run_repeating(check_expired_plans_job, interval=86400, first=120)
         logger.info("Scheduled job for checking expired meal plans (every 24 hours)")
 
+    # Устанавливаем информацию о боте для метрик
+    set_bot_info(version="1.0.0", env=settings.ENVIRONMENT if hasattr(settings, 'ENVIRONMENT') else "production")
+    logger.info("Bot metrics info set")
+
+    # Инициализируем и запускаем MetricsUpdater для периодического обновления gauge метрик
+    try:
+        from app.celery_app import celery_app
+        celery_instance = celery_app
+    except ImportError:
+        celery_instance = None
+        logger.warning("Celery not available, some metrics will not be collected")
+
+    metrics_updater = MetricsUpdater(
+        db_pool=engine.pool if hasattr(engine, 'pool') else None,
+        celery_app=celery_instance,
+        update_interval=15  # Обновляем метрики каждые 15 секунд
+    )
+    await metrics_updater.start()
+    logger.info("Metrics updater started (interval: 15s)")
+
+    # Сохраняем ссылку на metrics_updater в application.bot_data для graceful shutdown
+    application.bot_data['metrics_updater'] = metrics_updater
+
 
 def main():
     """Главная функция запуска бота"""
     logger.info("Starting NutriAI Bot...")
+
+    # Запускаем Prometheus metrics HTTP сервер
+    metrics_port = getattr(settings, 'METRICS_PORT', 8000)
+    try:
+        start_http_server(metrics_port)
+        logger.info(f"Prometheus metrics server started on port {metrics_port}")
+        logger.info(f"Metrics available at: http://0.0.0.0:{metrics_port}/metrics")
+    except Exception as e:
+        logger.error(f"Failed to start metrics server: {e}")
+        logger.warning("Bot will continue without metrics endpoint")
 
     # Настраиваем таймауты для Telegram API (увеличены для работы с медленными сетями)
     request = HTTPXRequest(
@@ -1134,8 +1178,47 @@ def main():
 
     logger.info("Bot started successfully!")
 
-    # Запускаем бота (run_polling сам управляет event loop)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    # === ВЫБОР РЕЖИМА: WEBHOOK ИЛИ POLLING ===
+    if settings.USE_WEBHOOK:
+        # WEBHOOK MODE
+        logger.info("="*60)
+        logger.info("Starting in WEBHOOK mode")
+        logger.info(f"Webhook URL: {settings.WEBHOOK_URL}")
+        logger.info(f"Listening on: {settings.WEBHOOK_LISTEN}:{settings.WEBHOOK_PORT}")
+        logger.info("="*60)
+
+        # Настраиваем webhook
+        if settings.WEBHOOK_SSL_CERT and settings.WEBHOOK_SSL_KEY:
+            # С собственным SSL сертификатом
+            application.run_webhook(
+                listen=settings.WEBHOOK_LISTEN,
+                port=settings.WEBHOOK_PORT,
+                url_path=settings.WEBHOOK_PATH,
+                webhook_url=settings.WEBHOOK_URL,
+                secret_token=settings.WEBHOOK_SECRET,
+                cert=settings.WEBHOOK_SSL_CERT,
+                key=settings.WEBHOOK_SSL_KEY,
+                allowed_updates=Update.ALL_TYPES
+            )
+        else:
+            # Без SSL (nginx делает SSL termination)
+            application.run_webhook(
+                listen=settings.WEBHOOK_LISTEN,
+                port=settings.WEBHOOK_PORT,
+                url_path=settings.WEBHOOK_PATH,
+                webhook_url=settings.WEBHOOK_URL,
+                secret_token=settings.WEBHOOK_SECRET,
+                allowed_updates=Update.ALL_TYPES
+            )
+    else:
+        # POLLING MODE (текущий режим)
+        logger.info("="*60)
+        logger.info("Starting in POLLING mode")
+        logger.info("Note: For production with >200 users, consider switching to WEBHOOK mode")
+        logger.info("="*60)
+
+        # Запускаем бота (run_polling сам управляет event loop)
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":

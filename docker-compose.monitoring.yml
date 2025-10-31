@@ -1,0 +1,170 @@
+version: '3.8'
+
+# NutriAI Bot - Complete Monitoring Stack
+# Prometheus + Grafana + Exporters for full observability
+
+services:
+  # ===== PROMETHEUS =====
+  # Time-series database for metrics storage
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: nutriai_prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deployment/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'  # Keep data for 30 days
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+    depends_on:
+      - node-exporter
+      - postgres-exporter
+      - redis-exporter
+
+  # ===== GRAFANA =====
+  # Visualization and dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: nutriai_grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deployment/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./deployment/grafana/datasources:/etc/grafana/provisioning/datasources
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=redis-datasource
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+    depends_on:
+      - prometheus
+
+  # ===== NODE EXPORTER =====
+  # System-level metrics (CPU, RAM, Disk, Network)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: nutriai_node_exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+
+  # ===== POSTGRESQL EXPORTER =====
+  # PostgreSQL database metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: nutriai_postgres_exporter
+    ports:
+      - "9187:9187"
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-nutriai}:${POSTGRES_PASSWORD:-nutriai}@postgres:5432/${POSTGRES_DB:-nutriai}?sslmode=disable
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+    depends_on:
+      - postgres
+
+  # ===== REDIS EXPORTER =====
+  # Redis metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: nutriai_redis_exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+    depends_on:
+      - redis
+
+  # ===== POSTGRES & REDIS (from main docker-compose.yml) =====
+  # These should match your main docker-compose.yml configuration
+  postgres:
+    image: postgres:12-alpine
+    container_name: nutriai_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nutriai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nutriai}
+      POSTGRES_DB: ${POSTGRES_DB:-nutriai}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: nutriai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - nutriai_network
+
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  nutriai_network:
+    driver: bridge
+
+# USAGE INSTRUCTIONS:
+#
+# 1. Start monitoring stack:
+#    docker-compose -f docker-compose.monitoring.yml up -d
+#
+# 2. Access services:
+#    - Grafana: http://localhost:3000 (admin/admin)
+#    - Prometheus: http://localhost:9090
+#    - Node Exporter: http://localhost:9100/metrics
+#    - Postgres Exporter: http://localhost:9187/metrics
+#    - Redis Exporter: http://localhost:9121/metrics
+#
+# 3. In Grafana:
+#    - Add Prometheus datasource: http://prometheus:9090
+#    - Import dashboard from deployment/grafana/dashboards/
+#
+# 4. Stop monitoring stack:
+#    docker-compose -f docker-compose.monitoring.yml down
+#
+# 5. View logs:
+#    docker-compose -f docker-compose.monitoring.yml logs -f [service_name]
