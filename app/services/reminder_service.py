@@ -111,7 +111,7 @@ class ReminderService:
                         try:
                             await DiaryCheckService._check_user_diary(bot, user, session)
                         except Exception as e:
-                            logger.error("Error checking diary for user {user.id}: {}", repr(e))
+                            logger.error("Error checking diary for user {}: {}", user.id, repr(e))
 
         except Exception as e:
             logger.error("Error in send_all_reminders_for_time: {}", repr(e))
@@ -241,7 +241,7 @@ class ReminderService:
             logger.info(f"Meal reminder sent to user {user.telegram_id} for {meal_type.value}")
 
         except TelegramError as e:
-            logger.error("Telegram error sending reminder to user {user.telegram_id}: {}", repr(e))
+            logger.error("Telegram error sending reminder to user {}: {}", user.telegram_id, repr(e))
             # Если пользователь заблокировал бота, отключаем напоминания
             if "blocked" in str(e).lower() or "chat not found" in str(e).lower():
                 async with async_session_maker() as session:
@@ -250,7 +250,7 @@ class ReminderService:
                     await session.commit()
                     logger.info(f"Disabled reminders for user {user.telegram_id} (bot blocked)")
         except Exception as e:
-            logger.error("Error sending reminder to user {user.telegram_id}: {}", repr(e))
+            logger.error("Error sending reminder to user {}: {}", user.telegram_id, repr(e))
 
     @staticmethod
     async def send_reminders_for_meal_type(bot: Bot, meal_type: MealType, target_time: str):

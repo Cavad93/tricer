@@ -46,7 +46,7 @@ class DiaryCheckService:
                     try:
                         await DiaryCheckService._check_user_diary(bot, user, session)
                     except Exception as e:
-                        logger.error("Error checking diary for user {user.id}: {}", repr(e))
+                        logger.error("Error checking diary for user {}: {}", user.id, repr(e))
 
         except Exception as e:
             logger.error("Error in check_and_notify_incomplete_diaries: {}", repr(e))
@@ -108,7 +108,7 @@ class DiaryCheckService:
                 logger.info(f"Sent diary reminder to user {user.id}")
 
         except Exception as e:
-            logger.error("Error in _check_user_diary for user {user.id}: {}", repr(e))
+            logger.error("Error in _check_user_diary for user {}: {}", user.id, repr(e))
             raise
 
     @staticmethod

@@ -84,7 +84,7 @@ class WeightService:
 
         except Exception as e:
             await session.rollback()
-            logger.error("Error updating user {user.id} weight: {}", repr(e))
+            logger.error("Error updating user {} weight: {}", user.id, repr(e))
             raise
 
     @staticmethod
