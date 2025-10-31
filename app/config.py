@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
 
+    # Claude API Rate Limiting
+    # Anthropic tiers: Tier 1=50 req/min, Tier 2=1000, Tier 3=2000, Tier 4=4000
+    CLAUDE_RATE_LIMIT: int = 50  # Requests per minute
+    CLAUDE_MAX_RETRIES: int = 3  # Maximum retry attempts on failure
+    CLAUDE_RETRY_MIN_WAIT: int = 1  # Minimum wait between retries (seconds)
+    CLAUDE_RETRY_MAX_WAIT: int = 10  # Maximum wait between retries (seconds)
+
     # ===== ОБХОД ГЕОБЛОКИРОВКИ =====
     # ВНИМАНИЕ: Эти параметры нужны ТОЛЬКО если ваш сервер в России!
     # Если сервер за пределами России (США, Европа, Азия) - оставьте None

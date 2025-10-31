@@ -8,6 +8,15 @@ import json
 import httpx
 from typing import Dict, List, Optional
 from loguru import logger
+from aiolimiter import AsyncLimiter
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log
+)
+import asyncio
 
 from app.config import settings
 
@@ -67,6 +76,62 @@ class ClaudeAIService:
             self.async_client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
         self.model = settings.CLAUDE_MODEL
+
+        # === RATE LIMITER ===
+        # Ограничиваем количество запросов к Claude API
+        # По умолчанию: 50 запросов в минуту (Tier 1)
+        self.rate_limiter = AsyncLimiter(
+            max_rate=settings.CLAUDE_RATE_LIMIT,
+            time_period=60  # 60 секунд
+        )
+        logger.info(f"Claude AI rate limiter initialized: {settings.CLAUDE_RATE_LIMIT} requests/minute")
+
+    @retry(
+        stop=stop_after_attempt(settings.CLAUDE_MAX_RETRIES),
+        wait=wait_exponential(
+            min=settings.CLAUDE_RETRY_MIN_WAIT,
+            max=settings.CLAUDE_RETRY_MAX_WAIT
+        ),
+        retry=retry_if_exception_type((
+            anthropic.RateLimitError,
+            anthropic.APIConnectionError,
+            anthropic.APITimeoutError
+        )),
+        before_sleep=before_sleep_log(logger, logger.level("WARNING").no),
+        reraise=True
+    )
+    async def _call_with_rate_limit_and_retry(self, func, *args, **kwargs):
+        """
+        Обёртка для вызова Claude API с rate limiting и retry логикой
+
+        Args:
+            func: Async функция для вызова (обычно self.async_client.messages.create)
+            *args, **kwargs: Аргументы функции
+
+        Returns:
+            Результат вызова функции
+
+        Raises:
+            anthropic.RateLimitError: Если превышен лимит запросов (после retry)
+            anthropic.APIError: Другие ошибки API
+        """
+        # Ждём разрешения от rate limiter
+        async with self.rate_limiter:
+            try:
+                result = await func(*args, **kwargs)
+                return result
+            except anthropic.RateLimitError as e:
+                logger.warning(f"Rate limit hit, retrying... Error: {e}")
+                raise  # Tenacity автоматически сделает retry
+            except anthropic.APIConnectionError as e:
+                logger.warning(f"API connection error, retrying... Error: {e}")
+                raise
+            except anthropic.APITimeoutError as e:
+                logger.warning(f"API timeout, retrying... Error: {e}")
+                raise
+            except anthropic.APIError as e:
+                logger.error(f"Claude API error (non-retryable): {e}")
+                raise
 
     async def analyze_food_photo(
         self,
@@ -215,8 +280,9 @@ class ClaudeAIService:
 
             logger.info("Sending request to Claude API for food recognition")
 
-            # Отправка запроса к Claude API (асинхронно)
-            response = await self.async_client.messages.create(
+            # Отправка запроса к Claude API (с rate limiting и retry)
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=2000,
                 messages=[
@@ -435,8 +501,9 @@ class ClaudeAIService:
 
             logger.info(f"Sending chat request to Claude API")
 
-            # Отправка запроса к Claude API (асинхронно)
-            response = await self.async_client.messages.create(
+            # Отправка запроса к Claude API (с rate limiting и retry)
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=1500,
                 system=system_prompt,
@@ -471,7 +538,8 @@ class ClaudeAIService:
         try:
             logger.info(f"Отправка текстового анализа в Claude API")
 
-            response = await self.async_client.messages.create(
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=max_tokens,
                 messages=[
@@ -591,8 +659,9 @@ class ClaudeAIService:
 
 Начинай извлечение показателей:"""
 
-            # Запрос к Claude Vision API
-            response = await self.async_client.messages.create(
+            # Запрос к Claude Vision API (с rate limiting и retry)
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=4096,
                 messages=[{
@@ -681,7 +750,8 @@ class ClaudeAIService:
 - Учитывай разговорный стиль, сленг, опечатки
 - Фокусируйся на НАМЕРЕНИИ получить совет, а не на конкретных словах"""
 
-            response = await self.async_client.messages.create(
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=500,
                 messages=[{
@@ -839,7 +909,8 @@ class ClaudeAIService:
                 "content": prompt
             })
 
-            response = await self.async_client.messages.create(
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=2000,
                 messages=messages
@@ -921,7 +992,8 @@ class ClaudeAIService:
 Если блюдо безопасно, верни is_safe: true и пустой массив warnings.
 Альтернативу предлагай только если is_safe: false."""
 
-            response = await self.async_client.messages.create(
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=1000,
                 messages=[{
@@ -1008,7 +1080,8 @@ class ClaudeAIService:
 
 Будь конкретным, практичным и поддерживающим."""
 
-            response = await self.async_client.messages.create(
+            response = await self._call_with_rate_limit_and_retry(
+                self.async_client.messages.create,
                 model=self.model,
                 max_tokens=1500,
                 messages=[{

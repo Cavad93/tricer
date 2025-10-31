@@ -38,6 +38,10 @@ pytz==2023.3
 python-dateutil==2.8.2
 json-repair==0.25.0  # For parsing malformed JSON from AI
 
+# Rate Limiting & Retry
+aiolimiter==1.1.0  # Async rate limiting for API calls
+tenacity==8.2.3    # Retry logic with exponential backoff
+
 # Validation
 email-validator==2.1.0
 
