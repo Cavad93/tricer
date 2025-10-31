@@ -1402,8 +1402,15 @@ async def view_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
             return
 
-        # Проверяем есть ли список покупок
-        if not meal_plan.shopping_lists or len(meal_plan.shopping_lists) == 0:
+        # Получаем список покупок явным запросом (не используем lazy loading)
+        from app.models.shopping_list import ShoppingList
+        result = await session.execute(
+            select(ShoppingList).where(ShoppingList.meal_plan_id == meal_plan.id)
+        )
+        shopping_list = result.scalar_one_or_none()
+
+        # Если списка покупок нет - создаем
+        if not shopping_list:
             # Создаем список покупок
             await query.edit_message_text("⏳ Создаю список покупок...")
 
@@ -1412,8 +1419,6 @@ async def view_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 meal_plan.id,
                 search_prices=True
             )
-        else:
-            shopping_list = meal_plan.shopping_lists[0]
 
         items = await ShoppingListService.get_shopping_items(session, shopping_list.id)
 
