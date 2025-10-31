@@ -128,6 +128,18 @@ def back_to_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def meal_recommendations_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для выбора из рекомендованных вариантов"""
+    keyboard = [
+        [InlineKeyboardButton("✅ Вариант 1", callback_data="meal_rec_variant_1")],
+        [InlineKeyboardButton("✅ Вариант 2", callback_data="meal_rec_variant_2")],
+        [InlineKeyboardButton("✅ Вариант 3", callback_data="meal_rec_variant_3")],
+        [InlineKeyboardButton("✏️ Свой вариант", callback_data="meal_rec_custom")],
+        [InlineKeyboardButton("🚫 Передумал есть", callback_data="meal_rec_cancel")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def meal_type_keyboard() -> InlineKeyboardMarkup:
     """Выбор типа приема пищи"""
     keyboard = [

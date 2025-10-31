@@ -767,25 +767,32 @@ class ClaudeAIService:
 {plan_info}
 
 ТВОЯ ЗАДАЧА:
-1. Предложи 2-3 конкретных варианта блюд на текущий прием пищи ({meal_type})
-2. Для каждого блюда укажи примерные КБЖУ
-3. Учти оставшиеся калории и макронутриенты
-4. Учти предпочтения, аллергии и медицинские ограничения
-5. Дай краткие рекомендации (1-2 предложения)
+1. Предложи РОВНО 3 конкретных варианта блюд на текущий прием пищи ({meal_type})
+2. Первый вариант должен быть из недельного рациона (если есть план) или классическим вариантом
+3. Второй и третий - альтернативные полезные варианты
+4. Для каждого блюда укажи точные КБЖУ
+5. Учти оставшиеся калории и макронутриенты
+6. Учти предпочтения, аллергии и медицинские ограничения
 
-ФОРМАТ ОТВЕТА:
-🍽️ **Рекомендации на {meal_type}:**
+ВАЖНО: Верни ответ в формате JSON со структурой:
+{{
+  "variants": [
+    {{
+      "id": 1,
+      "name": "Название блюда",
+      "calories": число,
+      "proteins": число,
+      "fats": число,
+      "carbs": число,
+      "description": "Краткое описание почему это подходит (1-2 предложения)",
+      "from_plan": true/false
+    }},
+    ... еще 2 варианта
+  ],
+  "general_advice": "Общая рекомендация на 1-2 предложения"
+}}
 
-**Вариант 1: [Название блюда]**
-📊 ~XXX ккал | Б: XXг | Ж: XXг | У: XXг
-💭 [Краткое описание почему это подходит]
-
-**Вариант 2: [Название блюда]**
-...
-
-💡 **Совет:** [Общая рекомендация на 1-2 предложения]
-
-Будь дружелюбным и конкретным. Не перегружай текстом."""
+Будь дружелюбным и конкретным."""
 
             # Добавляем историю разговора если есть
             messages = []
@@ -807,11 +814,99 @@ class ClaudeAIService:
 
             logger.info(f"Generated meal recommendation, length: {len(recommendation_text)}")
 
-            return recommendation_text
+            # Пытаемся извлечь JSON из ответа
+            recommendation_data = self.extract_json_from_response(recommendation_text)
+
+            if not recommendation_data:
+                # Если не удалось извлечь JSON, возвращаем текстовый ответ в старом формате
+                logger.warning("Failed to extract JSON from recommendation, returning text")
+                return {"text_only": True, "text": recommendation_text}
+
+            return recommendation_data
 
         except Exception as e:
             logger.error("Error generating meal recommendation: {}", repr(e), exc_info=True)
             raise
+
+    async def check_meal_safety(
+        self,
+        meal_choice: str,
+        user_context: Dict
+    ) -> Dict:
+        """
+        Проверка безопасности выбора еды для пользователя
+
+        Args:
+            meal_choice: Выбор пользователя (название блюда)
+            user_context: Контекст пользователя с медицинскими данными
+
+        Returns:
+            Словарь с результатом проверки:
+            {
+                "is_safe": bool,
+                "warnings": [список предупреждений],
+                "alternative": "название альтернативного блюда (если не безопасно)"
+            }
+        """
+        try:
+            medical = user_context.get("medical_restrictions", {})
+
+            medical_info = ""
+            if medical:
+                medical_info = "🏥 Медицинские ограничения пользователя:\n"
+                for restriction_type, items in medical.items():
+                    if items:
+                        medical_info += f"- {restriction_type}: {', '.join(items)}\n"
+
+            prompt = f"""Проверь безопасность выбора еды для пользователя.
+
+ВЫБОР ПОЛЬЗОВАТЕЛЯ: {meal_choice}
+
+{medical_info if medical_info else "Медицинских ограничений нет."}
+
+ТВОЯ ЗАДАЧА:
+1. Оцени, может ли данное блюдо навредить здоровью пользователя
+2. Учти все медицинские ограничения, хронические заболевания
+3. Если есть риски - предложи безопасную альтернативу
+
+ВАЖНО: Верни ответ в формате JSON:
+{{
+  "is_safe": true/false,
+  "warnings": ["список предупреждений если есть"],
+  "alternative": {{
+    "name": "Название альтернативного блюда",
+    "description": "Почему эта альтернатива лучше (1-2 предложения)",
+    "calories": число,
+    "proteins": число,
+    "fats": число,
+    "carbs": число
+  }}
+}}
+
+Если блюдо безопасно, верни is_safe: true и пустой массив warnings.
+Альтернативу предлагай только если is_safe: false."""
+
+            response = await self.async_client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+
+            safety_check = self.extract_json_from_response(response.content[0].text)
+
+            if not safety_check:
+                logger.warning("Failed to extract JSON from safety check")
+                return {"is_safe": True, "warnings": [], "alternative": None}
+
+            return safety_check
+
+        except Exception as e:
+            logger.error("Error checking meal safety: {}", repr(e), exc_info=True)
+            # В случае ошибки считаем безопасным
+            return {"is_safe": True, "warnings": [], "alternative": None}
 
     @staticmethod
     def extract_json_from_response(response: str) -> Optional[Dict]:

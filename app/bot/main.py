@@ -33,6 +33,14 @@ from app.bot.handlers.chat import (
     clear_chat_command,
     chat_stats_command
 )
+from app.bot.handlers.meal_choice import (
+    handle_meal_variant_choice,
+    handle_custom_meal_start,
+    handle_custom_meal_input,
+    handle_meal_cancel,
+    cancel_custom_meal,
+    WAITING_CUSTOM_MEAL
+)
 from app.bot.handlers.diary import diary_callback, delete_meal_callback
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
@@ -975,6 +983,21 @@ def main():
     # Callback handlers для учета шагов
     application.add_handler(CallbackQueryHandler(handle_steps_skip, pattern="^steps_skip$"))
     application.add_handler(CallbackQueryHandler(handle_steps_range, pattern="^steps_range_"))
+
+    # Callback handlers для выбора рекомендованных блюд
+    application.add_handler(CallbackQueryHandler(handle_meal_variant_choice, pattern="^meal_rec_variant_"))
+    application.add_handler(CallbackQueryHandler(handle_meal_cancel, pattern="^meal_rec_cancel$"))
+
+    # ConversationHandler для ввода своего варианта блюда
+    custom_meal_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(handle_custom_meal_start, pattern="^meal_rec_custom$")],
+        states={
+            WAITING_CUSTOM_MEAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_custom_meal_input)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_custom_meal)],
+        allow_reentry=True
+    )
+    application.add_handler(custom_meal_conversation)
 
     # Обработчики сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_message_handler))

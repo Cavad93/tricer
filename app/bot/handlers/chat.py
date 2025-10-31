@@ -14,7 +14,7 @@ from app.services.temporary_meal_plan_service import TemporaryMealPlanService
 from app.models.chat import MessageRole
 from app.models.user import User
 from sqlalchemy import select
-from app.bot.keyboards import back_to_menu_keyboard
+from app.bot.keyboards import back_to_menu_keyboard, meal_recommendations_keyboard
 
 
 async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,20 +89,23 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     saved_recommendations = plan_data.get("recommendations", "")
 
                     if saved_recommendations:
-                        assistant_response = (
-                            "📋 <b>У тебя уже есть рекомендации на сегодня:</b>\n\n"
-                            f"{saved_recommendations}\n\n"
-                            "💡 Хочешь новые рекомендации? Просто напиши еще раз!"
-                        )
+                        assistant_response = {
+                            "text_only": True,
+                            "text": (
+                                "📋 <b>У тебя уже есть рекомендации на сегодня:</b>\n\n"
+                                f"{saved_recommendations}\n\n"
+                                "💡 Хочешь новые рекомендации? Просто напиши еще раз!"
+                            )
+                        }
                     else:
                         # Генерируем новые рекомендации
                         assistant_response = await generate_meal_recommendations(
-                            db_user, message_text, conversation_history, session
+                            db_user, message_text, conversation_history, session, context
                         )
                 else:
                     # Генерируем новые рекомендации
                     assistant_response = await generate_meal_recommendations(
-                        db_user, message_text, conversation_history, session
+                        db_user, message_text, conversation_history, session, context
                     )
 
             else:
@@ -114,6 +117,19 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     conversation_history=conversation_history,
                     user_context=user_context
                 )
+
+            # Проверяем тип ответа (dict или string)
+            is_structured_recommendation = isinstance(assistant_response, dict) and not assistant_response.get("text_only", False)
+            is_text_only = isinstance(assistant_response, dict) and assistant_response.get("text_only", False)
+
+            # Текст для сохранения в историю
+            if is_text_only:
+                text_to_save = assistant_response["text"]
+            elif is_structured_recommendation:
+                import json
+                text_to_save = json.dumps(assistant_response, ensure_ascii=False)
+            else:
+                text_to_save = assistant_response
 
             # Сохраняем сообщение пользователя
             await ChatService.save_message(
@@ -128,7 +144,7 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 session=session,
                 user_id=db_user.id,
                 role=MessageRole.ASSISTANT,
-                content=assistant_response
+                content=text_to_save
             )
 
             # Увеличиваем счетчик использования
@@ -137,25 +153,59 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             # Проверяем новый остаток
             _, new_remaining = await UsageService.can_use_chat(session, db_user.id)
 
-            # Формируем ответ
-            response_text = assistant_response
-
-            # Для Free пользователей добавляем информацию об остатке
-            if new_remaining is not None:
-                remaining_info = f"\n\n_Осталось сообщений сегодня: {new_remaining}_"
-                if new_remaining <= 2:
-                    remaining_info += "\n⚠️ _Лимит почти исчерпан!_"
-                response_text += remaining_info
-
-            # Определяем parse_mode на основе контента
-            # Если это рекомендации по еде - используем HTML
+            # Определяем parse_mode
             parse_mode = "HTML" if intent_result.get("is_food_inquiry", False) else "Markdown"
 
-            await update.message.reply_text(
-                response_text,
-                parse_mode=parse_mode,
-                reply_markup=back_to_menu_keyboard()
-            )
+            # Формируем и отправляем ответ
+            if is_structured_recommendation:
+                # Структурированные рекомендации с вариантами
+                variants = assistant_response.get("variants", [])
+                general_advice = assistant_response.get("general_advice", "")
+
+                response_text = "🍽️ <b>Рекомендации для тебя:</b>\n\n"
+
+                for i, variant in enumerate(variants, 1):
+                    from_plan_badge = "📋 " if variant.get("from_plan") else ""
+                    response_text += f"<b>Вариант {i}:</b> {from_plan_badge}{variant['name']}\n"
+                    response_text += f"📊 {variant['calories']} ккал | "
+                    response_text += f"Б: {variant['proteins']}г | "
+                    response_text += f"Ж: {variant['fats']}г | "
+                    response_text += f"У: {variant['carbs']}г\n"
+                    response_text += f"💭 {variant['description']}\n\n"
+
+                if general_advice:
+                    response_text += f"💡 <b>Совет:</b> {general_advice}\n\n"
+
+                response_text += "👇 <b>Выберите вариант:</b>"
+
+                # Для Free пользователей добавляем информацию об остатке
+                if new_remaining is not None:
+                    remaining_info = f"\n\n<i>Осталось сообщений сегодня: {new_remaining}</i>"
+                    if new_remaining <= 2:
+                        remaining_info += "\n⚠️ <i>Лимит почти исчерпан!</i>"
+                    response_text += remaining_info
+
+                await update.message.reply_text(
+                    response_text,
+                    parse_mode="HTML",
+                    reply_markup=meal_recommendations_keyboard()
+                )
+            else:
+                # Текстовый ответ (обычный чат или text_only)
+                response_text = text_to_save if is_text_only else assistant_response
+
+                # Для Free пользователей добавляем информацию об остатке
+                if new_remaining is not None:
+                    remaining_info = f"\n\n_Осталось сообщений сегодня: {new_remaining}_"
+                    if new_remaining <= 2:
+                        remaining_info += "\n⚠️ _Лимит почти исчерпан!_"
+                    response_text += remaining_info
+
+                await update.message.reply_text(
+                    response_text,
+                    parse_mode=parse_mode,
+                    reply_markup=back_to_menu_keyboard()
+                )
 
             logger.info(f"AI-chat response sent to user {user.id}")
 
@@ -177,8 +227,9 @@ async def generate_meal_recommendations(
     db_user: User,
     message_text: str,
     conversation_history,
-    session
-) -> str:
+    session,
+    context: ContextTypes.DEFAULT_TYPE
+) -> dict:
     """
     Генерация рекомендаций по питанию для пользователя
 
@@ -187,9 +238,10 @@ async def generate_meal_recommendations(
         message_text: Сообщение пользователя
         conversation_history: История разговора
         session: Сессия БД
+        context: Контекст Telegram бота
 
     Returns:
-        Текст с рекомендациями
+        Словарь с рекомендациями или текстом ошибки
     """
     try:
         # Собираем контекст для рекомендаций
@@ -199,12 +251,15 @@ async def generate_meal_recommendations(
 
         # Если у пользователя уже есть постоянный план - напоминаем об этом
         if recommendation_context["has_plan"] and recommendation_context["plan_type"] == "permanent":
-            return (
-                "📋 <b>Обрати внимание!</b>\n\n"
-                "У тебя уже есть <b>план питания</b> на сегодня. "
-                "Рекомендую посмотреть его через главное меню → \"План питания\".\n\n"
-                "Если всё же хочешь получить разовую рекомендацию, напиши мне еще раз!"
-            )
+            return {
+                "text_only": True,
+                "text": (
+                    "📋 <b>Обрати внимание!</b>\n\n"
+                    "У тебя уже есть <b>план питания</b> на сегодня. "
+                    "Рекомендую посмотреть его через главное меню → \"План питания\".\n\n"
+                    "Если всё же хочешь получить разовую рекомендацию, напиши мне еще раз!"
+                )
+            }
 
         # Генерируем рекомендации через Claude AI
         logger.info(f"Generating meal recommendations for user {db_user.id}")
@@ -214,13 +269,17 @@ async def generate_meal_recommendations(
             conversation_history=conversation_history
         )
 
+        # Сохраняем рекомендации в context для дальнейшего использования
+        context.user_data["meal_recommendations"] = recommendations
+
         # Сохраняем рекомендации во временный план
         try:
+            import json
             remaining = recommendation_context["remaining"]
             await TemporaryMealPlanService.create_or_update_plan(
                 user_id=db_user.id,
                 meal_plan_data={
-                    "recommendations": recommendations,
+                    "recommendations": json.dumps(recommendations, ensure_ascii=False),
                     "meal_type": recommendation_context["meal_type"],
                     "generated_at": recommendation_context["current_time"],
                     "context": {
@@ -240,10 +299,13 @@ async def generate_meal_recommendations(
 
     except Exception as e:
         logger.error("Error generating meal recommendations for user {}: {}", db_user.id, repr(e), exc_info=True)
-        return (
-            "❌ Произошла ошибка при генерации рекомендаций.\n\n"
-            "Попробуй спросить по-другому или создай полноценный план питания через меню!"
-        )
+        return {
+            "text_only": True,
+            "text": (
+                "❌ Произошла ошибка при генерации рекомендаций.\n\n"
+                "Попробуй спросить по-другому или создай полноценный план питания через меню!"
+            )
+        }
 
 
 async def clear_chat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
