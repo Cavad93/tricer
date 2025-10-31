@@ -11,6 +11,7 @@ from app.models.wellness_log import WellnessLog
 from app.models.weight_history import WeightHistory
 from app.models.user_steps import UserSteps
 from app.models.temporary_meal_plan import TemporaryMealPlan
+from app.models.pantry import UserPantry, PantryUsageLog
 
 __all__ = [
     "User",
@@ -37,4 +38,6 @@ __all__ = [
     "WeightHistory",
     "UserSteps",
     "TemporaryMealPlan",
+    "UserPantry",
+    "PantryUsageLog",
 ]

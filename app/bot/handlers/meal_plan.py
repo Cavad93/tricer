@@ -876,6 +876,7 @@ async def handle_feedback_positive(update: Update, context: ContextTypes.DEFAULT
     await query.answer()
 
     plan_id = context.user_data.get("current_plan_id")
+    user_id = update.effective_user.id
 
     # Используем дружелюбные фразы для поощрения
     from app.bot.texts import FriendlyPhrases
@@ -883,6 +884,32 @@ async def handle_feedback_positive(update: Update, context: ContextTypes.DEFAULT
 
     praise = random.choice(FriendlyPhrases.PRAISE)
 
+    # Проверяем, настроены ли напоминания у пользователя
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        # Если напоминания не настроены, предлагаем их настроить
+        if user and not user.reminders_enabled:
+            text = f"{praise}\n\n" \
+                   "⏰ Хочешь, я буду напоминать тебе о приемах пищи?\n" \
+                   "Это поможет придерживаться режима питания!"
+
+            keyboard = [
+                [InlineKeyboardButton("✅ Да, настроить!", callback_data="reminder_yes")],
+                [InlineKeyboardButton("❌ Нет, не нужно", callback_data="reminder_no")],
+            ]
+
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+            return ConversationHandler.END
+
+    # Если напоминания уже настроены или произошла ошибка, показываем стандартное сообщение
     text = f"{praise}\n\n" \
            "Если понадобится помощь или захочешь изменить план - обращайся! 💚\n\n" \
            "Чтобы посмотреть план в любой момент, нажми 📋 Рацион в меню."

@@ -16,14 +16,15 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🍴 Ресторан", callback_data="restaurant"),
         ],
         [
+            InlineKeyboardButton("🏠 Что есть дома", callback_data="pantry"),
             InlineKeyboardButton("💬 AI-чат", callback_data="ai_chat"),
-            InlineKeyboardButton("👤 Профиль", callback_data="profile"),
         ],
         [
-            InlineKeyboardButton("📊 Отчеты", callback_data="reports"),
+            InlineKeyboardButton("👤 Профиль", callback_data="profile"),
             InlineKeyboardButton("⚙️ Настройки", callback_data="settings"),
         ],
         [
+            InlineKeyboardButton("📊 Отчеты", callback_data="reports"),
             InlineKeyboardButton("📋 Медицинские анализы", callback_data="medical_analysis"),
         ],
     ]

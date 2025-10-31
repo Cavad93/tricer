@@ -71,3 +71,13 @@ class MedicalAnalysisStates(IntEnum):
 class ProfileStates(IntEnum):
     """Состояния для управления профилем"""
     WAITING_NEW_WEIGHT = auto()  # Ожидание ввода нового веса
+
+
+class PantryStates(IntEnum):
+    """Состояния для управления продуктами дома"""
+    WAITING_PRODUCTS_INPUT = auto()  # Ожидание ввода списка продуктов
+
+
+class ReminderSettingsStates(IntEnum):
+    """Состояния для настройки напоминаний после создания плана"""
+    WAITING_CUSTOM_TIME = auto()  # Ожидание ввода своего времени

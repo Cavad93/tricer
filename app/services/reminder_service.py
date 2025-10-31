@@ -317,3 +317,143 @@ class ReminderService:
         except (ValueError, AttributeError):
             logger.warning(f"Invalid time format: {time_str}")
             return None
+
+    @staticmethod
+    async def setup_default_reminders(user_id: int):
+        """
+        Установить стандартные времена напоминаний для пользователя
+
+        Args:
+            user_id: Telegram ID пользователя
+        """
+        try:
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    select(User).where(User.telegram_id == user_id)
+                )
+                user = result.scalar_one_or_none()
+
+                if not user:
+                    return False
+
+                # Устанавливаем стандартные времена
+                user.reminders_enabled = True
+                user.breakfast_reminder_time = "08:00"
+                user.lunch_reminder_time = "13:00"
+                user.dinner_reminder_time = "19:00"
+                user.snack_reminder_time = None  # Перекус отключен по умолчанию
+
+                await session.commit()
+                logger.info(f"Set default reminders for user {user_id}")
+                return True
+
+        except Exception as e:
+            logger.error("Error setting default reminders for user {}: {}", user_id, repr(e))
+            return False
+
+    @staticmethod
+    async def update_reminder_time(
+        user_id: int,
+        meal_type: str,
+        reminder_time: Optional[str]
+    ) -> bool:
+        """
+        Обновить время напоминания для конкретного приема пищи
+
+        Args:
+            user_id: Telegram ID пользователя
+            meal_type: Тип приема пищи (breakfast/lunch/dinner/snack)
+            reminder_time: Время в формате HH:MM или None для отключения
+        """
+        try:
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    select(User).where(User.telegram_id == user_id)
+                )
+                user = result.scalar_one_or_none()
+
+                if not user:
+                    return False
+
+                # Обновляем соответствующее поле
+                field_map = {
+                    "breakfast": "breakfast_reminder_time",
+                    "lunch": "lunch_reminder_time",
+                    "dinner": "dinner_reminder_time",
+                    "snack": "snack_reminder_time"
+                }
+
+                field_name = field_map.get(meal_type)
+                if not field_name:
+                    return False
+
+                setattr(user, field_name, reminder_time)
+                await session.commit()
+
+                logger.info(f"Updated {meal_type} reminder to {reminder_time} for user {user_id}")
+                return True
+
+        except Exception as e:
+            logger.error("Error updating reminder time for user {}: {}", user_id, repr(e))
+            return False
+
+    @staticmethod
+    async def toggle_reminders(user_id: int, enabled: bool) -> bool:
+        """
+        Включить/выключить все напоминания
+
+        Args:
+            user_id: Telegram ID пользователя
+            enabled: True для включения, False для отключения
+        """
+        try:
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    select(User).where(User.telegram_id == user_id)
+                )
+                user = result.scalar_one_or_none()
+
+                if not user:
+                    return False
+
+                user.reminders_enabled = enabled
+                await session.commit()
+
+                status = "enabled" if enabled else "disabled"
+                logger.info(f"Reminders {status} for user {user_id}")
+                return True
+
+        except Exception as e:
+            logger.error("Error toggling reminders for user {}: {}", user_id, repr(e))
+            return False
+
+    @staticmethod
+    async def get_reminder_settings(user_id: int) -> Optional[Dict]:
+        """
+        Получить текущие настройки напоминаний пользователя
+
+        Returns:
+            Dict с настройками или None
+        """
+        try:
+            async with async_session_maker() as session:
+                result = await session.execute(
+                    select(User).where(User.telegram_id == user_id)
+                )
+                user = result.scalar_one_or_none()
+
+                if not user:
+                    return None
+
+                return {
+                    "enabled": user.reminders_enabled,
+                    "breakfast_time": user.breakfast_reminder_time,
+                    "lunch_time": user.lunch_reminder_time,
+                    "dinner_time": user.dinner_reminder_time,
+                    "snack_time": user.snack_reminder_time,
+                    "timezone": user.reminder_timezone or "UTC"
+                }
+
+        except Exception as e:
+            logger.error("Error getting reminder settings for user {}: {}", user_id, repr(e))
+            return None

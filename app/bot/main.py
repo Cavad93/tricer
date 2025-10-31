@@ -77,7 +77,7 @@ from app.bot.handlers.meal_plan import (
     cancel_meal_plan
 )
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
-from app.bot.states import FoodAddStates, MealPlanStates, RestaurantStates
+from app.bot.states import FoodAddStates, MealPlanStates, RestaurantStates, PantryStates, ReminderSettingsStates
 from app.bot.handlers.restaurant import (
     restaurant_start,
     restaurant_photo_handler,
@@ -106,6 +106,22 @@ from app.bot.handlers.medical_analysis import medical_analysis_conversation
 from app.bot.handlers.steps import (
     handle_steps_skip,
     handle_steps_range
+)
+from app.bot.handlers.pantry import (
+    pantry_start,
+    pantry_add_start,
+    pantry_process_input,
+    pantry_delete_list,
+    pantry_delete_item
+)
+from app.bot.handlers.reminder_settings import (
+    reminder_setup_start,
+    reminder_setup_yes,
+    reminder_setup_standard,
+    reminder_setup_custom,
+    reminder_process_custom_time,
+    reminder_setup_no,
+    cancel_reminder_setup
 )
 from app.services.scheduler_service import init_scheduler
 
@@ -963,10 +979,43 @@ def main():
         per_message=False
     )
 
+    # ConversationHandler для управления продуктами дома
+    pantry_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(pantry_start, pattern="^pantry$")],
+        states={
+            PantryStates.WAITING_PRODUCTS_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, pantry_process_input),
+                CallbackQueryHandler(pantry_start, pattern="^pantry$")
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(main_menu_callback, pattern="^main_menu$")
+        ],
+        per_message=False,
+        allow_reentry=True
+    )
+
+    # ConversationHandler для настройки напоминаний после создания плана
+    reminder_settings_conversation = ConversationHandler(
+        entry_points=[CallbackQueryHandler(reminder_setup_start, pattern="^reminder_setup_start$")],
+        states={
+            ReminderSettingsStates.WAITING_CUSTOM_TIME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, reminder_process_custom_time)
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_reminder_setup, pattern="^main_menu$")
+        ],
+        per_message=False,
+        allow_reentry=True
+    )
+
     # Добавляем обработчики
     # ВАЖНО: порядок имеет значение! ConversationHandler с более специфичными условиями должны быть первыми
     application.add_handler(onboarding_conversation)
     application.add_handler(change_weight_conversation)  # Обработчик изменения веса
+    application.add_handler(pantry_conversation)  # Обработчик продуктов дома
+    application.add_handler(reminder_settings_conversation)  # Обработчик настройки напоминаний после создания плана
     application.add_handler(medical_analysis_conversation)  # Обработчик медицинских анализов - ПЕРЕД food_add_conversation!
     application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан" - ПЕРЕД food_add_conversation!
     application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler (перехватывает ВСЕ фото)
@@ -1008,6 +1057,17 @@ def main():
     # Callback handlers для учета шагов
     application.add_handler(CallbackQueryHandler(handle_steps_skip, pattern="^steps_skip$"))
     application.add_handler(CallbackQueryHandler(handle_steps_range, pattern="^steps_range_"))
+
+    # Callback handlers для продуктов дома
+    application.add_handler(CallbackQueryHandler(pantry_add_start, pattern="^pantry_add$"))
+    application.add_handler(CallbackQueryHandler(pantry_delete_list, pattern="^pantry_delete_list$"))
+    application.add_handler(CallbackQueryHandler(pantry_delete_item, pattern="^pantry_delete_"))
+
+    # Callback handlers для настройки напоминаний после создания плана
+    application.add_handler(CallbackQueryHandler(reminder_setup_yes, pattern="^reminder_yes$"))
+    application.add_handler(CallbackQueryHandler(reminder_setup_no, pattern="^reminder_no$"))
+    application.add_handler(CallbackQueryHandler(reminder_setup_standard, pattern="^reminder_standard$"))
+    application.add_handler(CallbackQueryHandler(reminder_setup_custom, pattern="^reminder_custom$"))
 
     # Callback handlers для выбора рекомендованных блюд
     application.add_handler(CallbackQueryHandler(handle_meal_variant_choice, pattern="^meal_rec_variant_"))
