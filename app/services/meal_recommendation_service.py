@@ -71,10 +71,10 @@ class MealRecommendationService:
             meals = result.scalars().all()
 
             # Рассчитываем суммарные показатели
-            total_calories = sum(meal.calories or 0 for meal in meals)
-            total_proteins = sum(meal.proteins or 0 for meal in meals)
-            total_fats = sum(meal.fats or 0 for meal in meals)
-            total_carbs = sum(meal.carbs or 0 for meal in meals)
+            total_calories = sum(meal.total_calories or 0 for meal in meals)
+            total_proteins = sum(meal.total_proteins or 0 for meal in meals)
+            total_fats = sum(meal.total_fats or 0 for meal in meals)
+            total_carbs = sum(meal.total_carbs or 0 for meal in meals)
 
             # Группируем по типам приемов пищи
             meals_by_type = {
