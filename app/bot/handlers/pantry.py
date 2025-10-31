@@ -12,8 +12,13 @@ from app.services.claude_ai import ClaudeAIService
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
 from sqlalchemy import select
 
-# Состояния для ConversationHandler
-WAITING_PRODUCTS_INPUT, WAITING_PRODUCT_DETAILS = range(2)
+# Импортируем состояния
+from app.bot.states import PantryStates
+
+# Константы состояний для удобства
+WAITING_PRODUCTS_INPUT = PantryStates.WAITING_PRODUCTS_INPUT
+EDITING_PRODUCT_QUANTITY = PantryStates.EDITING_PRODUCT_QUANTITY
+REVIEWING_FOR_PLAN = PantryStates.REVIEWING_FOR_PLAN
 
 
 async def pantry_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -297,6 +302,299 @@ async def pantry_delete_item(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "❌ Ошибка при удалении",
             reply_markup=main_menu_keyboard()
         )
+
+
+async def pantry_create_plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало создания плана из продуктов - показ списка с возможностью редактирования"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    try:
+        async with async_session_maker() as session:
+            pantry_items = await PantryService.get_user_pantry(session, user.id)
+
+            if not pantry_items:
+                await query.edit_message_text(
+                    "📝 У вас нет продуктов в кладовой.\n\n"
+                    "Сначала добавьте продукты, которые есть дома.",
+                    reply_markup=main_menu_keyboard()
+                )
+                return ConversationHandler.END
+
+            # Сохраняем список продуктов в контексте для дальнейшего использования
+            context.user_data["pantry_products_for_plan"] = {
+                item.id: {
+                    "name": item.product_name,
+                    "quantity": item.quantity,
+                    "unit": item.unit,
+                    "category": item.category
+                }
+                for item in pantry_items
+            }
+
+            # Формируем текст со списком продуктов
+            text = (
+                "🍽 <b>Создание рациона из продуктов</b>\n\n"
+                "Проверьте количество продуктов. Если что-то уже съели или количество изменилось - "
+                "нажмите на продукт для редактирования.\n\n"
+                "<b>Ваши продукты:</b>\n"
+            )
+
+            # Группируем по категориям
+            categories = {}
+            for item_id, item_data in context.user_data["pantry_products_for_plan"].items():
+                cat = item_data["category"] or "Другое"
+                if cat not in categories:
+                    categories[cat] = []
+                categories[cat].append((item_id, item_data))
+
+            for category, items in sorted(categories.items()):
+                text += f"\n<b>{category}:</b>\n"
+                for item_id, item_data in items:
+                    text += f"  • {item_data['name']}: {item_data['quantity']}{item_data['unit']}\n"
+
+            text += "\n💡 Нажмите на продукт чтобы изменить количество"
+
+            # Создаем кнопки для редактирования каждого продукта
+            keyboard = []
+            for item_id, item_data in context.user_data["pantry_products_for_plan"].items():
+                button_text = f"✏️ {item_data['name']} ({item_data['quantity']}{item_data['unit']})"
+                keyboard.append([InlineKeyboardButton(
+                    button_text,
+                    callback_data=f"pantry_edit_for_plan_{item_id}"
+                )])
+
+            # Кнопки действий
+            keyboard.append([InlineKeyboardButton("✅ Всё верно, создать рацион!", callback_data="pantry_confirm_create_plan")])
+            keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="main_menu")])
+
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+
+            return REVIEWING_FOR_PLAN
+
+    except Exception as e:
+        logger.error("Error starting plan creation from pantry for user {}: {}", user.id, repr(e))
+        await query.edit_message_text(
+            "❌ Ошибка при загрузке продуктов",
+            reply_markup=main_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+
+async def pantry_edit_product_for_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало редактирования количества продукта для плана"""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        # Извлекаем ID продукта
+        item_id = int(query.data.replace("pantry_edit_for_plan_", ""))
+
+        # Проверяем что продукт есть в контексте
+        if "pantry_products_for_plan" not in context.user_data:
+            await query.edit_message_text(
+                "❌ Ошибка: данные не найдены. Начните заново.",
+                reply_markup=main_menu_keyboard()
+            )
+            return ConversationHandler.END
+
+        if item_id not in context.user_data["pantry_products_for_plan"]:
+            await query.edit_message_text(
+                "❌ Продукт не найден",
+                reply_markup=main_menu_keyboard()
+            )
+            return ConversationHandler.END
+
+        # Сохраняем ID редактируемого продукта
+        context.user_data["editing_product_id"] = item_id
+        item_data = context.user_data["pantry_products_for_plan"][item_id]
+
+        text = (
+            f"✏️ <b>Редактирование продукта</b>\n\n"
+            f"<b>{item_data['name']}</b>\n"
+            f"Текущее количество: {item_data['quantity']}{item_data['unit']}\n\n"
+            f"Введите новое количество.\n\n"
+            f"<b>Примеры:</b>\n"
+            f"• 500\n"
+            f"• 1.5кг\n"
+            f"• 10шт\n"
+            f"• 2л\n\n"
+            f"Или введите <b>0</b> чтобы убрать продукт из рациона."
+        )
+
+        await query.edit_message_text(text, parse_mode="HTML")
+        return EDITING_PRODUCT_QUANTITY
+
+    except Exception as e:
+        logger.error("Error starting product edit: {}", repr(e))
+        await query.edit_message_text(
+            "❌ Ошибка",
+            reply_markup=main_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+
+async def pantry_save_edited_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение отредактированного количества продукта"""
+    user = update.effective_user
+    text_input = update.message.text.strip()
+
+    try:
+        editing_product_id = context.user_data.get("editing_product_id")
+        if not editing_product_id or "pantry_products_for_plan" not in context.user_data:
+            await update.message.reply_text(
+                "❌ Ошибка: данные не найдены",
+                reply_markup=main_menu_keyboard()
+            )
+            return ConversationHandler.END
+
+        item_data = context.user_data["pantry_products_for_plan"][editing_product_id]
+
+        # Парсим введенное количество
+        import re
+        # Ищем число (может быть с точкой/запятой)
+        number_match = re.search(r'(\d+(?:[.,]\d+)?)', text_input)
+        if not number_match:
+            await update.message.reply_text(
+                "❌ Не удалось распознать количество. Попробуйте ещё раз.\n\n"
+                "Примеры: 500, 1.5кг, 10шт",
+                reply_markup=main_menu_keyboard()
+            )
+            return EDITING_PRODUCT_QUANTITY
+
+        quantity = float(number_match.group(1).replace(',', '.'))
+
+        # Ищем единицу измерения
+        unit_match = re.search(r'(кг|г|л|мл|шт)', text_input.lower())
+        if unit_match:
+            unit = unit_match.group(1)
+        else:
+            # Используем текущую единицу измерения
+            unit = item_data["unit"]
+
+        # Если количество 0 - удаляем продукт из списка
+        if quantity == 0:
+            del context.user_data["pantry_products_for_plan"][editing_product_id]
+            confirmation = f"✅ Продукт <b>{item_data['name']}</b> убран из списка для рациона."
+        else:
+            # Обновляем количество
+            context.user_data["pantry_products_for_plan"][editing_product_id]["quantity"] = quantity
+            context.user_data["pantry_products_for_plan"][editing_product_id]["unit"] = unit
+            confirmation = f"✅ Обновлено: <b>{item_data['name']}</b> - {quantity}{unit}"
+
+        # Показываем обновленный список
+        text = f"{confirmation}\n\n<b>Текущий список продуктов:</b>\n"
+
+        # Группируем по категориям
+        categories = {}
+        for item_id, data in context.user_data["pantry_products_for_plan"].items():
+            cat = data["category"] or "Другое"
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append((item_id, data))
+
+        for category, items in sorted(categories.items()):
+            text += f"\n<b>{category}:</b>\n"
+            for item_id, data in items:
+                text += f"  • {data['name']}: {data['quantity']}{data['unit']}\n"
+
+        text += "\n💡 Нажмите на продукт чтобы изменить количество"
+
+        # Создаем кнопки
+        keyboard = []
+        for item_id, data in context.user_data["pantry_products_for_plan"].items():
+            button_text = f"✏️ {data['name']} ({data['quantity']}{data['unit']})"
+            keyboard.append([InlineKeyboardButton(
+                button_text,
+                callback_data=f"pantry_edit_for_plan_{item_id}"
+            )])
+
+        keyboard.append([InlineKeyboardButton("✅ Всё верно, создать рацион!", callback_data="pantry_confirm_create_plan")])
+        keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="main_menu")])
+
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+
+        return REVIEWING_FOR_PLAN
+
+    except Exception as e:
+        logger.error("Error saving edited quantity for user {}: {}", user.id, repr(e))
+        await update.message.reply_text(
+            "❌ Ошибка при сохранении. Попробуйте ещё раз.",
+            reply_markup=main_menu_keyboard()
+        )
+        return ConversationHandler.END
+
+
+async def pantry_confirm_and_create_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждение и создание плана питания из продуктов"""
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+
+    try:
+        # Проверяем что есть продукты
+        if "pantry_products_for_plan" not in context.user_data or not context.user_data["pantry_products_for_plan"]:
+            await query.edit_message_text(
+                "❌ Нет продуктов для создания рациона",
+                reply_markup=main_menu_keyboard()
+            )
+            return ConversationHandler.END
+
+        # Формируем список продуктов для AI
+        products_list = []
+        for item_id, item_data in context.user_data["pantry_products_for_plan"].items():
+            products_list.append(f"{item_data['name']} ({item_data['quantity']}{item_data['unit']})")
+
+        products_text = "\n".join(products_list)
+
+        # Сохраняем в контексте для использования в meal_plan
+        context.user_data["create_plan_from_pantry"] = True
+        context.user_data["pantry_products_text"] = products_text
+
+        # Переходим к созданию плана питания
+        text = (
+            "🍽 <b>Создание рациона из продуктов</b>\n\n"
+            "Отлично! Сейчас создам план питания на основе ваших продуктов:\n\n"
+            f"{products_text}\n\n"
+            "На какой период создать план?"
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("📅 На 1 день", callback_data="plan_period_day")],
+            [InlineKeyboardButton("📅 На неделю", callback_data="plan_period_week")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+        ]
+
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+
+        # Очищаем временные данные
+        if "editing_product_id" in context.user_data:
+            del context.user_data["editing_product_id"]
+
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error("Error confirming plan creation for user {}: {}", user_id, repr(e))
+        await query.edit_message_text(
+            "❌ Ошибка при создании плана",
+            reply_markup=main_menu_keyboard()
+        )
+        return ConversationHandler.END
 
 
 async def cancel_pantry(update: Update, context: ContextTypes.DEFAULT_TYPE):

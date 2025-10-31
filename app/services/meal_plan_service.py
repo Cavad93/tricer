@@ -242,6 +242,7 @@ class MealPlanService:
         favorite_foods = preferences.get("favorite_foods")
         additional_dislikes = preferences.get("additional_dislikes")
         special_requests = preferences.get("special_requests")
+        pantry_products = preferences.get("pantry_products")  # Продукты из кладовой
 
         # Обрабатываем временный медицинский контекст (Этап 4 - доработка)
         medical_context = medical_context or {}
@@ -364,6 +365,23 @@ class MealPlanService:
         if special_requests:
             preferences_text += f"\n💡 ОСОБЫЕ ПОЖЕЛАНИЯ: {special_requests}\n   (Учти эти пожелания при составлении плана)"
 
+        # Формируем секцию с продуктами из кладовой
+        pantry_text = ""
+        if pantry_products:
+            pantry_text = f"""
+
+🏠 ДОСТУПНЫЕ ПРОДУКТЫ ДОМА:
+{pantry_products}
+
+⚠️ КРИТИЧЕСКИ ВАЖНО:
+   • План питания ДОЛЖЕН быть составлен МАКСИМАЛЬНО из этих продуктов!
+   • Используй ВСЕ имеющиеся продукты, которые подходят под требования рациона.
+   • Можно добавить минимум других продуктов только если это необходимо для баланса КБЖУ.
+   • В рецептах используй точное количество продуктов, указанных выше.
+   • Если какого-то продукта недостаточно - распредели его по разным приёмам пищи.
+   • Приоритет: сначала скоропортящиеся продукты (овощи, молочка, мясо), потом остальные.
+"""
+
         # Формируем секцию с предыдущим планом (если есть)
         old_plan_text = ""
         if old_plan_data and old_plan_data.get("days"):
@@ -420,7 +438,7 @@ class MealPlanService:
 - Углеводы: {user.target_carbs}г
 {cooking_time_text}
 {batch_cooking_text}
-{preferences_text}{old_plan_text}
+{pantry_text}{preferences_text}{old_plan_text}
 
 💊 МИКРОНУТРИЕНТЫ (для месячного планирования):
 ВАЖНО: Рацион должен быть сбалансирован так, чтобы за МЕСЯЦ восполнить суточные нормы по всем микронутриентам.

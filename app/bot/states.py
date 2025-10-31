@@ -76,6 +76,8 @@ class ProfileStates(IntEnum):
 class PantryStates(IntEnum):
     """Состояния для управления продуктами дома"""
     WAITING_PRODUCTS_INPUT = auto()  # Ожидание ввода списка продуктов
+    EDITING_PRODUCT_QUANTITY = auto()  # Редактирование количества продукта
+    REVIEWING_FOR_PLAN = auto()  # Просмотр продуктов перед созданием плана
 
 
 class ReminderSettingsStates(IntEnum):

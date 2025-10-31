@@ -1149,12 +1149,13 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
             # Деактивируем старые планы
             await MealPlanService.deactivate_old_plans(session, user.telegram_id)
 
-            # Собираем preferences из context (включая batch_cooking)
+            # Собираем preferences из context (включая batch_cooking и pantry_products)
             preferences = {
                 "favorite_foods": context.user_data.get("favorite_foods"),
                 "additional_dislikes": context.user_data.get("additional_dislikes"),
                 "special_requests": context.user_data.get("special_requests"),
-                "batch_cooking": context.user_data.get("batch_cooking_enabled", False)
+                "batch_cooking": context.user_data.get("batch_cooking_enabled", False),
+                "pantry_products": context.user_data.get("pantry_products_text")  # Продукты из кладовой
             }
 
             # Собираем временные медицинские данные (Этап 4 - доработка)

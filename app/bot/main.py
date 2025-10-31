@@ -112,7 +112,11 @@ from app.bot.handlers.pantry import (
     pantry_add_start,
     pantry_process_input,
     pantry_delete_list,
-    pantry_delete_item
+    pantry_delete_item,
+    pantry_create_plan_start,
+    pantry_edit_product_for_plan,
+    pantry_save_edited_quantity,
+    pantry_confirm_and_create_plan
 )
 from app.bot.handlers.reminder_settings import (
     reminder_setup_start,
@@ -981,11 +985,22 @@ def main():
 
     # ConversationHandler для управления продуктами дома
     pantry_conversation = ConversationHandler(
-        entry_points=[CallbackQueryHandler(pantry_start, pattern="^pantry$")],
+        entry_points=[
+            CallbackQueryHandler(pantry_start, pattern="^pantry$"),
+            CallbackQueryHandler(pantry_create_plan_start, pattern="^pantry_create_plan$")
+        ],
         states={
             PantryStates.WAITING_PRODUCTS_INPUT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, pantry_process_input),
                 CallbackQueryHandler(pantry_start, pattern="^pantry$")
+            ],
+            PantryStates.REVIEWING_FOR_PLAN: [
+                CallbackQueryHandler(pantry_edit_product_for_plan, pattern="^pantry_edit_for_plan_"),
+                CallbackQueryHandler(pantry_confirm_and_create_plan, pattern="^pantry_confirm_create_plan$"),
+                CallbackQueryHandler(main_menu_callback, pattern="^main_menu$")
+            ],
+            PantryStates.EDITING_PRODUCT_QUANTITY: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, pantry_save_edited_quantity)
             ]
         },
         fallbacks=[
