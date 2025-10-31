@@ -39,6 +39,10 @@ class MealPlan(Base):
     budget_category = Column(String(20), nullable=True)  # economy/normal/premium
     diet_preferences = Column(JSONB, default=dict)  # Предпочтения при генерации
 
+    # PDF файл
+    pdf_filename = Column(String(255), nullable=True)  # Имя файла
+    pdf_path = Column(String(500), nullable=True)  # Полный путь к файлу
+
     # Метаданные
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

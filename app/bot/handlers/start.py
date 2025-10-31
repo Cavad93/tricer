@@ -251,13 +251,8 @@ async def height_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         context.user_data["height"] = height
 
-        # Рассчитываем рекомендуемый диапазон веса на основе ИМТ
-        min_weight, max_weight = NutritionCalculator.get_healthy_weight_range(height)
-
         await update.message.reply_text(
             f"✅ Рост: {height} см\n\n"
-            f"💡 На основе твоего роста, рекомендуемый диапазон здорового веса:\n"
-            f"📊 {min_weight} - {max_weight} кг (по индексу массы тела ВОЗ)\n\n"
             "Какой у тебя текущий вес? (в килограммах, например, 70):"
         )
 
@@ -310,11 +305,24 @@ async def target_weight_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
         context.user_data["target_weight"] = target_weight
 
-        await update.message.reply_text(
-            f"✅ Целевой вес: {target_weight} кг\n\n"
-            "Какая у тебя главная цель?",
-            reply_markup=goal_keyboard()
-        )
+        # Рассчитываем рекомендуемый диапазон веса на основе ИМТ
+        height = context.user_data.get("height")
+        if height:
+            min_weight, max_weight = NutritionCalculator.get_healthy_weight_range(height)
+
+            await update.message.reply_text(
+                f"✅ Целевой вес: {target_weight} кг\n\n"
+                f"💡 На основе твоего роста ({height} см), рекомендуемый диапазон здорового веса:\n"
+                f"📊 {min_weight} - {max_weight} кг (по индексу массы тела ВОЗ)\n\n"
+                "Какая у тебя главная цель?",
+                reply_markup=goal_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                f"✅ Целевой вес: {target_weight} кг\n\n"
+                "Какая у тебя главная цель?",
+                reply_markup=goal_keyboard()
+            )
 
         return OnboardingStates.GOAL
 

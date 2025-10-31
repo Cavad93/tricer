@@ -1232,6 +1232,7 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
             )
 
             # Сохраняем пути к PDF
+            meal_plan.pdf_path = pdf_plan_path
             shopping_list.pdf_path = pdf_shopping_path
             await session.commit()
 
@@ -1329,53 +1330,74 @@ async def view_meal_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        days = await MealPlanService.get_meal_plan_days(session, plan_id)
+        user_result = await session.execute(select(User).where(User.telegram_id == update.effective_user.id))
+        user = user_result.scalar_one_or_none()
 
-        # Формируем текст с планом
         period_text = {
             "day": "1 день",
             "week": "неделю",
             "month": "месяц"
         }[meal_plan.period_type]
 
-        text = f"📋 <b>План питания на {period_text}</b>\n\n"
-        text += f"📅 {meal_plan.start_date.strftime('%d.%m.%Y')} - {meal_plan.end_date.strftime('%d.%m.%Y')}\n"
-        text += f"🎯 Калорий в день: {meal_plan.daily_calories} ккал\n\n"
+        # Проверяем наличие PDF файла
+        import os
+        if meal_plan.pdf_path and os.path.exists(meal_plan.pdf_path):
+            # Отправляем существующий PDF
+            pdf_path = meal_plan.pdf_path
+        else:
+            # Генерируем PDF
+            await query.edit_message_text("📄 Подготавливаю PDF файл...")
 
-        # Показываем первые 3 дня
-        for i, day in enumerate(days[:3]):
-            meals = await MealPlanService.get_day_meals(session, day.id)
+            days = await MealPlanService.get_meal_plan_days(session, plan_id)
+            days_data = []
+            for day in days:
+                meals = await MealPlanService.get_day_meals(session, day.id)
+                days_data.append((day, meals))
 
-            text += f"<b>День {day.day_number} ({day.day_date.strftime('%d.%m.%Y')})</b>\n"
+            pdf_path = await PDFGeneratorService.generate_meal_plan_pdf(
+                meal_plan,
+                days_data,
+                user.preferred_name or user.first_name,
+                user.city,
+                user.gender.value if user.gender else "male"
+            )
 
-            meal_icons = {
-                "breakfast": "🌅",
-                "lunch": "🌞",
-                "dinner": "🌙",
-                "snack": "🍎"
-            }
+            # Сохраняем путь к PDF
+            meal_plan.pdf_path = pdf_path
+            await session.commit()
 
-            for meal in meals[:2]:  # Показываем только 2 приема пищи
-                icon = meal_icons.get(meal.meal_type, "🍽")
-                text += f"{icon} {meal.recipe_name} - {meal.calories} ккал\n"
+        # Отправляем PDF файл
+        with open(pdf_path, 'rb') as pdf_file:
+            caption = (
+                f"📋 <b>План питания на {period_text}</b>\n\n"
+                f"📅 {meal_plan.start_date.strftime('%d.%m.%Y')} - {meal_plan.end_date.strftime('%d.%m.%Y')}\n"
+                f"🎯 Калорий в день: {meal_plan.daily_calories} ккал"
+            )
 
-            text += "\n"
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=InputFile(pdf_file, filename=f"План_питания_{period_text}.pdf"),
+                caption=caption,
+                parse_mode='HTML'
+            )
 
-        if len(days) > 3:
-            text += f"<i>... и ещё {len(days) - 3} дней</i>\n\n"
+        # Удаляем предыдущее сообщение
+        try:
+            await query.message.delete()
+        except:
+            pass
 
-        text += "📄 Полный план доступен в PDF файле"
-
+        # Отправляем меню навигации
         keyboard = [
             [InlineKeyboardButton("🛒 Список покупок", callback_data=f"shopping_list_{meal_plan.id}")],
             [InlineKeyboardButton("🔄 Создать новый план", callback_data="meal_plan")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ]
 
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='HTML'
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Выберите действие:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 
@@ -1422,60 +1444,64 @@ async def view_shopping_list(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         items = await ShoppingListService.get_shopping_items(session, shopping_list.id)
 
-        # Группируем по категориям
-        categories = {}
-        for item in items:
-            cat = item.category or "Другое"
-            if cat not in categories:
-                categories[cat] = []
-            categories[cat].append(item)
+        # Проверяем наличие PDF файла
+        import os
+        if shopping_list.pdf_path and os.path.exists(shopping_list.pdf_path):
+            # Отправляем существующий PDF
+            pdf_path = shopping_list.pdf_path
+        else:
+            # Генерируем PDF
+            await query.edit_message_text("📄 Подготавливаю PDF файл...")
 
-        # Формируем текст
-        text = f"🛒 <b>Список покупок</b>\n\n"
-        text += f"💰 Общая стоимость: ~{shopping_list.total_cost:.2f} ₽\n"
-        text += f"📦 Позиций: {len(items)}\n\n"
+            pdf_path = await PDFGeneratorService.generate_shopping_list_pdf(
+                shopping_list,
+                items,
+                meal_plan,
+                user.preferred_name or user.first_name,
+                user.city
+            )
 
-        # Показываем первые 10 позиций
-        shown = 0
-        for category, cat_items in list(categories.items())[:3]:
-            text += f"<b>{category}</b>\n"
+            # Сохраняем путь к PDF
+            shopping_list.pdf_path = pdf_path
+            await session.commit()
 
-            for item in cat_items[:3]:
-                if shown >= 10:
-                    break
+        # Отправляем PDF файл
+        with open(pdf_path, 'rb') as pdf_file:
+            period_text = {
+                "day": "1 день",
+                "week": "неделю",
+                "month": "месяц"
+            }[meal_plan.period_type]
 
-                price_text = f" (~{item.estimated_price:.2f} ₽)" if item.estimated_price else ""
-                text += f"• {item.product_name} - {item.quantity} {item.unit}{price_text}\n"
-                shown += 1
+            caption = (
+                f"🛒 <b>Список покупок</b>\n\n"
+                f"💰 Общая стоимость: ~{shopping_list.total_cost:.2f} ₽\n"
+                f"📦 Позиций: {len(items)}"
+            )
 
-            text += "\n"
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=InputFile(pdf_file, filename=f"Список_покупок_{period_text}.pdf"),
+                caption=caption,
+                parse_mode='HTML'
+            )
 
-        if len(items) > 10:
-            text += f"<i>... и ещё {len(items) - 10} позиций</i>\n\n"
+        # Удаляем предыдущее сообщение
+        try:
+            await query.message.delete()
+        except:
+            pass
 
-        text += "📄 Полный список доступен в PDF файле"
-
-        # Отправляем PDF если есть
-        if shopping_list.pdf_path:
-            try:
-                with open(shopping_list.pdf_path, 'rb') as pdf_file:
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=InputFile(pdf_file, filename="Список_покупок.pdf"),
-                        caption=f"🛒 Список покупок (~{shopping_list.total_cost:.2f} ₽)"
-                    )
-            except Exception as e:
-                logger.error("Error sending PDF: {}", repr(e))
-
+        # Отправляем меню навигации
         keyboard = [
             [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{meal_plan.id}")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ]
 
-        await query.edit_message_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='HTML'
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Выберите действие:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 
