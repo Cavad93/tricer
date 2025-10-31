@@ -2,7 +2,7 @@
 Сервис для отправки напоминаний о приемах пищи
 """
 from datetime import datetime, time
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict
 from loguru import logger
 from sqlalchemy import select, or_
 from telegram import Bot
