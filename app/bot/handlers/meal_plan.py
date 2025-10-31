@@ -833,8 +833,10 @@ async def handle_price_calculation_no(update: Update, context: ContextTypes.DEFA
 
 
 async def start_generation_process(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Начинает процесс генерации плана питания"""
+    """Начинает процесс генерации плана питания (с Celery)"""
     from app.bot.texts import FriendlyPhrases
+    from app.tasks.meal_plan_tasks import generate_meal_plan_task, notify_user_plan_ready
+    from celery import chain
     import random
 
     query = update.callback_query
@@ -849,25 +851,54 @@ async def start_generation_process(update: Update, context: ContextTypes.DEFAULT
         PlanPeriod.MONTH: "месяц (30 дней)"
     }[period]
 
+    # Собираем данные для задачи
+    preferences = {
+        "favorite_foods": context.user_data.get("favorite_foods"),
+        "additional_dislikes": context.user_data.get("additional_dislikes"),
+        "special_requests": context.user_data.get("special_requests"),
+        "batch_cooking": context.user_data.get("batch_cooking_enabled", False),
+    }
+    medical_context = {
+        "chronic_conditions_status": context.user_data.get("chronic_conditions_status"),
+        "acute_conditions": context.user_data.get("acute_conditions")
+    }
     calculate_prices = context.user_data.get("calculate_prices", False)
-    time_warning = ""
-    if calculate_prices:
-        time_warning = "\n\n💡 Расчёт цены может занять дополнительное время..."
+    start_date = context.user_data.get("plan_start_date")
 
-    progress_text = f"{creation_phrase}\n\n" \
-                   f"⏳ Создаю персональный план питания на {period_text}...{time_warning}\n\n" \
-                   "Это может занять до 2 минут. Пожалуйста, подожди."
+    # Конвертируем start_date в ISO string если есть
+    start_date_str = start_date.isoformat() if start_date else None
 
-    # Редактируем сообщение с вопросом
-    await query.edit_message_text(progress_text)
-
-    # Отправляем сообщение о начале генерации
-    progress_message = await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="⏳ Генерация началась..."
+    # === ВМЕСТО ПРЯМОГО ВЫЗОВА, СОЗДАЁМ CELERY ЗАДАЧУ ===
+    # Создаём цепочку задач: генерация → уведомление
+    task_chain = chain(
+        generate_meal_plan_task.s(
+            update.effective_user.id,
+            period.value,
+            preferences,
+            medical_context,
+            calculate_prices,
+            start_date_str
+        ),
+        notify_user_plan_ready.s(update.effective_user.id)  # .s() означает partial signature
     )
 
-    return await generate_meal_plan_with_preferences(update, context, progress_message)
+    # Запускаем задачу асинхронно
+    result = task_chain.apply_async()
+
+    logger.info(f"Meal plan task created for user {update.effective_user.id}, task_id={result.id}")
+
+    # Сразу отвечаем пользователю
+    await query.edit_message_text(
+        f"{creation_phrase}\n\n"
+        f"⏳ <b>Создание плана запущено!</b>\n\n"
+        f"Я готовлю для тебя персональный план питания на {period_text}.\n"
+        f"Это займёт 1-2 минуты. Я пришлю уведомление, когда план будет готов.\n\n"
+        f"💡 <b>Ты можешь продолжать пользоваться ботом, не нужно ждать!</b>",
+        reply_markup=back_to_menu_keyboard(),
+        parse_mode='HTML'
+    )
+
+    return ConversationHandler.END
 
 
 async def handle_feedback_positive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

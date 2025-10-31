@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     # Database (PostgreSQL)
     DATABASE_URL: str = "postgresql+asyncpg://nutriai:nutriai@localhost:5432/nutriai"
 
+    # Redis (for Celery task queue)
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     # PostgreSQL connection settings (optional, for advanced configuration)
     POSTGRES_USER: str = "nutriai"
     POSTGRES_PASSWORD: str = "nutriai"

@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  # Redis для Celery task queue
+  redis:
+    image: redis:7-alpine
+    container_name: nutriai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - nutriai_network
+
   postgres:
     image: postgres:12-alpine
     container_name: nutriai_postgres
@@ -35,6 +53,8 @@ services:
       - nutriai_network
 
 volumes:
+  redis_data:
+    driver: local
   postgres_data:
     driver: local
 
