@@ -268,8 +268,12 @@ def update_celery_queue_metrics(app):
     Call this periodically to update gauge metrics
     """
     try:
-        from celery.task.control import inspect
-        i = inspect(app=app)
+        # Use Celery 5.x compatible import
+        if app is None:
+            celery_queue_size.labels(queue_name='default').set(0)
+            return
+
+        i = app.control.inspect()
 
         # Get reserved tasks (tasks in queue)
         reserved = i.reserved()
@@ -280,6 +284,8 @@ def update_celery_queue_metrics(app):
             celery_queue_size.labels(queue_name='default').set(0)
     except Exception as e:
         logger.error(f"Error updating Celery queue metrics: {e}")
+        # Set to 0 on error to avoid missing metric
+        celery_queue_size.labels(queue_name='default').set(0)
 
 
 def track_meal_plan_created(period_type: str):
