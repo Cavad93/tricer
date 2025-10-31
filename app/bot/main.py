@@ -57,6 +57,8 @@ from app.bot.handlers.diary import (
 from app.bot.handlers.meal_plan import (
     meal_plan_start,
     meal_plan_period_selected,
+    handle_start_timing,
+    handle_batch_cooking,
     handle_cooking_time_selection,
     reuse_weekly_plan_yes,
     reuse_weekly_plan_no,
@@ -888,6 +890,14 @@ def main():
                 CallbackQueryHandler(meal_plan_period_selected, pattern="^plan_period_"),
                 CallbackQueryHandler(reuse_weekly_plan_yes, pattern="^reuse_weekly_yes$"),
                 CallbackQueryHandler(reuse_weekly_plan_no, pattern="^reuse_weekly_no$"),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.ASKING_START_TIMING: [
+                CallbackQueryHandler(handle_start_timing, pattern="^start_timing_"),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.ASKING_BATCH_COOKING: [
+                CallbackQueryHandler(handle_batch_cooking, pattern="^batch_"),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
             MealPlanStates.ASKING_COOKING_TIME: [

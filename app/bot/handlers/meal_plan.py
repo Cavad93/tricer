@@ -154,6 +154,9 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
         PlanPeriod.MONTH: "месяц (30 дней)"
     }[period]
 
+    # Сохраняем текст периода для использования в следующих сообщениях
+    context.user_data["meal_plan_period_text"] = period_text
+
     # Если выбран дневной план, проверяем наличие недельного плана
     if period == PlanPeriod.DAY:
         async with async_session_maker() as session:
@@ -199,6 +202,119 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
 
                 return MealPlanStates.WAITING_PERIOD  # Остаемся в том же состоянии
 
+    # Определяем время создания плана и спрашиваем о начале
+    from datetime import datetime
+    current_hour = datetime.now().hour
+
+    # Утро: 5:00-11:59, День: 12:00-17:59, Вечер: 18:00-4:59
+    if 5 <= current_hour < 12:
+        # Утро - спрашиваем включать ли сегодня
+        timing_question = "☀️ Доброе утро! Создать план начиная с сегодняшнего дня?"
+        today_text = "✅ Да, включая сегодня"
+        tomorrow_text = "➡️ Нет, начиная с завтра"
+    elif 12 <= current_hour < 18:
+        # День - спрашиваем включать ли сегодня
+        timing_question = "🌤 День в самом разгаре! Включить в план сегодняшний день?"
+        today_text = "✅ Да, включая сегодня"
+        tomorrow_text = "➡️ Нет, начиная с завтра"
+    else:
+        # Вечер - спрашиваем про ужин сегодня или начать с завтра
+        timing_question = "🌙 Добрый вечер! Включить в план сегодняшний ужин или начать с завтра?"
+        today_text = "🍽 Да, ужин сегодня"
+        tomorrow_text = "➡️ Начать с завтра"
+
+    timing_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(today_text, callback_data="start_timing_today")],
+        [InlineKeyboardButton(tomorrow_text, callback_data="start_timing_tomorrow")]
+    ])
+
+    await query.edit_message_text(
+        f"✅ Отлично! Создам план на {period_text}.\n\n"
+        f"{timing_question}",
+        reply_markup=timing_keyboard,
+        parse_mode='HTML'
+    )
+
+    return MealPlanStates.ASKING_START_TIMING
+
+
+async def handle_start_timing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора времени начала плана"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем выбор
+    start_today = query.data == "start_timing_today"
+    context.user_data["plan_start_today"] = start_today
+
+    # Определяем дату начала
+    from datetime import date, timedelta
+    if start_today:
+        context.user_data["plan_start_date"] = date.today()
+        start_text = "сегодня"
+    else:
+        context.user_data["plan_start_date"] = date.today() + timedelta(days=1)
+        start_text = "завтра"
+
+    # Спрашиваем о приготовлении с запасом (только для недельного и месячного плана)
+    period = context.user_data.get("meal_plan_period")
+
+    if period in [PlanPeriod.WEEK, PlanPeriod.MONTH]:
+        batch_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Да, это удобно!", callback_data="batch_yes")],
+            [InlineKeyboardButton("❌ Нет, разные блюда", callback_data="batch_no")]
+        ])
+
+        await query.edit_message_text(
+            f"👍 Хорошо, план начнётся {start_text}.\n\n"
+            f"💡 <b>Вопрос для экономии времени и денег:</b>\n\n"
+            f"Хочешь ли ты готовить некоторые блюда с запасом на 3-5 дней?\n\n"
+            f"Это значит:\n"
+            f"• Одно блюдо можно приготовить один раз\n"
+            f"• Съесть его в течение нескольких дней\n"
+            f"• Экономия времени на готовке\n"
+            f"• Меньше затрат на продукты\n\n"
+            f"<i>Например: борщ в понедельник, вторник и среду.</i>",
+            reply_markup=batch_keyboard,
+            parse_mode='HTML'
+        )
+
+        return MealPlanStates.ASKING_BATCH_COOKING
+    else:
+        # Для дневного плана пропускаем вопрос о batch cooking
+        context.user_data["batch_cooking_enabled"] = False
+        return await proceed_to_cooking_time_or_preferences(update, context)
+
+
+async def handle_batch_cooking(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора приготовления с запасом"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем выбор
+    batch_enabled = query.data == "batch_yes"
+    context.user_data["batch_cooking_enabled"] = batch_enabled
+
+    if batch_enabled:
+        await query.edit_message_text(
+            "✅ Отлично! Я подберу блюда, которые можно готовить с запасом и дублировать в рационе.",
+            parse_mode='HTML'
+        )
+    else:
+        await query.edit_message_text(
+            "✅ Хорошо! Я подберу разнообразные блюда на каждый день.",
+            parse_mode='HTML'
+        )
+
+    # Переходим к следующему шагу
+    return await proceed_to_cooking_time_or_preferences(update, context)
+
+
+async def proceed_to_cooking_time_or_preferences(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Переход к вопросу о времени готовки или сразу к предпочтениям"""
+    query = update.callback_query
+    period_text = context.user_data.get("meal_plan_period_text", "план")
+
     # Проверяем, установлено ли preferred_cooking_time_minutes
     async with async_session_maker() as session:
         result = await session.execute(
@@ -217,7 +333,6 @@ async def meal_plan_period_selected(update: Update, context: ContextTypes.DEFAUL
             ])
 
             await query.edit_message_text(
-                f"✅ Отлично! Создам план на {period_text}.\n\n"
                 f"⏰ <b>Сколько времени ты готов тратить на приготовление одного блюда?</b>\n\n"
                 f"Это поможет мне подобрать рецепты, которые впишутся в твой ритм жизни.\n\n"
                 f"<i>Ты сможешь изменить это в настройках в любое время.</i>",
@@ -1007,11 +1122,12 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
             # Деактивируем старые планы
             await MealPlanService.deactivate_old_plans(session, user.telegram_id)
 
-            # Собираем preferences из context
+            # Собираем preferences из context (включая batch_cooking)
             preferences = {
                 "favorite_foods": context.user_data.get("favorite_foods"),
                 "additional_dislikes": context.user_data.get("additional_dislikes"),
-                "special_requests": context.user_data.get("special_requests")
+                "special_requests": context.user_data.get("special_requests"),
+                "batch_cooking": context.user_data.get("batch_cooking_enabled", False)
             }
 
             # Собираем временные медицинские данные (Этап 4 - доработка)
@@ -1020,11 +1136,15 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
                 "acute_conditions": context.user_data.get("acute_conditions")
             }
 
+            # Получаем дату начала плана из context (если была установлена)
+            start_date = context.user_data.get("plan_start_date")
+
             # Генерируем новый план с учетом preferences и медицинского контекста
             meal_plan = await MealPlanService.generate_meal_plan(
                 session,
                 user.telegram_id,
                 period,
+                start_date=start_date,
                 preferences=preferences,
                 medical_context=medical_context
             )

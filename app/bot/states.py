@@ -46,6 +46,8 @@ class RestaurantStates(IntEnum):
 class MealPlanStates(IntEnum):
     """Состояния создания плана питания"""
     WAITING_PERIOD = auto()  # Ожидание выбора периода (день/неделя/месяц)
+    ASKING_START_TIMING = auto()  # Уточнение начала плана (сегодня/завтра)
+    ASKING_BATCH_COOKING = auto()  # Вопрос о приготовлении с запасом (на 3-5 дней)
     ASKING_COOKING_TIME = auto()  # Уточнение времени на готовку
     ASKING_PREFERENCES = auto()  # Уточнение предпочтений перед созданием
     # Медицинские уточнения (Этап 4 - доработка)

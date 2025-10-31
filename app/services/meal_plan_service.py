@@ -72,8 +72,9 @@ class MealPlanService:
         if old_plan_id:
             old_plan_data = await MealPlanService._load_old_plan_data(session, old_plan_id)
 
-        # Формируем промпт для AI с учетом preferences, medical_context и old_plan_data
-        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences, medical_context, old_plan_data)
+        # Формируем промпт для AI с учетом preferences, medical_context, old_plan_data и batch_cooking
+        batch_cooking = preferences.get("batch_cooking", False) if preferences else False
+        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences, medical_context, old_plan_data, batch_cooking)
 
         # Генерируем план через AI
         from app.config import settings
@@ -233,7 +234,7 @@ class MealPlanService:
             return None
 
     @staticmethod
-    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None, old_plan_data: dict = None) -> str:
+    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None, old_plan_data: dict = None, batch_cooking: bool = False) -> str:
         """Формирование промпта для генерации плана питания"""
 
         # Обрабатываем preferences
@@ -333,6 +334,27 @@ class MealPlanService:
         if user.preferred_cooking_time_minutes:
             cooking_time_text = f"\n⏰ ВРЕМЯ НА ГОТОВКУ: до {user.preferred_cooking_time_minutes} минут на одно блюдо\n   (Подбирай рецепты, которые можно приготовить за это время)"
 
+        # Формируем секцию о приготовлении с запасом (batch cooking)
+        batch_cooking_text = ""
+        if batch_cooking:
+            batch_cooking_text = f"""
+💡 ПРИГОТОВЛЕНИЕ С ЗАПАСОМ (Batch Cooking):
+   ВАЖНО: Пользователь хочет экономить время и деньги!
+
+   ТРЕБОВАНИЯ:
+   • Некоторые блюда должны повторяться 3-5 дней подряд
+   • Выбирай блюда, которые хорошо хранятся (супы, рагу, каши, запеканки)
+   • Указывай в названии количество дней: "Борщ (на 3 дня)", "Гречка с курицей (на 4 дня)"
+   • Подбирай блюда, которые можно приготовить один раз большой порцией
+   • Это должно быть удобно и экономно!
+
+   ПРИМЕРЫ:
+   - Понедельник, вторник, среда: Борщ с говядиной (на 3 дня)
+   - Четверг, пятница: Курица с овощами (на 2 дня)
+   - Субботу и воскресенье: новые блюда
+
+   ⚠️ Не забудь при дублировании блюд указывать ОДИНАКОВЫЕ ингредиенты и КБЖУ!"""
+
         # Формируем секцию с предпочтениями пользователя
         preferences_text = ""
         if favorite_foods:
@@ -397,6 +419,7 @@ class MealPlanService:
 - Жиры: {user.target_fats}г
 - Углеводы: {user.target_carbs}г
 {cooking_time_text}
+{batch_cooking_text}
 {preferences_text}{old_plan_text}
 
 💊 МИКРОНУТРИЕНТЫ (для месячного планирования):
