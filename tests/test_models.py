@@ -5,7 +5,7 @@ import pytest
 from datetime import datetime, date
 from app.models.user import User
 from app.models.meal import Meal
-from app.models.food_item import FoodItem
+from app.models.meal import Meal, MealFood
 
 
 class TestUserModel:
@@ -155,12 +155,12 @@ class TestMealModel:
         assert meal.date == today
 
 
-class TestFoodItemModel:
-    """Тесты модели FoodItem"""
+class TestMealFoodModel:
+    """Тесты модели MealFood"""
 
-    def test_food_item_creation(self):
+    def test_meal_food_creation(self):
         """Тест создания продукта"""
-        food_item = FoodItem(
+        food_item = MealFood(
             meal_id=1,
             name="Куриная грудка",
             portion_size=150.0,
@@ -178,9 +178,9 @@ class TestFoodItemModel:
         assert food_item.fats == 3.6
         assert food_item.carbs == 0
 
-    def test_food_item_optional_fields(self):
+    def test_meal_food_optional_fields(self):
         """Тест опциональных полей продукта"""
-        food_item = FoodItem(
+        food_item = MealFood(
             meal_id=1,
             name="Салат",
             portion_size=200.0,
@@ -189,17 +189,15 @@ class TestFoodItemModel:
             fats=7,
             carbs=8,
             confidence_score=0.95,
-            category="vegetables"
         )
 
         assert food_item.confidence_score == 0.95
-        assert food_item.category == "vegetables"
 
-    def test_food_item_calculations(self):
+    def test_meal_food_calculations(self):
         """Тест расчетов калорий и макросов"""
         # Куриная грудка: на 100г - 110 ккал, 23г белка, 2.4г жира
         # Порция 200г должна быть удвоена
-        food_item = FoodItem(
+        food_item = MealFood(
             meal_id=1,
             name="Куриная грудка",
             portion_size=200.0,
@@ -214,10 +212,10 @@ class TestFoodItemModel:
         assert food_item.proteins == 46
         assert food_item.fats == 4.8
 
-    def test_food_item_zero_values(self):
+    def test_meal_food_zero_values(self):
         """Тест продуктов с нулевыми значениями"""
         # Например, вода
-        food_item = FoodItem(
+        food_item = MealFood(
             meal_id=1,
             name="Вода",
             portion_size=250.0,
@@ -255,7 +253,7 @@ class TestModelRelationships:
         assert hasattr(user, 'meals')
 
     def test_meal_food_items_relationship(self):
-        """Тест связи Meal -> FoodItem"""
+        """Тест связи Meal -> MealFood"""
         meal = Meal(
             user_id=1,
             meal_type="breakfast",
@@ -267,7 +265,7 @@ class TestModelRelationships:
         )
 
         # Симуляция связи
-        assert hasattr(meal, 'food_items')
+        assert hasattr(meal, 'foods')
 
 
 class TestModelValidation:
@@ -275,7 +273,7 @@ class TestModelValidation:
 
     def test_positive_values(self):
         """Тест что калории и макросы положительные"""
-        food_item = FoodItem(
+        food_item = MealFood(
             meal_id=1,
             name="Test Food",
             portion_size=100.0,
