@@ -22,6 +22,7 @@ from app.services.medical_analysis_service import MedicalAnalysisService
 from app.bot.keyboards import back_to_menu_keyboard
 from app.bot.states import MedicalAnalysisStates
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def check_medical_privacy_consent(telegram_id: int, session: AsyncSession) -> bool:
