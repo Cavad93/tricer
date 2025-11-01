@@ -1,121 +1,218 @@
-# Быстрый старт NutriAI
+# Быстрый старт: Система кэширования планов питания
 
-## Проблема с генерацией плана питания - РЕШЕНА ✅
-
-**Симптом:** Бот принимает ответы на вопросы, создает задачу, но план питания не генерируется.
-
-**Причина:** Не запущен Celery worker для обработки фоновых задач.
-
----
-
-## Что нужно для работы бота
-
-Для полноценной работы NutriAI нужны **4 компонента**:
-
-1. ✅ **PostgreSQL** - база данных (у вас работает)
-2. ❌ **Redis** - брокер сообщений для фоновых задач
-3. ❌ **Celery Worker** - обработчик фоновых задач
-4. ✅ **Telegram Bot** - сам бот (у вас работает)
-
----
-
-## Установка и запуск за 5 минут
-
-### 1️⃣ Установите Memurai (Redis для Windows)
-
-**Скачать:** https://www.memurai.com/get-memurai (бесплатно)
-
-- Установите с настройками по умолчанию
-- Memurai автоматически запустится как служба Windows
-- Проверка: двойной клик на `check_redis.bat` → должно показать "Redis is running"
-
-### 2️⃣ Запустите Celery Worker
-
-**Двойной клик на:** `start_celery_worker.bat`
-
-Должно появиться окно с логами:
+## Ваши данные подключения:
 ```
-[tasks]
-  . tasks.generate_meal_plan
-  . tasks.notify_user_plan_ready
-
-[INFO] Connected to redis://localhost:6379/0
-[INFO] celery@DESKTOP-XXX ready.
+POSTGRES_USER=nutriai
+POSTGRES_PASSWORD=nutriai
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=nutriai
 ```
 
-**Оставьте это окно открытым!**
+## Шаг 1: Применить миграцию БД (5 минут)
 
-### 3️⃣ Запустите бота
+```bash
+cd /home/user/tricer
 
-**Двойной клик на:** `start_bot.bat`
+# Применить миграцию через Python
+python apply_cached_plans_migration.py
+```
 
-**ИЛИ** в PowerShell:
-```powershell
-python main.py
+**Ожидаемый результат:**
+```
+✅ Миграция успешно применена!
+✅ Таблицы созданы: user_categories, cached_meal_plans
+```
+
+Если возникла ошибка - проверьте:
+1. PostgreSQL запущен: `ps aux | grep postgres`
+2. Доступен по localhost:5432
+3. База данных `nutriai` существует
+
+---
+
+## Шаг 2: Запустить Celery Worker и Beat (Development)
+
+### Терминал 1 - Celery Worker:
+```bash
+cd /home/user/tricer
+
+# Активировать виртуальное окружение (если есть)
+# source venv/bin/activate
+
+# Запустить worker
+celery -A app.celery_app worker --loglevel=info
+```
+
+### Терминал 2 - Celery Beat:
+```bash
+cd /home/user/tricer
+
+# Активировать виртуальное окружение (если есть)
+# source venv/bin/activate
+
+# Запустить beat (планировщик)
+python celery_beat.py
+```
+
+**Ожидаемый результат в Терминале 2:**
+```
+Расписание задач:
+  - update-cached-meal-plans: <crontab: 0 2 * * * (m/h/d/dM/MY)>
+  - cleanup-unused-cached-plans: <crontab: 0 3 * * 0 (m/h/d/dM/MY)>
+  - deactivate-expired-meal-plans: <crontab: 0 1 * * * (m/h/d/dM/MY)>
 ```
 
 ---
 
-## Теперь всё должно работать! 🎉
+## Шаг 3: Протестировать (опционально)
 
-### Проверка генерации плана питания:
+### Тест 1: Проверить созданные таблицы
+```bash
+python -c "
+import asyncio
+from app.db.session import async_engine
+from sqlalchemy import text
 
-1. Откройте бота в Telegram
-2. Меню → **Рацион**
-3. Ответьте на все вопросы
-4. В окне Celery Worker должны появиться логи генерации:
-   ```
-   [Celery] Starting meal plan generation for user...
-   [Celery] Generating meal plan via AI...
-   [Celery] Meal plan generated successfully
-   ```
-5. Через 1-2 минуты бот отправит PDF с планом питания и списком покупок
+async def check():
+    async with async_engine.begin() as conn:
+        result = await conn.execute(text('''
+            SELECT table_name,
+                   (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = t.table_name) as columns
+            FROM information_schema.tables t
+            WHERE table_schema = 'public'
+            AND table_name IN ('user_categories', 'cached_meal_plans')
+        '''))
+        for table, cols in result:
+            print(f'✅ {table}: {cols} столбцов')
+
+asyncio.run(check())
+"
+```
+
+### Тест 2: Запустить задачу обновления кэша вручную
+```bash
+python -c "
+from app.tasks.cached_meal_plan_tasks import update_cached_meal_plans_task
+print('Запускаю задачу обновления кэша...')
+result = update_cached_meal_plans_task.delay()
+print(f'Задача запущена с ID: {result.id}')
+print('Проверьте логи Celery Worker для деталей')
+"
+```
+
+### Тест 3: Проверить статистику кэша
+```bash
+python -c "
+import asyncio
+from app.db.session import async_session_maker
+from sqlalchemy import select, func
+from app.models.cached_meal_plan import UserCategory, CachedMealPlan
+
+async def check_stats():
+    async with async_session_maker() as session:
+        result = await session.execute(select(func.count(UserCategory.id)))
+        categories = result.scalar()
+
+        result = await session.execute(select(func.count(CachedMealPlan.id)))
+        plans = result.scalar()
+
+        print(f'📊 Категорий пользователей: {categories}')
+        print(f'📊 Кэшированных планов: {plans}')
+
+asyncio.run(check_stats())
+"
+```
 
 ---
 
-## Типичные проблемы
+## Как это работает:
 
-### ❌ "Can't connect to Redis"
-- Запустите Memurai (он должен быть в трее Windows)
-- Или перезапустите службу через Services (services.msc)
+### 1. Обычный пользователь (БЕЗ предпочтений)
+```
+Пользователь запрашивает план → Бот определяет категорию →
+Ищет в кэше → Находит готовый план → Возвращает БЕЗ вызова AI ✅
+```
+**Экономия: 100% токенов**
 
-### ❌ Celery worker не видит задачи
-- Убедитесь, что в выводе есть:
-  ```
-  [tasks]
-    . tasks.generate_meal_plan
-    . tasks.notify_user_plan_ready
-  ```
-- Если нет - перезапустите worker
+### 2. Пользователь с предпочтениями (любимые блюда, особые пожелания)
+```
+Пользователь запрашивает план → Есть предпочтения →
+Вызывает AI → Генерирует персональный план → НЕ сохраняет в кэш
+```
+**Экономия: 0% (но план персонализирован)**
 
-### ❌ План не генерируется, но ошибок нет
-- Проверьте, что оба окна открыты (Celery Worker и Bot)
-- Посмотрите логи в окне Celery Worker - там будет информация об ошибках
-
----
-
-## Ежедневное использование
-
-После настройки для запуска бота нужно:
-
-1. ✅ Memurai - запускается автоматически (служба Windows)
-2. 🖱️ **Двойной клик на `start_celery_worker.bat`** → оставить окно открытым
-3. 🖱️ **Двойной клик на `start_bot.bat`** → оставить окно открытым
-
-**Готово! Бот работает полностью.**
+### 3. Пользователь нажимает "Хочу изменить"
+```
+Пользователь недоволен планом → Нажимает "Хочу изменить" →
+force_ai=True → Вызывает AI → Генерирует новый план
+```
+**Экономия: 0% (персонализация)**
 
 ---
 
-## Подробная документация
+## Расписание автообновления кэша:
 
-См. [CELERY_SETUP_WINDOWS.md](CELERY_SETUP_WINDOWS.md) для:
-- Подробных инструкций по установке
-- Настройки автозапуска
-- Устранения проблем
-- Альтернативных вариантов установки Redis
+| Время (UTC) | Задача | Что делает |
+|-------------|--------|------------|
+| 01:00 каждый день | Деактивация истекших планов | Помечает старые планы пользователей как неактивные |
+| 02:00 каждый день | Обновление кэша | Создает новые варианты планов для категорий |
+| 03:00 воскресенье | Очистка кэша | Удаляет неиспользуемые планы (>30 дней) |
+
+**Примечание:** UTC = Московское время - 3 часа
+- 01:00 UTC = 04:00 МСК
+- 02:00 UTC = 05:00 МСК
+- 03:00 UTC = 06:00 МСК
 
 ---
 
-## Вопросы?
+## Что дальше?
 
-Если что-то не работает - смотрите логи в окнах Celery Worker и Bot.
+### Development:
+- Держите 2 терминала открытыми (Worker + Beat)
+- Проверяйте логи при тестировании
+- Система будет автоматически обновлять кэш по расписанию
+
+### Production:
+- Настройте systemd/supervisor (см. `SETUP_INSTRUCTIONS.md`)
+- Настройте мониторинг (Flower, логи)
+- Настройте автозапуск при перезагрузке сервера
+
+---
+
+## Полезные команды:
+
+```bash
+# Остановить Worker (Ctrl+C в терминале)
+# Остановить Beat (Ctrl+C в терминале)
+
+# Очистить очередь задач (если что-то зависло)
+celery -A app.celery_app purge
+
+# Посмотреть активные задачи
+celery -A app.celery_app inspect active
+
+# Посмотреть зарегистрированные задачи
+celery -A app.celery_app inspect registered
+
+# Перезапустить всё (если изменили код)
+# Ctrl+C в обоих терминалах, потом запустить заново
+```
+
+---
+
+## Нужна помощь?
+
+1. **Подробная инструкция:** `SETUP_INSTRUCTIONS.md`
+2. **Документация системы:** `CACHED_MEAL_PLANS_README.md`
+3. **Логи Celery:** смотрите в терминалах Worker и Beat
+4. **Проблемы с миграцией:** проверьте подключение к PostgreSQL
+
+---
+
+## Коммиты:
+
+- `630d0e7` - Реализация системы кэширования
+- `91ebd90` - Скрипты и инструкции
+
+Ветка: `claude/fix-russian-error-011CUhRX6AHeueUvrNUCuVxZ`
