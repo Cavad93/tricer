@@ -823,7 +823,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Ignored non-critical error: {type(error).__name__}")
         return
 
-    # Специальная обработка BadRequest для устаревших callback queries
+    # Специальная обработка BadRequest для устаревших callback queries и неизмененных сообщений
     if isinstance(error, BadRequest):
         error_msg = str(error).lower()
 
@@ -841,6 +841,11 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info("Sent fresh menu to user after old callback query")
                 except Exception as e:
                     logger.error(f"Failed to send fresh menu: {e}")
+            return
+
+        # Если это ошибка "message is not modified" - просто игнорируем (сообщение уже актуально)
+        if "message is not modified" in error_msg or "message can't be edited" in error_msg:
+            logger.debug(f"Ignored non-critical BadRequest: {error}")
             return
 
         # Для других BadRequest ошибок просто логируем
