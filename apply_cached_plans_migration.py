@@ -10,7 +10,7 @@ from sqlalchemy import text
 # Добавляем корневую директорию в path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.db.session import async_engine
+from app.db.session import engine as async_engine
 
 
 async def apply_migration():
