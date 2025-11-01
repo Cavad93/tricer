@@ -1,7 +1,7 @@
 """
 Handler для запроса отчетов о питании
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler, CallbackQueryHandler, MessageHandler, filters
 from loguru import logger
