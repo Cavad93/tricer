@@ -72,7 +72,18 @@ def generate_meal_plan_task(
             return result
 
         finally:
-            loop.close()
+            # Ensure all pending async operations complete before closing the loop
+            try:
+                # Give pending tasks a chance to complete
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                # Allow final cleanup callbacks to run
+                loop.run_until_complete(asyncio.sleep(0.1))
+            except Exception as cleanup_error:
+                logger.warning(f"Error during event loop cleanup: {cleanup_error}")
+            finally:
+                loop.close()
 
     except Exception as exc:
         logger.error(f"[Celery] Error generating meal plan: {exc}", exc_info=True)
@@ -212,7 +223,18 @@ def notify_user_plan_ready(self, plan_data: dict, user_id: int):
             )
             logger.info(f"[Celery] User {user_id} notified successfully")
         finally:
-            loop.close()
+            # Ensure all pending async operations complete before closing the loop
+            try:
+                # Give pending tasks a chance to complete
+                pending = asyncio.all_tasks(loop)
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                # Allow final cleanup callbacks to run
+                loop.run_until_complete(asyncio.sleep(0.1))
+            except Exception as cleanup_error:
+                logger.warning(f"Error during event loop cleanup: {cleanup_error}")
+            finally:
+                loop.close()
 
     except Exception as e:
         logger.error(f"[Celery] Error notifying user {user_id}: {e}", exc_info=True)
