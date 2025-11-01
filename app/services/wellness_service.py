@@ -197,8 +197,10 @@ class WellnessService:
                 wellness_data.append(log_data)
 
             # Рассчитываем средние микронутриенты за период
-            avg_micronutrients = await self.micronutrient_service.get_average_micronutrients(
-                session, user_id, days
+            start_date = datetime.now().date() - timedelta(days=days)
+            end_date = datetime.now().date()
+            avg_micronutrients = await self.micronutrient_service.calculate_period_average(
+                session, user_id, start_date, end_date
             )
 
             # Строим промпт для AI

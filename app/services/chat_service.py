@@ -193,8 +193,8 @@ class ChatService:
             log_date = log.created_at.strftime("%d.%m %H:%M")
             energy = log.energy_level or "?"
             mood = log.mood or "?"
-            digestion = log.digestion_quality or "?"
-            symptoms = ", ".join(log.symptoms) if log.symptoms else "нет"
+            digestion = log.digestive_comfort or "?"
+            symptoms = ", ".join(log.physical_symptoms) if log.physical_symptoms else "нет"
             wellness_text.append(
                 f"{log_date}: энергия {energy}/5, настроение {mood}/5, пищеварение {digestion}/5, симптомы: {symptoms}"
             )
