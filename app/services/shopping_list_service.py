@@ -520,7 +520,16 @@ class ShoppingListService:
         logger.info(f"No cached price for {product_name}, searching via AI...")
 
         try:
-            from app.services.claude_ai import ClaudeAIService
+            import anthropic
+            from anthropic import AsyncAnthropic
+            from app.config import settings
+
+            # Создаем отдельный AI client с отключенными retry для быстрого failover
+            # При ошибке 429 сразу перейдем к fallback вместо блокировки на 60 секунд
+            ai_client = AsyncAnthropic(
+                api_key=settings.ANTHROPIC_API_KEY,
+                max_retries=0  # Отключаем автоматические retry - обрабатываем сами
+            )
 
             # Создаем промпт для AI
             prompt = f"""Найди актуальную цену на продукт в интернете.
@@ -550,15 +559,13 @@ class ShoppingListService:
 
 Начни с формирования поискового запроса."""
 
-            from app.config import settings
-            ai_service = ClaudeAIService()
-
             # Первый запрос к AI - формирование поискового запроса
-            response1 = await ai_service.async_client.messages.create(
+            response1 = await ai_client.messages.create(
                 model=settings.CLAUDE_MODEL,
                 max_tokens=1000,
                 temperature=0.3,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                timeout=10.0  # Таймаут 10 секунд для быстрого failover
             )
 
             ai_response1 = response1.content[0].text
@@ -619,11 +626,12 @@ class ShoppingListService:
 
 Верни ТОЛЬКО JSON, без дополнительного текста."""
 
-            response2 = await ai_service.async_client.messages.create(
+            response2 = await ai_client.messages.create(
                 model=settings.CLAUDE_MODEL,
                 max_tokens=500,
                 temperature=0.3,
-                messages=[{"role": "user", "content": prompt2}]
+                messages=[{"role": "user", "content": prompt2}],
+                timeout=10.0  # Таймаут 10 секунд для быстрого failover
             )
 
             ai_response2 = response2.content[0].text
@@ -661,6 +669,11 @@ class ShoppingListService:
             else:
                 raise ValueError("Could not parse AI price response")
 
+        except anthropic.RateLimitError as e:
+            logger.warning("Rate limit exceeded for price search ({}): {}. Using fallback estimation immediately.", product_name, repr(e))
+            # При превышении лимита API - сразу используем fallback без retry
+        except anthropic.APITimeoutError as e:
+            logger.warning("API timeout for price search ({}): {}. Using fallback estimation.", product_name, repr(e))
         except Exception as e:
             logger.warning("AI price search failed for {}: {}. Using fallback estimation.", product_name, repr(e))
 

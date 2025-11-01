@@ -17,7 +17,9 @@ import asyncio
     bind=True,                    # Получать self (для retry)
     name='tasks.generate_meal_plan',
     max_retries=3,
-    default_retry_delay=60
+    default_retry_delay=60,
+    soft_time_limit=180,          # Мягкий лимит 3 минуты
+    time_limit=240                # Жесткий лимит 4 минуты
 )
 def generate_meal_plan_task(
     self,
@@ -86,6 +88,13 @@ def generate_meal_plan_task(
                 loop.close()
 
     except Exception as exc:
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        if isinstance(exc, SoftTimeLimitExceeded):
+            logger.error(f"[Celery] Task time limit exceeded for user {user_id}. Task took too long.")
+            # Не делаем retry при таймауте - это может быть из-за rate limiting API
+            raise
+
         logger.error(f"[Celery] Error generating meal plan: {exc}", exc_info=True)
         # Retry задачи при ошибке
         raise self.retry(exc=exc)
@@ -200,6 +209,8 @@ async def _generate_meal_plan_async(
     bind=True,
     name='tasks.notify_user_plan_ready',
     max_retries=5,
+    soft_time_limit=60,           # Мягкий лимит 60 секунд
+    time_limit=90,                # Жесткий лимит 90 секунд
     default_retry_delay=10
 )
 def notify_user_plan_ready(self, plan_data: dict, user_id: int):
