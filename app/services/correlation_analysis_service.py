@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from sqlalchemy import select, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from loguru import logger
 import numpy as np
 from scipy import stats
@@ -53,6 +54,7 @@ class CorrelationAnalysisService:
             # Получаем все приемы пищи с wellness logs
             meals_result = await session.execute(
                 select(Meal)
+                .options(selectinload(Meal.foods))
                 .where(
                     and_(
                         Meal.user_id == user_id,
@@ -506,6 +508,7 @@ class CorrelationAnalysisService:
 
             meals_result = await session.execute(
                 select(Meal)
+                .options(selectinload(Meal.foods))
                 .where(
                     and_(
                         Meal.user_id == user_id,
