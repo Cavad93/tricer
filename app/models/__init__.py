@@ -15,6 +15,7 @@ from app.models.user_steps import UserSteps
 from app.models.temporary_meal_plan import TemporaryMealPlan
 from app.models.pantry import UserPantry, PantryUsageLog
 from app.models.insight_fact import InsightFact
+from app.models.cached_meal_plan import UserCategory, CachedMealPlan, CachedMealPlanStatus
 
 __all__ = [
     "User",
@@ -47,4 +48,7 @@ __all__ = [
     "UserPantry",
     "PantryUsageLog",
     "InsightFact",
+    "UserCategory",
+    "CachedMealPlan",
+    "CachedMealPlanStatus",
 ]

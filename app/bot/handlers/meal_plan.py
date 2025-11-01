@@ -1044,13 +1044,14 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
                 "special_requests": combined_requests
             }
 
-            # Генерируем новый план с учетом изменений
+            # Генерируем новый план с учетом изменений (через AI, не из кэша)
             meal_plan = await MealPlanService.generate_meal_plan(
                 session,
                 user.telegram_id,
                 period,
                 preferences=new_preferences,
-                old_plan_id=old_plan_id
+                old_plan_id=old_plan_id,
+                force_ai=True  # Принудительно через AI для персонализации
             )
 
             # Используем ранее сохраненный выбор пользователя по расчёту цены

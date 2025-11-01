@@ -24,10 +24,14 @@ class MealPlanService:
         start_date: date = None,
         preferences: dict = None,
         medical_context: dict = None,
-        old_plan_id: int = None
+        old_plan_id: int = None,
+        force_ai: bool = False
     ) -> MealPlan:
         """
-        Генерация плана питания через AI
+        Генерация плана питания (с использованием кэша или AI)
+
+        ВАЖНО: По умолчанию использует кэшированные планы для экономии токенов!
+        При первом запросе или если force_ai=True, генерирует через AI.
 
         Args:
             session: Сессия БД
@@ -42,6 +46,7 @@ class MealPlanService:
                 - chronic_conditions_status: текущее состояние хронических заболеваний
                 - acute_conditions: текущие острые состояния
             old_plan_id: ID предыдущего плана (для внесения изменений)
+            force_ai: Принудительная генерация через AI (игнорируя кэш)
 
         Returns:
             MealPlan: Созданный план питания
@@ -67,52 +72,118 @@ class MealPlanService:
 
         end_date = start_date + timedelta(days=days_count - 1)
 
-        # Загружаем данные старого плана, если он указан
-        old_plan_data = None
-        if old_plan_id:
-            old_plan_data = await MealPlanService._load_old_plan_data(session, old_plan_id)
+        # === КЭШИРОВАНИЕ: Проверяем можно ли использовать кэш ===
+        # Кэш используется только если:
+        # 1. Нет специальных предпочтений (favorite_foods, additional_dislikes, special_requests, pantry_products)
+        # 2. Нет изменений старого плана (old_plan_id)
+        # 3. Нет особого медицинского контекста (chronic_conditions_status, acute_conditions)
+        # 4. Не установлен флаг force_ai
 
-        # Загружаем персональные факты о корреляциях
-        personal_insights = None
-        try:
-            from app.services.correlation_analysis_service import CorrelationAnalysisService
-            correlation_service = CorrelationAnalysisService()
-            insights = await correlation_service.get_user_insights(session, user_id, active_only=True)
-            if insights:
-                personal_insights = insights
-        except Exception as e:
-            logger.warning(f"Failed to load personal insights: {repr(e)}")
+        can_use_cache = not force_ai and not old_plan_id
+        if preferences:
+            has_custom_preferences = any([
+                preferences.get("favorite_foods"),
+                preferences.get("additional_dislikes"),
+                preferences.get("special_requests"),
+                preferences.get("pantry_products")
+            ])
+            can_use_cache = can_use_cache and not has_custom_preferences
 
-        # Формируем промпт для AI с учетом preferences, medical_context, old_plan_data, batch_cooking и personal_insights
-        batch_cooking = preferences.get("batch_cooking", False) if preferences else False
-        prompt = MealPlanService._build_meal_plan_prompt(
-            user, period_type, days_count, preferences, medical_context,
-            old_plan_data, batch_cooking, personal_insights
-        )
+        if medical_context:
+            has_custom_medical = any([
+                medical_context.get("chronic_conditions_status"),
+                medical_context.get("acute_conditions")
+            ])
+            can_use_cache = can_use_cache and not has_custom_medical
 
-        # Генерируем план через AI
-        from app.config import settings
-        ai_service = ClaudeAIService()
-        try:
-            ai_response = await ai_service.async_client.messages.create(
-                model=settings.CLAUDE_MODEL,
-                max_tokens=16000,
-                temperature=0.8,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
+        parsed_plan = None
+        used_cache = False
+
+        if can_use_cache:
+            # Пытаемся получить план из кэша
+            try:
+                from app.services.cached_meal_plan_service import CachedMealPlanService
+
+                # Определяем категорию пользователя
+                category = await CachedMealPlanService.get_or_create_category(session, user)
+
+                # Ищем кэшированный план
+                cached_plan_data = await CachedMealPlanService.get_cached_plan(
+                    session, category, period_type
+                )
+
+                if cached_plan_data:
+                    parsed_plan = cached_plan_data
+                    used_cache = True
+                    logger.info(f"✅ Using CACHED meal plan for user {user_id}, category {category.id}")
+                else:
+                    logger.info(f"No cached plan found for user {user_id}, category {category.id}, will generate with AI")
+
+            except Exception as e:
+                logger.warning(f"Failed to use cache for user {user_id}: {repr(e)}, falling back to AI")
+                can_use_cache = False
+
+        # Если кэш не подошел - генерируем через AI
+        if not parsed_plan:
+            # Загружаем данные старого плана, если он указан
+            old_plan_data = None
+            if old_plan_id:
+                old_plan_data = await MealPlanService._load_old_plan_data(session, old_plan_id)
+
+            # Загружаем персональные факты о корреляциях
+            personal_insights = None
+            try:
+                from app.services.correlation_analysis_service import CorrelationAnalysisService
+                correlation_service = CorrelationAnalysisService()
+                insights = await correlation_service.get_user_insights(session, user_id, active_only=True)
+                if insights:
+                    personal_insights = insights
+            except Exception as e:
+                logger.warning(f"Failed to load personal insights: {repr(e)}")
+
+            # Формируем промпт для AI с учетом preferences, medical_context, old_plan_data, batch_cooking и personal_insights
+            batch_cooking = preferences.get("batch_cooking", False) if preferences else False
+            prompt = MealPlanService._build_meal_plan_prompt(
+                user, period_type, days_count, preferences, medical_context,
+                old_plan_data, batch_cooking, personal_insights
             )
 
-            plan_data = ai_response.content[0].text
-            logger.info(f"AI generated meal plan for user {user_id}")
+            # Генерируем план через AI
+            from app.config import settings
+            ai_service = ClaudeAIService()
+            try:
+                logger.info(f"🤖 Generating meal plan with AI for user {user_id}")
+                ai_response = await ai_service.async_client.messages.create(
+                    model=settings.CLAUDE_MODEL,
+                    max_tokens=16000,
+                    temperature=0.8,
+                    messages=[{
+                        "role": "user",
+                        "content": prompt
+                    }]
+                )
 
-        except Exception as e:
-            logger.error("Error generating meal plan: {}", repr(e))
-            raise
+                plan_data = ai_response.content[0].text
+                logger.info(f"✅ AI generated meal plan for user {user_id}")
 
-        # Парсим ответ AI
-        parsed_plan = MealPlanService._parse_ai_meal_plan(plan_data)
+            except Exception as e:
+                logger.error("Error generating meal plan: {}", repr(e))
+                raise
+
+            # Парсим ответ AI
+            parsed_plan = MealPlanService._parse_ai_meal_plan(plan_data)
+
+            # Сохраняем в кэш если можно (нет персональных предпочтений)
+            if can_use_cache:
+                try:
+                    from app.services.cached_meal_plan_service import CachedMealPlanService
+                    category = await CachedMealPlanService.get_or_create_category(session, user)
+                    await CachedMealPlanService.save_cached_plan(
+                        session, category, period_type, parsed_plan
+                    )
+                    logger.info(f"💾 Saved plan to cache for category {category.id}")
+                except Exception as e:
+                    logger.warning(f"Failed to save plan to cache: {repr(e)}")
 
         # Создаем план в БД
         meal_plan = MealPlan(
