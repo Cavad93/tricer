@@ -31,4 +31,4 @@ if __name__ == '__main__':
     logger.info("=" * 80)
 
     # Запускаем beat
-    celery_app.start(['celery', 'beat', '--loglevel=info'])
+    celery_app.start(['beat', '--loglevel=info'])
