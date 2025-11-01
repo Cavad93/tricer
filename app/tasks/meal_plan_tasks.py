@@ -1,8 +1,12 @@
 """
 Celery задачи для генерации планов питания
+
+ВАЖНО: Использует специальный механизм управления event loop
+для предотвращения ошибки "RuntimeError: Event loop is closed"
 """
 from app.celery_app import celery_app
-from app.db.session import async_session_maker
+from app.db.celery_session import celery_session_maker, cleanup_celery_connections
+from app.celery_event_loop import run_async_task, managed_session_scope
 from app.services.meal_plan_service import MealPlanService
 from app.services.shopping_list_service import ShoppingListService
 from app.services.pdf_generator import PDFGeneratorService
@@ -53,17 +57,16 @@ def generate_meal_plan_task(
         if start_date:
             parsed_start_date = date.fromisoformat(start_date)
 
-        # Use asyncio.run() which properly handles event loop lifecycle
-        # including cleanup of asyncpg connections and pending tasks
-        result = asyncio.run(
-            _generate_meal_plan_async(
-                user_id,
-                PlanPeriod(period_type),
-                preferences,
-                medical_context,
-                calculate_prices,
-                parsed_start_date
-            )
+        # Используем run_async_task вместо asyncio.run()
+        # Это гарантирует правильное управление event loop
+        result = run_async_task(
+            _generate_meal_plan_async,
+            user_id,
+            PlanPeriod(period_type),
+            preferences,
+            medical_context,
+            calculate_prices,
+            parsed_start_date
         )
 
         logger.info(f"[Celery] Meal plan generated successfully for user {user_id}")
@@ -81,6 +84,14 @@ def generate_meal_plan_task(
         # Retry задачи при ошибке
         raise self.retry(exc=exc)
 
+    finally:
+        # КРИТИЧНО: Очищаем соединения после задачи
+        # Это предотвращает накопление "мертвых" соединений с закрытым loop
+        try:
+            run_async_task(cleanup_celery_connections)
+        except Exception as cleanup_error:
+            logger.warning(f"[Celery] Error during connection cleanup: {cleanup_error}")
+
 
 async def _generate_meal_plan_async(
     user_id: int,
@@ -93,6 +104,9 @@ async def _generate_meal_plan_async(
     """
     Асинхронная часть генерации плана
 
+    Использует celery_session_maker и managed_session_scope
+    для правильной работы с event loop
+
     Returns:
         dict: {
             'plan_id': int,
@@ -102,7 +116,7 @@ async def _generate_meal_plan_async(
             'daily_calories': int
         }
     """
-    async with async_session_maker() as session:
+    async with managed_session_scope(celery_session_maker) as session:
         # Получаем пользователя
         result = await session.execute(
             select(User).where(User.telegram_id == user_id)
@@ -173,7 +187,7 @@ async def _generate_meal_plan_async(
         # Сохраняем пути к PDF
         meal_plan.pdf_path = pdf_plan_path
         shopping_list.pdf_path = pdf_shopping_path
-        await session.commit()
+        # commit будет выполнен автоматически в managed_session_scope
 
         logger.info(f"[Celery] Task completed successfully for user {user_id}")
 
@@ -206,9 +220,9 @@ def notify_user_plan_ready(self, plan_data: dict, user_id: int):
     try:
         logger.info(f"[Celery] Notifying user {user_id} about plan {plan_data['plan_id']}")
 
-        # Use asyncio.run() which properly handles event loop lifecycle
-        # including cleanup of asyncpg connections and pending tasks
-        asyncio.run(_notify_user_async(plan_data, user_id))
+        # Используем run_async_task вместо asyncio.run()
+        # Это гарантирует правильное управление event loop
+        run_async_task(_notify_user_async, plan_data, user_id)
 
         logger.info(f"[Celery] User {user_id} notified successfully")
 
@@ -216,6 +230,13 @@ def notify_user_plan_ready(self, plan_data: dict, user_id: int):
         logger.error(f"[Celery] Error notifying user {user_id}: {e}", exc_info=True)
         # Retry при ошибках
         raise self.retry(exc=e)
+
+    finally:
+        # КРИТИЧНО: Очищаем соединения после задачи
+        try:
+            run_async_task(cleanup_celery_connections)
+        except Exception as cleanup_error:
+            logger.warning(f"[Celery] Error during connection cleanup: {cleanup_error}")
 
 
 async def _notify_user_async(plan_data: dict, user_id: int):
