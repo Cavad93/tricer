@@ -170,7 +170,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
 
                     logger.info(f"Packaged product detected for user {user.id}, asking for intent")
-                    return FoodAddStates.ASKING_FOOD_INTENTION
+                    return FoodAddStates.ASKING_INTENTION
 
                 # Формируем текст с результатами (для неупакованных продуктов)
                 response_text = "✅ *Распознано!*\n\n"
