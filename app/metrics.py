@@ -341,15 +341,18 @@ class MetricsUpdater:
     async def stop(self):
         """Stop the metrics updater"""
         if not self.running:
+            logger.debug("Metrics updater already stopped or not running")
             return
 
         self.running = False
-        if self.task:
+        if self.task and not self.task.done():
             self.task.cancel()
             try:
                 await self.task
             except asyncio.CancelledError:
-                pass
+                logger.debug("Metrics updater task cancelled successfully")
+            except Exception as e:
+                logger.error(f"Error while stopping metrics updater: {e}")
         logger.info("Metrics updater stopped")
 
     async def _update_loop(self):

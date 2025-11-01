@@ -839,6 +839,20 @@ async def post_init(application: Application) -> None:
     application.bot_data['metrics_updater'] = metrics_updater
 
 
+async def post_shutdown(application: Application) -> None:
+    """Корректное завершение работы при остановке приложения"""
+    logger.info("Shutting down bot...")
+
+    # Останавливаем MetricsUpdater
+    metrics_updater = application.bot_data.get('metrics_updater')
+    if metrics_updater:
+        logger.info("Stopping metrics updater...")
+        await metrics_updater.stop()
+        logger.info("Metrics updater stopped")
+
+    logger.info("Bot shutdown completed")
+
+
 def main():
     """Главная функция запуска бота"""
     logger.info("Starting NutriAI Bot...")
@@ -862,9 +876,9 @@ def main():
         pool_timeout=10.0           # 10 сек на получение соединения из пула
     )
 
-    # Создаем приложение с post_init hook для инициализации БД и кастомными таймаутами
+    # Создаем приложение с post_init/post_shutdown hooks для инициализации БД и корректного завершения
     # concurrent_updates=True позволяет обрабатывать обновления от разных пользователей параллельно
-    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).concurrent_updates(True).build()
+    application = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).request(request).post_init(post_init).post_shutdown(post_shutdown).concurrent_updates(True).build()
 
     # ConversationHandler для добавления еды по фото
     food_add_conversation = ConversationHandler(
