@@ -298,8 +298,8 @@ async def _notify_user_async(plan_data: dict, user_id: int):
     # Отправляем сообщение с кнопками
     keyboard = [
         [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{plan_data['plan_id']}")],
-        [InlineKeyboardButton("✅ Всё отлично!", callback_data="feedback_positive")],
-        [InlineKeyboardButton("🔄 Хочу изменить", callback_data="feedback_negative")],
+        [InlineKeyboardButton("✅ Всё отлично!", callback_data=f"feedback_positive_{plan_data['plan_id']}")],
+        [InlineKeyboardButton("🔄 Хочу изменить", callback_data=f"feedback_negative_{plan_data['plan_id']}")],
         [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ]
 

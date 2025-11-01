@@ -79,7 +79,9 @@ from app.bot.handlers.meal_plan import (
     handle_change_request,
     view_meal_plan,
     view_shopping_list,
-    cancel_meal_plan
+    cancel_meal_plan,
+    global_feedback_positive_callback,
+    global_feedback_negative_callback
 )
 from app.bot.keyboards import main_menu_keyboard, back_to_menu_keyboard
 from app.bot.states import FoodAddStates, MealPlanStates, RestaurantStates, PantryStates, ReminderSettingsStates
@@ -231,6 +233,10 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Обработчик нажатия на кнопку главного меню"""
     query = update.callback_query
     await query.answer()
+
+    # Сбрасываем флаг ожидания изменений плана
+    if "waiting_for_plan_changes" in context.user_data:
+        context.user_data["waiting_for_plan_changes"] = False
 
     await query.edit_message_text(
         "Главное меню:",
@@ -1132,6 +1138,11 @@ def main():
     # Callback handlers для плана питания
     application.add_handler(CallbackQueryHandler(view_meal_plan, pattern="^view_plan_"))
     application.add_handler(CallbackQueryHandler(view_shopping_list, pattern="^shopping_list_"))
+
+    # Глобальные обработчики для feedback кнопок (работают вне ConversationHandler)
+    # Используются когда уведомление приходит от Celery задачи
+    application.add_handler(CallbackQueryHandler(global_feedback_positive_callback, pattern="^feedback_positive_\\d+$"))
+    application.add_handler(CallbackQueryHandler(global_feedback_negative_callback, pattern="^feedback_negative_\\d+$"))
 
     # Callback handlers для настроек времени готовки
     application.add_handler(CallbackQueryHandler(change_cooking_time_callback, pattern="^change_cooking_time$"))

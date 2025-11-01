@@ -1008,6 +1008,20 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
             )
             user = result.scalar_one_or_none()
 
+            # Если period не установлен, получаем его из старого плана
+            if not period and old_plan_id:
+                old_plan = await MealPlanService.get_meal_plan_by_id(session, old_plan_id)
+                if old_plan:
+                    period = old_plan.period_type
+                    logger.info(f"Period retrieved from old plan: {period}")
+                else:
+                    logger.error(f"Old plan {old_plan_id} not found")
+                    await progress_message.edit_text(
+                        "❌ Старый план не найден. Попробуй создать новый план.",
+                        reply_markup=back_to_menu_keyboard()
+                    )
+                    return ConversationHandler.END
+
             # Деактивируем старый план
             await MealPlanService.deactivate_old_plans(session, user.telegram_id)
 
@@ -1129,8 +1143,8 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
         feedback_phrase = random.choice(FriendlyPhrases.FEEDBACK_REQUEST)
 
         feedback_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Теперь отлично!", callback_data="feedback_positive")],
-            [InlineKeyboardButton("🔄 Еще изменения", callback_data="feedback_negative")],
+            [InlineKeyboardButton("✅ Теперь отлично!", callback_data=f"feedback_positive_{meal_plan.id}")],
+            [InlineKeyboardButton("🔄 Еще изменения", callback_data=f"feedback_negative_{meal_plan.id}")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ])
 
@@ -1316,8 +1330,8 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
         feedback_phrase = random.choice(FriendlyPhrases.FEEDBACK_REQUEST)
 
         feedback_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✅ Всё отлично!", callback_data="feedback_positive")],
-            [InlineKeyboardButton("🔄 Хочу изменить", callback_data="feedback_negative")],
+            [InlineKeyboardButton("✅ Всё отлично!", callback_data=f"feedback_positive_{meal_plan.id}")],
+            [InlineKeyboardButton("🔄 Хочу изменить", callback_data=f"feedback_negative_{meal_plan.id}")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ])
 
@@ -1552,3 +1566,112 @@ async def cancel_meal_plan(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
 
     return ConversationHandler.END
+
+
+async def global_feedback_positive_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Глобальный обработчик положительной обратной связи (вне ConversationHandler).
+    Используется когда уведомление приходит от Celery задачи.
+    """
+    query = update.callback_query
+    await query.answer()
+
+    # Извлекаем plan_id из callback_data
+    try:
+        plan_id = int(query.data.split("_")[-1])
+    except (ValueError, IndexError):
+        logger.error(f"Invalid callback_data format: {query.data}")
+        await query.edit_message_text(
+            "❌ Ошибка обработки запроса",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    user_id = update.effective_user.id
+
+    # Используем дружелюбные фразы для поощрения
+    from app.bot.texts import FriendlyPhrases
+    import random
+
+    praise = random.choice(FriendlyPhrases.PRAISE)
+
+    # Проверяем, настроены ли напоминания у пользователя
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == user_id)
+        )
+        user = result.scalar_one_or_none()
+
+        # Если напоминания не настроены, предлагаем их настроить
+        if user and not user.reminders_enabled:
+            text = f"{praise}\n\n" \
+                   "⏰ Хочешь, я буду напоминать тебе о приемах пищи?\n" \
+                   "Это поможет придерживаться режима питания!"
+
+            keyboard = [
+                [InlineKeyboardButton("✅ Да, настроить!", callback_data="reminder_yes")],
+                [InlineKeyboardButton("❌ Нет, не нужно", callback_data="reminder_no")],
+            ]
+
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+    # Если напоминания уже настроены, показываем стандартное сообщение
+    text = f"{praise}\n\n" \
+           "Если понадобится помощь или захочешь изменить план - обращайся! 💚\n\n" \
+           "Чтобы посмотреть план в любой момент, нажми 📋 Рацион в меню."
+
+    keyboard = [
+        [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{plan_id}")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def global_feedback_negative_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Глобальный обработчик отрицательной обратной связи (вне ConversationHandler).
+    Используется когда уведомление приходит от Celery задачи.
+    """
+    query = update.callback_query
+    await query.answer()
+
+    # Извлекаем plan_id из callback_data
+    try:
+        plan_id = int(query.data.split("_")[-1])
+    except (ValueError, IndexError):
+        logger.error(f"Invalid callback_data format: {query.data}")
+        await query.edit_message_text(
+            "❌ Ошибка обработки запроса",
+            reply_markup=back_to_menu_keyboard()
+        )
+        return
+
+    # Сохраняем plan_id в контекст для дальнейшего использования
+    context.user_data["current_plan_id"] = plan_id
+    context.user_data["meal_plan_period"] = None  # Будет определен из БД при необходимости
+
+    # Устанавливаем флаг для chat_message_handler
+    context.user_data["waiting_for_plan_changes"] = True
+
+    text = "🔄 Хорошо, давай скорректируем план!\n\n" \
+           "Расскажи, что именно ты хотел бы изменить?\n\n" \
+           "Например:\n" \
+           "• Заменить определенные блюда\n" \
+           "• Изменить калорийность\n" \
+           "• Убрать/добавить продукты\n" \
+           "• Изменить время приготовления\n\n" \
+           "Напиши свои пожелания:"
+
+    cancel_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ Отмена", callback_data="main_menu")]
+    ])
+
+    await query.edit_message_text(text, reply_markup=cancel_keyboard)

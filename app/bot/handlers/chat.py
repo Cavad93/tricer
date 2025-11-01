@@ -26,6 +26,15 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     logger.info(f"User {user.id} sent message to AI-chat: {message_text[:50]}...")
 
+    # Проверяем, ожидается ли ввод изменений для плана питания
+    if context.user_data.get("waiting_for_plan_changes"):
+        from app.bot.handlers.meal_plan import handle_change_request
+        # Убираем флаг
+        context.user_data["waiting_for_plan_changes"] = False
+        # Перенаправляем обработку
+        await handle_change_request(update, context)
+        return
+
     # Показываем индикатор "печатает..."
     await update.message.chat.send_action("typing")
 
