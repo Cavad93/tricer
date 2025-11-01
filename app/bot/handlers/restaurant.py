@@ -359,6 +359,8 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
         "Это может занять до минуты. Подожди, пожалуйста."
     )
 
+    extraction_text = None  # Инициализируем для доступа в except блоке
+
     try:
         async with async_session_maker() as session:
             # Получаем пользователя
@@ -719,21 +721,59 @@ async def analyze_menu_and_recommend(update: Update, context: ContextTypes.DEFAU
     except json.JSONDecodeError as e:
         logger.error(
             f"JSON parsing error for user {user.id}: {e}. "
-            f"This usually means Claude AI returned invalid JSON format.",
+            f"This usually means Claude AI returned invalid JSON format or received food photo instead of menu.",
             exc_info=True
         )
 
+        # Проверяем, не отправил ли пользователь фото еды вместо меню
+        # Если в extraction_text есть упоминания о еде/блюде (а не меню), показываем специальное сообщение
+        is_food_not_menu = False
+        if extraction_text:
+            food_indicators = [
+                "не вижу меню",
+                "это не меню",
+                "фото готового блюда",
+                "только один продукт",
+                "кусок",
+                "тарелка",
+                "порция"
+            ]
+            is_food_not_menu = any(indicator in extraction_text.lower() for indicator in food_indicators)
+
         try:
-            await send_with_retry(
-                processing_msg.edit_text(
-                    "❌ Не удалось обработать ответ AI.\n\n"
-                    "Это редкая ошибка форматирования данных. "
-                    "Пожалуйста, попробуй отправить фото меню ещё раз.\n\n"
-                    "<i>Если ошибка повторяется, попробуй сфотографировать меню с другого ракурса.</i>",
-                    parse_mode='HTML',
-                    reply_markup=back_to_menu_keyboard()
+            if is_food_not_menu:
+                # Пользователь отправил фото еды, а не меню
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📸 Добавить еду", callback_data="add_food")],
+                    [InlineKeyboardButton("🔙 Главное меню", callback_data="main_menu")]
+                ])
+
+                await send_with_retry(
+                    processing_msg.edit_text(
+                        "📸 <b>Похоже, ты отправил фото еды, а не меню ресторана!</b>\n\n"
+                        "🍽 <b>Функция 'Ресторан'</b> предназначена для анализа меню ресторана "
+                        "и рекомендации блюд из него с учётом твоих целей.\n\n"
+                        "📱 Для того чтобы <b>добавить уже съеденную еду</b> в дневник, "
+                        "используй кнопку <b>\"📸 Добавить еду\"</b> в главном меню.\n\n"
+                        "💡 <b>Что делать:</b>\n"
+                        "• Если хочешь добавить съеденную еду - нажми кнопку ниже\n"
+                        "• Если хочешь выбрать блюдо из меню ресторана - отправь фото меню со списком блюд",
+                        parse_mode='HTML',
+                        reply_markup=keyboard
+                    )
                 )
-            )
+            else:
+                # Обычная ошибка парсинга JSON
+                await send_with_retry(
+                    processing_msg.edit_text(
+                        "❌ Не удалось обработать ответ AI.\n\n"
+                        "Это редкая ошибка форматирования данных. "
+                        "Пожалуйста, попробуй отправить фото меню ещё раз.\n\n"
+                        "<i>Если ошибка повторяется, попробуй сфотографировать меню с другого ракурса.</i>",
+                        parse_mode='HTML',
+                        reply_markup=back_to_menu_keyboard()
+                    )
+                )
         except Exception as send_error:
             logger.error(f"Failed to send JSON error message to user {user.id}: {send_error}")
 
