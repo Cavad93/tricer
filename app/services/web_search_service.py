@@ -190,3 +190,64 @@ class WebSearchService:
         formatted += "Если данных нет - можешь дать приблизительную оценку, но обязательно укажи что это оценка.\n"
 
         return formatted
+
+    @staticmethod
+    async def search_scientific_sources(query: str, max_results: int = 3) -> List[Dict]:
+        """
+        Ищет научные источники по запросу
+
+        Args:
+            query: Поисковый запрос
+            max_results: Максимальное количество результатов
+
+        Returns:
+            List[Dict] со структурой:
+                - title: Заголовок
+                - url: Ссылка
+                - snippet: Краткое описание
+        """
+        try:
+            results = []
+
+            # Используем DuckDuckGo для поиска
+            search_query = f"{query} научные исследования здоровье"
+            ddg_url = f"https://api.duckduckgo.com/?q={search_query}&format=json&no_html=1"
+
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(ddg_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status == 200:
+                            data = await response.json()
+
+                            # Извлекаем AbstractText
+                            if data.get("AbstractText"):
+                                results.append({
+                                    "title": data.get("Heading", "Основная информация"),
+                                    "url": data.get("AbstractURL", ""),
+                                    "snippet": data.get("AbstractText", "")
+                                })
+
+                            # Извлекаем RelatedTopics
+                            for topic in data.get("RelatedTopics", [])[:max_results]:
+                                if isinstance(topic, dict) and topic.get("Text"):
+                                    results.append({
+                                        "title": topic.get("Text", "").split(" - ")[0] if " - " in topic.get("Text", "") else "Дополнительная информация",
+                                        "url": topic.get("FirstURL", ""),
+                                        "snippet": topic.get("Text", "")
+                                    })
+
+                                    if len(results) >= max_results:
+                                        break
+
+                except Exception as e:
+                    logger.warning(f"DuckDuckGo search failed: {repr(e)}")
+
+            # Если не нашли результатов, возвращаем пустой список
+            if not results:
+                logger.info(f"No scientific sources found for query: {query}")
+
+            return results[:max_results]
+
+        except Exception as e:
+            logger.error(f"Error searching scientific sources: {repr(e)}")
+            return []

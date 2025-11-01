@@ -12,6 +12,7 @@ from app.models.weight_history import WeightHistory
 from app.models.user_steps import UserSteps
 from app.models.temporary_meal_plan import TemporaryMealPlan
 from app.models.pantry import UserPantry, PantryUsageLog
+from app.models.insight_fact import InsightFact
 
 __all__ = [
     "User",
@@ -40,4 +41,5 @@ __all__ = [
     "TemporaryMealPlan",
     "UserPantry",
     "PantryUsageLog",
+    "InsightFact",
 ]

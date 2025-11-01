@@ -286,6 +286,45 @@ class ChatService:
             except Exception:
                 pass
 
+        # Добавляем интересные факты о питании и самочувствии
+        try:
+            from app.models.insight_fact import InsightFact
+
+            result_insights = await session.execute(
+                select(InsightFact).where(
+                    and_(
+                        InsightFact.user_id == user_id,
+                        InsightFact.is_active == True
+                    )
+                ).order_by(desc(InsightFact.confidence_level)).limit(5)
+            )
+            insights = result_insights.scalars().all()
+
+            if insights:
+                insight_texts = []
+                for insight in insights:
+                    impact = "положительно влияет на" if insight.impact_direction == "positive" else "негативно влияет на"
+                    metric_names = {
+                        "energy_level": "энергию",
+                        "mood": "настроение",
+                        "digestive_comfort": "пищеварение",
+                        "mental_clarity": "ясность ума",
+                        "sleep_quality": "сон",
+                        "stress_level": "стресс"
+                    }
+                    metric = metric_names.get(insight.wellness_metric, insight.wellness_metric)
+                    confidence = int(insight.confidence_level * 100)
+
+                    insight_text = f"{insight.food_name} {impact} {metric} (достоверность {confidence}%)"
+                    if insight.scientific_explanation:
+                        insight_text += f" - {insight.scientific_explanation[:100]}..."
+
+                    insight_texts.append(insight_text)
+
+                context["personal_insights"] = insight_texts
+        except Exception as e:
+            logger.warning(f"Failed to load personal insights: {repr(e)}")
+
         return context
 
     @staticmethod

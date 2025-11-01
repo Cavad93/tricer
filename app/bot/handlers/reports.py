@@ -24,6 +24,7 @@ async def reports_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Клавиатура выбора периода
         keyboard = [
+            [InlineKeyboardButton("💡 Интересные факты", callback_data="wellness_insights")],
             [InlineKeyboardButton("📊 График веса", callback_data="report_weight_chart")],
             [InlineKeyboardButton("За сегодня", callback_data="report_day")],
             [InlineKeyboardButton("За неделю", callback_data="report_week")],
@@ -348,6 +349,141 @@ async def cancel_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 
+async def wellness_insights_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик кнопки 'Интересные факты'
+    Показывает пользователю найденные корреляции между едой и самочувствием
+    """
+    try:
+        query = update.callback_query
+        await query.answer()
+
+        # Показываем прогресс
+        status_message = await query.edit_message_text(
+            "🔍 Собираю интересные факты о вашем питании и самочувствии...\n\n"
+            "Это может занять несколько секунд."
+        )
+
+        user_id = query.from_user.id
+
+        async with async_session_maker() as db:
+            # Получаем пользователя
+            result = await db.execute(
+                select(User).where(User.telegram_id == user_id)
+            )
+            user = result.scalar_one_or_none()
+
+            if not user:
+                await status_message.edit_text(
+                    "❌ Пользователь не найден. Пройдите /start.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Назад", callback_data="reports")
+                    ]])
+                )
+                return ConversationHandler.END
+
+            # Импортируем сервис анализа корреляций
+            from app.services.correlation_analysis_service import CorrelationAnalysisService
+
+            correlation_service = CorrelationAnalysisService()
+
+            # Получаем сохраненные интересные факты
+            insights = await correlation_service.get_user_insights(db, user.id, active_only=True)
+
+            # Если фактов нет, запускаем анализ
+            if not insights:
+                await status_message.edit_text(
+                    "🔄 Анализирую ваши данные, чтобы найти интересные закономерности...\n\n"
+                    "Это займет около минуты."
+                )
+
+                # Запускаем анализ
+                insights = await correlation_service.analyze_user_correlations(
+                    db, user.id, days_back=90
+                )
+
+            # Если фактов все еще нет
+            if not insights:
+                await status_message.edit_text(
+                    "📊 <b>Недостаточно данных для анализа</b>\n\n"
+                    "Для поиска интересных закономерностей нужно:\n"
+                    "• Регулярно добавлять приемы пищи (минимум 10-20 раз)\n"
+                    "• Заполнять опросы о самочувствии после еды\n"
+                    "• Делать это как минимум 2-3 недели\n\n"
+                    "💡 <b>Как это работает:</b>\n"
+                    "Бот анализирует связь между продуктами и вашим самочувствием, "
+                    "ищет устойчивые закономерности (достоверность 95%+) и объясняет их научно.\n\n"
+                    "Продолжайте вести дневник питания, и скоро здесь появятся персональные инсайты!",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("🔙 Назад к отчётам", callback_data="reports")
+                    ]])
+                )
+                return ConversationHandler.END
+
+            # Формируем сообщение с фактами
+            message_parts = [
+                "💡 <b>Интересные факты о вашем питании</b>\n\n"
+                f"Найдено закономерностей: {len(insights)}\n"
+                "Все факты основаны на ваших данных с достоверностью 95%+\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+            ]
+
+            # Добавляем каждый факт
+            for i, insight in enumerate(insights, 1):
+                fact_text = insight.get_user_friendly_text()
+                message_parts.append(f"<b>Факт #{i}</b>\n{fact_text}\n")
+                message_parts.append("━━━━━━━━━━━━━━━━━━━━\n\n")
+
+                # Telegram ограничивает длину сообщения до 4096 символов
+                # Если сообщение становится слишком длинным, разбиваем на части
+                current_message = "".join(message_parts)
+                if len(current_message) > 3500 and i < len(insights):
+                    # Отправляем текущую часть
+                    await query.message.reply_text(
+                        current_message,
+                        parse_mode="HTML"
+                    )
+                    # Начинаем новую часть
+                    message_parts = []
+
+            # Отправляем последнюю часть (или единственное сообщение)
+            final_message = "".join(message_parts)
+            final_message += (
+                "💡 <b>Как использовать эти факты:</b>\n"
+                "• Бот автоматически учитывает их при составлении рациона\n"
+                "• AI-чат знает о них и даст персональные советы\n"
+                "• При добавлении еды вы получите предупреждения о возможных эффектах"
+            )
+
+            keyboard = [
+                [InlineKeyboardButton("🔄 Обновить анализ", callback_data="wellness_insights")],
+                [InlineKeyboardButton("🔙 Назад к отчётам", callback_data="reports")]
+            ]
+
+            await status_message.edit_text(
+                final_message,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error in wellness_insights_callback: {repr(e)}", exc_info=True)
+        try:
+            await query.message.reply_text(
+                "❌ Произошла ошибка при анализе данных.\n\n"
+                "Попробуйте позже или обратитесь в поддержку.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Назад", callback_data="reports")
+                ]])
+            )
+        except:
+            pass
+        return ConversationHandler.END
+
+
 # Создаем ConversationHandler
 def get_reports_conversation_handler():
     """Получить conversation handler для отчетов"""
@@ -357,6 +493,7 @@ def get_reports_conversation_handler():
         ],
         states={
             SELECTING_PERIOD: [
+                CallbackQueryHandler(wellness_insights_callback, pattern="^wellness_insights$"),
                 CallbackQueryHandler(generate_weight_chart, pattern="^report_weight_chart$"),
                 CallbackQueryHandler(generate_report, pattern="^report_(day|week|month)$"),
                 CallbackQueryHandler(reports_start, pattern="^another_report$"),
