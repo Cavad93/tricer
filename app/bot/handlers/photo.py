@@ -207,6 +207,40 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if context.user_data.get("from_correction"):
                     response_text += "♻️ _Использованы данные из предыдущей коррекции_\n\n"
 
+                # Проверяем персональные факты и показываем предупреждения
+                try:
+                    from app.db.session import async_session_maker
+                    from app.models.user import User
+                    from app.services.food_warning_service import FoodWarningService
+                    from sqlalchemy import select
+
+                    async with async_session_maker() as db_session:
+                        # Получаем пользователя
+                        result_user = await db_session.execute(
+                            select(User).where(User.telegram_id == user.id)
+                        )
+                        db_user = result_user.scalar_one_or_none()
+
+                        if db_user:
+                            # Извлекаем названия всех продуктов
+                            food_names = [dish['name'] for dish in dishes]
+
+                            # Получаем предупреждения
+                            warnings = await FoodWarningService.get_food_warnings(
+                                db_session,
+                                db_user.id,
+                                food_names
+                            )
+
+                            # Форматируем предупреждения
+                            if warnings:
+                                warnings_text = FoodWarningService.format_warnings_for_user(warnings)
+                                if warnings_text:
+                                    response_text += f"\n{warnings_text}\n"
+
+                except Exception as e:
+                    logger.warning(f"Failed to get food warnings: {repr(e)}")
+
                 # Спрашиваем подтверждение: распознано верно?
                 response_text += "✅ *Всё распознано верно?*"
 

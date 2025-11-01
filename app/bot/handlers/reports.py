@@ -457,6 +457,7 @@ async def wellness_insights_callback(update: Update, context: ContextTypes.DEFAU
             )
 
             keyboard = [
+                [InlineKeyboardButton("📊 Статистика", callback_data="insights_statistics")],
                 [InlineKeyboardButton("🔄 Обновить анализ", callback_data="wellness_insights")],
                 [InlineKeyboardButton("🔙 Назад к отчётам", callback_data="reports")]
             ]
@@ -484,6 +485,304 @@ async def wellness_insights_callback(update: Update, context: ContextTypes.DEFAU
         return ConversationHandler.END
 
 
+async def insights_statistics_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает сводную статистику по фактам"""
+    query = update.callback_query
+    await query.answer()
+
+    from app.db.session import async_session_maker
+    from app.services.user_service import UserService
+    from app.services.insight_statistics_service import InsightStatisticsService
+
+    async with async_session_maker() as session:
+        # Получаем пользователя
+        user = await UserService.get_user_by_telegram_id(session, query.from_user.id)
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Получаем статистику
+        stats = await InsightStatisticsService.get_summary_statistics(session, user.id)
+
+        if stats["total_facts"] == 0:
+            text = "📊 <b>Статистика интересных фактов</b>\n\n"
+            text += "У вас пока нет обнаруженных фактов о корреляциях.\n\n"
+            text += "Продолжайте вести дневник питания и заполнять опросы о самочувствии, "
+            text += "и система автоматически найдет связи между продуктами и вашим состоянием!"
+        else:
+            text = "📊 <b>Статистика интересных фактов</b>\n\n"
+            text += f"📚 Всего фактов: {stats['total_facts']}\n"
+            text += f"✅ Активных: {stats['active_facts']}\n"
+            text += f"🔄 Неактивных: {stats['inactive_facts']}\n\n"
+
+            text += f"🟢 Положительных: {stats['positive_facts']}\n"
+            text += f"🔴 Отрицательных: {stats['negative_facts']}\n"
+            text += f"⚪ Нейтральных: {stats['neutral_facts']}\n\n"
+
+            text += f"🎯 Средняя достоверность: {int(stats['average_confidence'] * 100)}%\n\n"
+
+            if stats['top_positive_foods']:
+                text += "✨ <b>Топ полезных продуктов:</b>\n"
+                for i, food in enumerate(stats['top_positive_foods'][:3], 1):
+                    metric_names = {
+                        "energy_level": "энергия",
+                        "mood": "настроение",
+                        "digestive_comfort": "пищеварение",
+                        "mental_clarity": "ясность ума",
+                        "sleep_quality": "сон"
+                    }
+                    metric = metric_names.get(food['metric'], food['metric'])
+                    conf = int(food['confidence'] * 100)
+                    text += f"{i}. {food['food_name']} ({metric}, {conf}%)\n"
+                text += "\n"
+
+            if stats['top_negative_foods']:
+                text += "⚠️ <b>Топ продуктов с негативным эффектом:</b>\n"
+                for i, food in enumerate(stats['top_negative_foods'][:3], 1):
+                    metric_names = {
+                        "energy_level": "энергия",
+                        "mood": "настроение",
+                        "digestive_comfort": "пищеварение",
+                        "mental_clarity": "ясность ума",
+                        "sleep_quality": "сон"
+                    }
+                    metric = metric_names.get(food['metric'], food['metric'])
+                    conf = int(food['confidence'] * 100)
+                    text += f"{i}. {food['food_name']} ({metric}, {conf}%)\n"
+
+        keyboard = [
+            [InlineKeyboardButton("📈 График корреляций", callback_data="insights_graph")],
+            [InlineKeyboardButton("📜 История изменений", callback_data="insights_history")],
+            [InlineKeyboardButton("💾 Экспорт данных", callback_data="insights_export")],
+            [InlineKeyboardButton("◀️ Назад", callback_data="wellness_insights")]
+        ]
+
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+
+    return SELECTING_PERIOD
+
+
+async def insights_graph_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает текстовый график корреляций"""
+    query = update.callback_query
+    await query.answer()
+
+    from app.db.session import async_session_maker
+    from app.services.user_service import UserService
+    from app.services.insight_statistics_service import InsightStatisticsService
+
+    async with async_session_maker() as session:
+        # Получаем пользователя
+        user = await UserService.get_user_by_telegram_id(session, query.from_user.id)
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Генерируем график
+        graph_text = await InsightStatisticsService.get_correlation_graph_text(
+            session, user.id, top_n=10
+        )
+
+        graph_text += "\n\n<i>Примечание: Графики показывают топ-10 самых достоверных корреляций</i>"
+
+        keyboard = [
+            [InlineKeyboardButton("◀️ Назад к статистике", callback_data="insights_statistics")]
+        ]
+
+        await query.edit_message_text(
+            graph_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+
+    return SELECTING_PERIOD
+
+
+async def insights_history_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Показывает историю изменений фактов"""
+    query = update.callback_query
+    await query.answer()
+
+    from app.db.session import async_session_maker
+    from app.services.user_service import UserService
+    from app.services.insight_statistics_service import InsightStatisticsService
+
+    async with async_session_maker() as session:
+        # Получаем пользователя
+        user = await UserService.get_user_by_telegram_id(session, query.from_user.id)
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Получаем историю
+        history = await InsightStatisticsService.get_fact_history(session, user.id)
+
+        if not history:
+            text = "📜 <b>История изменений фактов</b>\n\n"
+            text += "История пуста. Пока нет фактов о корреляциях."
+        else:
+            text = "📜 <b>История изменений фактов</b>\n\n"
+
+            # Группируем по статусу
+            active = [h for h in history if h['is_active']]
+            inactive = [h for h in history if not h['is_active']]
+
+            if active:
+                text += f"✅ <b>Активных: {len(active)}</b>\n\n"
+                for h in active[:5]:  # Показываем только первые 5
+                    created = datetime.fromisoformat(h['created_at']).strftime("%d.%m.%Y")
+                    validated = ""
+                    if h['last_validated']:
+                        validated_date = datetime.fromisoformat(h['last_validated']).strftime("%d.%m.%Y")
+                        validated = f" | Проверен: {validated_date}"
+
+                    text += f"• {h['food_name']} → {h['wellness_metric']}\n"
+                    text += f"  Создан: {created}{validated}\n"
+                    text += f"  Достоверность: {int(h['confidence_level'] * 100)}%\n\n"
+
+            if inactive:
+                text += f"\n❌ <b>Деактивировано: {len(inactive)}</b>\n\n"
+                for h in inactive[:3]:  # Показываем только первые 3
+                    created = datetime.fromisoformat(h['created_at']).strftime("%d.%m.%Y")
+                    updated = datetime.fromisoformat(h['updated_at']).strftime("%d.%m.%Y")
+
+                    text += f"• {h['food_name']} → {h['wellness_metric']}\n"
+                    text += f"  Создан: {created} | Деактивирован: {updated}\n\n"
+
+        keyboard = [
+            [InlineKeyboardButton("◀️ Назад к статистике", callback_data="insights_statistics")]
+        ]
+
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+
+    return SELECTING_PERIOD
+
+
+async def insights_export_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Экспортирует факты в JSON или CSV"""
+    query = update.callback_query
+    await query.answer()
+
+    text = "💾 <b>Экспорт данных</b>\n\n"
+    text += "Выберите формат для экспорта ваших фактов о корреляциях:"
+
+    keyboard = [
+        [InlineKeyboardButton("📄 JSON", callback_data="export_json")],
+        [InlineKeyboardButton("📊 CSV", callback_data="export_csv")],
+        [InlineKeyboardButton("◀️ Назад", callback_data="insights_statistics")]
+    ]
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+
+    return SELECTING_PERIOD
+
+
+async def export_json_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Экспортирует факты в JSON"""
+    query = update.callback_query
+    await query.answer("Генерирую JSON файл...")
+
+    from app.db.session import async_session_maker
+    from app.services.user_service import UserService
+    from app.services.insight_statistics_service import InsightStatisticsService
+    import io
+
+    async with async_session_maker() as session:
+        # Получаем пользователя
+        user = await UserService.get_user_by_telegram_id(session, query.from_user.id)
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Экспортируем в JSON
+        json_data = await InsightStatisticsService.export_facts_to_json(
+            session, user.id, active_only=False
+        )
+
+        # Отправляем файл
+        file_name = f"wellness_insights_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        file_bytes = io.BytesIO(json_data.encode('utf-8'))
+        file_bytes.name = file_name
+
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=file_bytes,
+            filename=file_name,
+            caption="📄 Ваши факты о корреляциях в формате JSON"
+        )
+
+        # Возвращаемся к меню экспорта
+        keyboard = [
+            [InlineKeyboardButton("◀️ Назад к статистике", callback_data="insights_statistics")]
+        ]
+
+        await query.edit_message_text(
+            "✅ JSON файл успешно создан и отправлен!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    return SELECTING_PERIOD
+
+
+async def export_csv_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Экспортирует факты в CSV"""
+    query = update.callback_query
+    await query.answer("Генерирую CSV файл...")
+
+    from app.db.session import async_session_maker
+    from app.services.user_service import UserService
+    from app.services.insight_statistics_service import InsightStatisticsService
+    import io
+
+    async with async_session_maker() as session:
+        # Получаем пользователя
+        user = await UserService.get_user_by_telegram_id(session, query.from_user.id)
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Экспортируем в CSV
+        csv_data = await InsightStatisticsService.export_facts_to_csv(
+            session, user.id, active_only=False
+        )
+
+        # Отправляем файл
+        file_name = f"wellness_insights_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_bytes = io.BytesIO(csv_data.encode('utf-8-sig'))  # BOM для правильного отображения в Excel
+        file_bytes.name = file_name
+
+        await context.bot.send_document(
+            chat_id=query.message.chat_id,
+            document=file_bytes,
+            filename=file_name,
+            caption="📊 Ваши факты о корреляциях в формате CSV"
+        )
+
+        # Возвращаемся к меню экспорта
+        keyboard = [
+            [InlineKeyboardButton("◀️ Назад к статистике", callback_data="insights_statistics")]
+        ]
+
+        await query.edit_message_text(
+            "✅ CSV файл успешно создан и отправлен!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    return SELECTING_PERIOD
+
+
 # Создаем ConversationHandler
 def get_reports_conversation_handler():
     """Получить conversation handler для отчетов"""
@@ -494,6 +793,12 @@ def get_reports_conversation_handler():
         states={
             SELECTING_PERIOD: [
                 CallbackQueryHandler(wellness_insights_callback, pattern="^wellness_insights$"),
+                CallbackQueryHandler(insights_statistics_callback, pattern="^insights_statistics$"),
+                CallbackQueryHandler(insights_graph_callback, pattern="^insights_graph$"),
+                CallbackQueryHandler(insights_history_callback, pattern="^insights_history$"),
+                CallbackQueryHandler(insights_export_callback, pattern="^insights_export$"),
+                CallbackQueryHandler(export_json_callback, pattern="^export_json$"),
+                CallbackQueryHandler(export_csv_callback, pattern="^export_csv$"),
                 CallbackQueryHandler(generate_weight_chart, pattern="^report_weight_chart$"),
                 CallbackQueryHandler(generate_report, pattern="^report_(day|week|month)$"),
                 CallbackQueryHandler(reports_start, pattern="^another_report$"),

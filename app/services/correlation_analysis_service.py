@@ -3,7 +3,7 @@
 """
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
-from sqlalchemy import select, and_, desc
+from sqlalchemy import select, and_, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 import numpy as np
@@ -332,7 +332,9 @@ class CorrelationAnalysisService:
                 is_verified=True,
                 is_active=True,
                 first_observed=min(obs['wellness_log'].log_datetime for obs in observations),
+                first_detected=min(obs['wellness_log'].log_datetime for obs in observations),
                 last_updated=datetime.now(),
+                last_validated=datetime.now(),
                 verified_at=datetime.now()
             )
 
@@ -472,3 +474,213 @@ class CorrelationAnalysisService:
         except Exception as e:
             logger.error(f"Error getting user insights: {repr(e)}", exc_info=True)
             return []
+
+    async def revalidate_existing_facts(
+        self,
+        session: AsyncSession,
+        user_id: int,
+        days_back: int = 90
+    ) -> Dict[str, int]:
+        """
+        Пересматривает существующие факты и деактивирует те, которые больше не подтверждаются
+
+        Args:
+            session: Сессия БД
+            user_id: ID пользователя
+            days_back: Сколько дней назад проверять
+
+        Returns:
+            Dict с статистикой: {"kept": X, "deactivated": Y}
+        """
+        try:
+            stats = {"kept": 0, "deactivated": 0}
+
+            # Получаем все активные факты
+            existing_facts = await self.get_user_insights(session, user_id, active_only=True)
+
+            if not existing_facts:
+                return stats
+
+            # Получаем данные
+            start_date = datetime.now() - timedelta(days=days_back)
+
+            meals_result = await session.execute(
+                select(Meal)
+                .where(
+                    and_(
+                        Meal.user_id == user_id,
+                        Meal.meal_date >= start_date.date()
+                    )
+                )
+                .order_by(Meal.meal_time)
+            )
+            meals = list(meals_result.scalars().all())
+
+            wellness_result = await session.execute(
+                select(WellnessLog)
+                .where(
+                    and_(
+                        WellnessLog.user_id == user_id,
+                        WellnessLog.log_datetime >= start_date
+                    )
+                )
+                .order_by(WellnessLog.log_datetime)
+            )
+            wellness_logs = list(wellness_result.scalars().all())
+
+            # Строим пары
+            food_wellness_pairs = await self._build_food_wellness_pairs(session, meals, wellness_logs)
+
+            # Проверяем каждый факт
+            for fact in existing_facts:
+                # Ищем данные для этого продукта
+                food_name_normalized = self._normalize_food_name(fact.food_name)
+
+                # Ищем совпадение
+                found_data = None
+                for food_name, data in food_wellness_pairs.items():
+                    if self._normalize_food_name(food_name) == food_name_normalized:
+                        found_data = data
+                        break
+
+                if not found_data or len(found_data['observations']) < self.min_sample_size:
+                    # Недостаточно данных - деактивируем
+                    fact.is_active = False
+                    fact.last_updated = datetime.now()
+                    fact.last_validated = datetime.now()
+                    stats["deactivated"] += 1
+                    logger.info(f"Deactivated fact {fact.id}: insufficient data")
+                    continue
+
+                # Пересчитываем корреляцию
+                metric_values = []
+                for obs in found_data['observations']:
+                    wlog = obs['wellness_log']
+                    value = getattr(wlog, fact.wellness_metric, None)
+                    if value is not None:
+                        metric_values.append(value)
+
+                if len(metric_values) < self.min_sample_size:
+                    fact.is_active = False
+                    fact.last_updated = datetime.now()
+                    fact.last_validated = datetime.now()
+                    stats["deactivated"] += 1
+                    logger.info(f"Deactivated fact {fact.id}: insufficient metric data")
+                    continue
+
+                # Получаем общее среднее
+                all_wellness = await session.execute(
+                    select(WellnessLog)
+                    .where(WellnessLog.user_id == user_id)
+                    .order_by(desc(WellnessLog.created_at))
+                    .limit(1000)
+                )
+                all_wellness_logs = list(all_wellness.scalars().all())
+
+                all_metric_values = [
+                    getattr(wlog, fact.wellness_metric)
+                    for wlog in all_wellness_logs
+                    if getattr(wlog, fact.wellness_metric, None) is not None
+                ]
+
+                if len(all_metric_values) < self.min_sample_size:
+                    continue  # Оставляем как есть
+
+                overall_mean = np.mean(all_metric_values)
+                mean_value = np.mean(metric_values)
+
+                # Проводим t-test
+                t_statistic, p_value = stats.ttest_1samp(metric_values, overall_mean)
+                confidence = 1 - p_value
+
+                # Если больше не подтверждается - деактивируем
+                if confidence < self.min_confidence:
+                    fact.is_active = False
+                    fact.last_updated = datetime.now()
+                    fact.last_validated = datetime.now()
+                    stats["deactivated"] += 1
+                    logger.info(
+                        f"Deactivated fact {fact.id}: confidence dropped to {confidence:.2f}"
+                    )
+                else:
+                    # Обновляем статистику
+                    fact.sample_size = len(metric_values)
+                    fact.confidence_level = confidence
+                    fact.average_impact = mean_value - overall_mean
+                    fact.last_updated = datetime.now()
+                    fact.last_validated = datetime.now()
+                    stats["kept"] += 1
+
+            await session.commit()
+            logger.info(f"Revalidation complete for user {user_id}: {stats}")
+            return stats
+
+        except Exception as e:
+            logger.error(f"Error revalidating facts: {repr(e)}", exc_info=True)
+            return {"kept": 0, "deactivated": 0}
+
+    async def analyze_all_users(
+        self,
+        session: AsyncSession,
+        min_wellness_logs: int = 10
+    ) -> Dict[str, int]:
+        """
+        Анализирует всех пользователей с достаточным количеством данных
+
+        Args:
+            session: Сессия БД
+            min_wellness_logs: Минимум wellness logs для анализа
+
+        Returns:
+            Dict со статистикой: {"users_analyzed": X, "new_facts": Y, "deactivated": Z}
+        """
+        try:
+            from app.models.user import User
+
+            # Получаем всех пользователей с достаточным количеством wellness logs
+            result = await session.execute(
+                select(User.id)
+                .join(WellnessLog, WellnessLog.user_id == User.id)
+                .group_by(User.id)
+                .having(func.count(WellnessLog.id) >= min_wellness_logs)
+            )
+            user_ids = [row[0] for row in result.all()]
+
+            total_stats = {
+                "users_analyzed": 0,
+                "new_facts": 0,
+                "facts_kept": 0,
+                "facts_deactivated": 0
+            }
+
+            for user_id in user_ids:
+                try:
+                    # Пересматриваем существующие факты
+                    revalidation_stats = await self.revalidate_existing_facts(
+                        session, user_id, days_back=90
+                    )
+                    total_stats["facts_kept"] += revalidation_stats["kept"]
+                    total_stats["facts_deactivated"] += revalidation_stats["deactivated"]
+
+                    # Ищем новые корреляции
+                    new_facts = await self.analyze_user_correlations(
+                        session, user_id, days_back=90
+                    )
+                    total_stats["new_facts"] += len(new_facts)
+                    total_stats["users_analyzed"] += 1
+
+                    logger.info(
+                        f"Analyzed user {user_id}: {len(new_facts)} new facts, "
+                        f"{revalidation_stats['kept']} kept, {revalidation_stats['deactivated']} deactivated"
+                    )
+
+                except Exception as e:
+                    logger.error(f"Error analyzing user {user_id}: {repr(e)}")
+                    continue
+
+            logger.info(f"Batch analysis complete: {total_stats}")
+            return total_stats
+
+        except Exception as e:
+            logger.error(f"Error in analyze_all_users: {repr(e)}", exc_info=True)
+            return {"users_analyzed": 0, "new_facts": 0, "facts_kept": 0, "facts_deactivated": 0}

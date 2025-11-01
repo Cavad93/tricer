@@ -39,6 +39,14 @@ class SchedulerService:
                 replace_existing=True
             )
 
+            # Добавляем ежедневный анализ корреляций (в 3:00 ночи для минимальной нагрузки)
+            self.scheduler.add_job(
+                self._analyze_correlations_daily,
+                trigger=CronTrigger(hour=3, minute=0),  # Каждый день в 3:00
+                id='correlations_daily_analysis',
+                replace_existing=True
+            )
+
             # Запускаем планировщик
             self.scheduler.start()
             logger.info("Scheduler service started successfully")
@@ -82,6 +90,37 @@ class SchedulerService:
 
         except Exception as e:
             logger.error("Error in _check_and_send_reminders: {}", repr(e))
+
+    async def _analyze_correlations_daily(self):
+        """
+        Ежедневный анализ корреляций для всех пользователей
+        Запускается в 3:00 каждую ночь
+        """
+        try:
+            from app.db.session import async_session_maker
+            from app.services.correlation_analysis_service import CorrelationAnalysisService
+
+            logger.info("Starting daily correlation analysis...")
+
+            async with async_session_maker() as session:
+                correlation_service = CorrelationAnalysisService()
+
+                # Анализируем всех пользователей
+                stats = await correlation_service.analyze_all_users(
+                    session,
+                    min_wellness_logs=10
+                )
+
+                logger.info(
+                    f"Daily correlation analysis complete: "
+                    f"{stats['users_analyzed']} users analyzed, "
+                    f"{stats['new_facts']} new facts created, "
+                    f"{stats['facts_kept']} facts kept, "
+                    f"{stats['facts_deactivated']} facts deactivated"
+                )
+
+        except Exception as e:
+            logger.error("Error in daily correlation analysis: {}", repr(e), exc_info=True)
 
     def schedule_wellness_survey(self, telegram_id: int, meal_id: int, delay_minutes: int = 30):
         """

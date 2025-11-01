@@ -72,9 +72,23 @@ class MealPlanService:
         if old_plan_id:
             old_plan_data = await MealPlanService._load_old_plan_data(session, old_plan_id)
 
-        # Формируем промпт для AI с учетом preferences, medical_context, old_plan_data и batch_cooking
+        # Загружаем персональные факты о корреляциях
+        personal_insights = None
+        try:
+            from app.services.correlation_analysis_service import CorrelationAnalysisService
+            correlation_service = CorrelationAnalysisService()
+            insights = await correlation_service.get_user_insights(session, user_id, active_only=True)
+            if insights:
+                personal_insights = insights
+        except Exception as e:
+            logger.warning(f"Failed to load personal insights: {repr(e)}")
+
+        # Формируем промпт для AI с учетом preferences, medical_context, old_plan_data, batch_cooking и personal_insights
         batch_cooking = preferences.get("batch_cooking", False) if preferences else False
-        prompt = MealPlanService._build_meal_plan_prompt(user, period_type, days_count, preferences, medical_context, old_plan_data, batch_cooking)
+        prompt = MealPlanService._build_meal_plan_prompt(
+            user, period_type, days_count, preferences, medical_context,
+            old_plan_data, batch_cooking, personal_insights
+        )
 
         # Генерируем план через AI
         from app.config import settings
@@ -234,7 +248,7 @@ class MealPlanService:
             return None
 
     @staticmethod
-    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None, old_plan_data: dict = None, batch_cooking: bool = False) -> str:
+    def _build_meal_plan_prompt(user: User, period_type: PlanPeriod, days_count: int, preferences: dict = None, medical_context: dict = None, old_plan_data: dict = None, batch_cooking: bool = False, personal_insights: list = None) -> str:
         """Формирование промпта для генерации плана питания"""
 
         # Обрабатываем preferences
@@ -382,6 +396,60 @@ class MealPlanService:
    • Приоритет: сначала скоропортящиеся продукты (овощи, молочка, мясо), потом остальные.
 """
 
+        # Формируем секцию с персональными фактами о корреляциях
+        insights_text = ""
+        if personal_insights:
+            insights_text = "\n\n🔬 ПЕРСОНАЛЬНЫЕ ФАКТЫ О ВЛИЯНИИ ПРОДУКТОВ НА САМОЧУВСТВИЕ:\n"
+            insights_text += "⚠️ КРИТИЧЕСКИ ВАЖНО: Эти факты основаны на реальных данных пользователя (достоверность 95%+)!\n"
+            insights_text += "Учитывай их при составлении плана:\n\n"
+
+            # Разделяем на негативные и позитивные
+            negative_insights = [i for i in personal_insights if i.impact_direction == "negative"]
+            positive_insights = [i for i in personal_insights if i.impact_direction == "positive"]
+
+            if negative_insights:
+                insights_text += "❌ ИЗБЕГАЙ ЭТИ ПРОДУКТЫ (негативное влияние):\n"
+                for insight in negative_insights:
+                    metric_names = {
+                        "energy_level": "энергию",
+                        "mood": "настроение",
+                        "digestive_comfort": "пищеварение",
+                        "mental_clarity": "ясность ума",
+                        "sleep_quality": "сон",
+                        "stress_level": "стресс"
+                    }
+                    metric = metric_names.get(insight.wellness_metric, insight.wellness_metric)
+                    confidence = int(insight.confidence_level * 100)
+                    impact = f"{insight.average_impact:+.1f}"
+
+                    insights_text += f"  • {insight.food_name} - ухудшает {metric} (эффект: {impact} баллов, достоверность {confidence}%)\n"
+                    if insight.scientific_explanation:
+                        insights_text += f"    Причина: {insight.scientific_explanation[:100]}...\n"
+                insights_text += "\n"
+
+            if positive_insights:
+                insights_text += "✅ ПРИОРИТИЗИРУЙ ЭТИ ПРОДУКТЫ (положительное влияние):\n"
+                for insight in positive_insights:
+                    metric_names = {
+                        "energy_level": "энергию",
+                        "mood": "настроение",
+                        "digestive_comfort": "пищеварение",
+                        "mental_clarity": "ясность ума",
+                        "sleep_quality": "сон",
+                        "stress_level": "стресс"
+                    }
+                    metric = metric_names.get(insight.wellness_metric, insight.wellness_metric)
+                    confidence = int(insight.confidence_level * 100)
+                    impact = f"{insight.average_impact:+.1f}"
+
+                    insights_text += f"  • {insight.food_name} - улучшает {metric} (эффект: {impact} баллов, достоверность {confidence}%)\n"
+                    if insight.scientific_explanation:
+                        insights_text += f"    Причина: {insight.scientific_explanation[:100]}...\n"
+                insights_text += "\n"
+
+            insights_text += "💡 Эти факты основаны на минимум 10+ наблюдениях и прошли статистическую проверку.\n"
+            insights_text += "   Используй эту информацию для максимальной персонализации плана!\n"
+
         # Формируем секцию с предыдущим планом (если есть)
         old_plan_text = ""
         if old_plan_data and old_plan_data.get("days"):
@@ -438,7 +506,7 @@ class MealPlanService:
 - Углеводы: {user.target_carbs}г
 {cooking_time_text}
 {batch_cooking_text}
-{pantry_text}{preferences_text}{old_plan_text}
+{pantry_text}{preferences_text}{insights_text}{old_plan_text}
 
 💊 МИКРОНУТРИЕНТЫ (для месячного планирования):
 ВАЖНО: Рацион должен быть сбалансирован так, чтобы за МЕСЯЦ восполнить суточные нормы по всем микронутриентам.

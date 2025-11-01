@@ -53,11 +53,14 @@ class InsightFact(Base):
 
     # Даты
     first_observed = Column(DateTime, nullable=False)  # Дата первого наблюдения паттерна
+    first_detected = Column(DateTime, nullable=True)  # Alias для first_observed
     last_updated = Column(DateTime, nullable=False, default=func.now(), onupdate=func.now())
+    last_validated = Column(DateTime, nullable=True)  # Когда факт был последний раз проверен на актуальность
     verified_at = Column(DateTime, nullable=True)  # Когда был проверен AI
 
     # Метаданные
     created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())  # Для совместимости
 
     # Relationships
     user = relationship("User", backref="insight_facts")
