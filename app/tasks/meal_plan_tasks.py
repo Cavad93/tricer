@@ -13,19 +13,6 @@ from loguru import logger
 import asyncio
 
 
-async def _cleanup_async_resources():
-    """
-    Wait for asyncpg connection cleanup to complete.
-    This prevents "Event loop is closed" errors from asyncpg.
-    """
-    try:
-        # Give asyncpg time to complete connection cleanup callbacks
-        # These callbacks are scheduled when async context managers exit
-        await asyncio.sleep(0.3)
-    except Exception as e:
-        logger.warning(f"Error during async cleanup: {e}")
-
-
 @celery_app.task(
     bind=True,                    # Получать self (для retry)
     name='tasks.generate_meal_plan',
@@ -60,51 +47,27 @@ def generate_meal_plan_task(
     try:
         logger.info(f"[Celery] Starting meal plan generation for user {user_id}, period={period_type}")
 
-        # Celery работает в синхронном контексте, но нам нужен async
-        # Создаём event loop для async операций
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Парсим start_date если передан
+        from datetime import date
+        parsed_start_date = None
+        if start_date:
+            parsed_start_date = date.fromisoformat(start_date)
 
-        try:
-            # Парсим start_date если передан
-            from datetime import date
-            parsed_start_date = None
-            if start_date:
-                parsed_start_date = date.fromisoformat(start_date)
-
-            result = loop.run_until_complete(
-                _generate_meal_plan_async(
-                    user_id,
-                    PlanPeriod(period_type),
-                    preferences,
-                    medical_context,
-                    calculate_prices,
-                    parsed_start_date
-                )
+        # Use asyncio.run() which properly handles event loop lifecycle
+        # including cleanup of asyncpg connections and pending tasks
+        result = asyncio.run(
+            _generate_meal_plan_async(
+                user_id,
+                PlanPeriod(period_type),
+                preferences,
+                medical_context,
+                calculate_prices,
+                parsed_start_date
             )
+        )
 
-            logger.info(f"[Celery] Meal plan generated successfully for user {user_id}")
-            return result
-
-        finally:
-            # Ensure all pending async operations complete before closing the loop
-            try:
-                # Wait for asyncpg connection cleanup to complete
-                loop.run_until_complete(_cleanup_async_resources())
-
-                # Give pending tasks a chance to complete
-                pending = asyncio.all_tasks(loop)
-                if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-
-                # Allow final cleanup callbacks to run
-                loop.run_until_complete(asyncio.sleep(0.1))
-            except Exception as cleanup_error:
-                logger.warning(f"Error during event loop cleanup: {cleanup_error}")
-            finally:
-                # Only close if the loop is still running
-                if not loop.is_closed():
-                    loop.close()
+        logger.info(f"[Celery] Meal plan generated successfully for user {user_id}")
+        return result
 
     except Exception as exc:
         from celery.exceptions import SoftTimeLimitExceeded
@@ -243,34 +206,11 @@ def notify_user_plan_ready(self, plan_data: dict, user_id: int):
     try:
         logger.info(f"[Celery] Notifying user {user_id} about plan {plan_data['plan_id']}")
 
-        # Celery работает в синхронном контексте, но Bot API асинхронный
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Use asyncio.run() which properly handles event loop lifecycle
+        # including cleanup of asyncpg connections and pending tasks
+        asyncio.run(_notify_user_async(plan_data, user_id))
 
-        try:
-            loop.run_until_complete(
-                _notify_user_async(plan_data, user_id)
-            )
-            logger.info(f"[Celery] User {user_id} notified successfully")
-        finally:
-            # Ensure all pending async operations complete before closing the loop
-            try:
-                # Wait for asyncpg connection cleanup to complete
-                loop.run_until_complete(_cleanup_async_resources())
-
-                # Give pending tasks a chance to complete
-                pending = asyncio.all_tasks(loop)
-                if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-
-                # Allow final cleanup callbacks to run
-                loop.run_until_complete(asyncio.sleep(0.1))
-            except Exception as cleanup_error:
-                logger.warning(f"Error during event loop cleanup: {cleanup_error}")
-            finally:
-                # Only close if the loop is still running
-                if not loop.is_closed():
-                    loop.close()
+        logger.info(f"[Celery] User {user_id} notified successfully")
 
     except Exception as e:
         logger.error(f"[Celery] Error notifying user {user_id}: {e}", exc_info=True)
