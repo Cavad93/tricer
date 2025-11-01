@@ -199,68 +199,86 @@ def notify_user_plan_ready(self, plan_data: dict, user_id: int):
         plan_data: Данные о плане (результат generate_meal_plan_task)
         user_id: Telegram ID пользователя
     """
+    try:
+        logger.info(f"[Celery] Notifying user {user_id} about plan {plan_data['plan_id']}")
+
+        # Celery работает в синхронном контексте, но Bot API асинхронный
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            loop.run_until_complete(
+                _notify_user_async(plan_data, user_id)
+            )
+            logger.info(f"[Celery] User {user_id} notified successfully")
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"[Celery] Error notifying user {user_id}: {e}", exc_info=True)
+        # Retry при ошибках
+        raise self.retry(exc=e)
+
+
+async def _notify_user_async(plan_data: dict, user_id: int):
+    """
+    Асинхронная отправка уведомлений пользователю
+
+    Args:
+        plan_data: Данные о плане
+        user_id: Telegram ID пользователя
+    """
     from telegram import Bot, InputFile, InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.error import TelegramError
     from app.config import settings
 
-    try:
-        logger.info(f"[Celery] Notifying user {user_id} about plan {plan_data['plan_id']}")
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
 
-        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN)
+    # Определяем текст периода
+    period_text_map = {
+        'day': '1 день',
+        'week': 'неделю',
+        'month': 'месяц'
+    }
+    period_text = period_text_map.get(plan_data.get('period_type', 'day'), 'план')
 
-        # Определяем текст периода
-        period_text_map = {
-            'day': '1 день',
-            'week': 'неделю',
-            'month': 'месяц'
-        }
-        period_text = period_text_map.get(plan_data.get('period_type', 'day'), 'план')
-
-        # Отправляем PDF с планом питания
-        with open(plan_data['pdf_plan_path'], 'rb') as pdf_file:
-            bot.send_document(
-                chat_id=user_id,
-                document=InputFile(pdf_file, filename=f"План_питания_{period_text}.pdf"),
-                caption=f"📋 Твой план питания на {period_text} готов!"
-            )
-
-        logger.info(f"[Celery] Meal plan PDF sent to user {user_id}")
-
-        # Отправляем PDF со списком покупок
-        with open(plan_data['pdf_shopping_path'], 'rb') as pdf_file:
-            bot.send_document(
-                chat_id=user_id,
-                document=InputFile(pdf_file, filename=f"Список_покупок_{period_text}.pdf"),
-                caption=f"🛒 Список покупок (~{plan_data['total_cost']:.2f} ₽)"
-            )
-
-        logger.info(f"[Celery] Shopping list PDF sent to user {user_id}")
-
-        # Отправляем сообщение с кнопками
-        keyboard = [
-            [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{plan_data['plan_id']}")],
-            [InlineKeyboardButton("✅ Всё отлично!", callback_data="feedback_positive")],
-            [InlineKeyboardButton("🔄 Хочу изменить", callback_data="feedback_negative")],
-            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-        ]
-
-        bot.send_message(
+    # Отправляем PDF с планом питания
+    with open(plan_data['pdf_plan_path'], 'rb') as pdf_file:
+        await bot.send_document(
             chat_id=user_id,
-            text=f"✅ <b>План питания создан!</b>\n\n"
-                 f"🎯 Калорий в день: {plan_data['daily_calories']} ккал\n"
-                 f"💰 Стоимость продуктов: ~{plan_data['total_cost']:.2f} ₽\n\n"
-                 f"<i>Как тебе план?</i>",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='HTML'
+            document=InputFile(pdf_file, filename=f"План_питания_{period_text}.pdf"),
+            caption=f"📋 Твой план питания на {period_text} готов!"
         )
 
-        logger.info(f"[Celery] User {user_id} notified successfully")
+    logger.info(f"[Celery] Meal plan PDF sent to user {user_id}")
 
-    except TelegramError as e:
-        logger.error(f"[Celery] Telegram error notifying user {user_id}: {e}")
-        # Retry при ошибках Telegram
-        raise self.retry(exc=e)
-    except Exception as e:
-        logger.error(f"[Celery] Error notifying user {user_id}: {e}", exc_info=True)
-        # Не retry при других ошибках (файл не найден и т.д.)
-        raise
+    # Отправляем PDF со списком покупок
+    with open(plan_data['pdf_shopping_path'], 'rb') as pdf_file:
+        await bot.send_document(
+            chat_id=user_id,
+            document=InputFile(pdf_file, filename=f"Список_покупок_{period_text}.pdf"),
+            caption=f"🛒 Список покупок (~{plan_data['total_cost']:.2f} ₽)"
+        )
+
+    logger.info(f"[Celery] Shopping list PDF sent to user {user_id}")
+
+    # Отправляем сообщение с кнопками
+    keyboard = [
+        [InlineKeyboardButton("📄 Просмотреть план", callback_data=f"view_plan_{plan_data['plan_id']}")],
+        [InlineKeyboardButton("✅ Всё отлично!", callback_data="feedback_positive")],
+        [InlineKeyboardButton("🔄 Хочу изменить", callback_data="feedback_negative")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+
+    await bot.send_message(
+        chat_id=user_id,
+        text=f"✅ <b>План питания создан!</b>\n\n"
+             f"🎯 Калорий в день: {plan_data['daily_calories']} ккал\n"
+             f"💰 Стоимость продуктов: ~{plan_data['total_cost']:.2f} ₽\n\n"
+             f"<i>Как тебе план?</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+    # Закрываем соединение с Telegram API
+    await bot.shutdown()
