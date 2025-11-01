@@ -20,11 +20,7 @@ class MedicalAnalysis(Base):
     analysis_type = Column(String(100), nullable=True)  # Тип анализа (ОАК, биохимия и т.д.)
     analysis_date = Column(DateTime, nullable=True)  # Дата сдачи анализа
 
-    # Данные
-    raw_data = Column(JSONB, nullable=False)  # Сырые данные анализа (все показатели)
-    file_url = Column(String(500), nullable=True)  # URL загруженного файла (если был)
-
-    # AI-анализ
+    # AI-анализ (сохраняем ТОЛЬКО результаты оценки, НЕ сами данные анализа)
     ai_analysis = Column(JSONB, nullable=True)  # Результат анализа от Claude AI
     detected_deficiencies = Column(JSONB, default=list)  # Выявленные дефициты (витамины, минералы и т.д.)
     recommendations = Column(Text, nullable=True)  # Рекомендации от AI (без диагнозов!)

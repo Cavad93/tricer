@@ -19,6 +19,11 @@ class UserConsent(Base):
     medical_disclaimer_accepted_at = Column(DateTime, nullable=True)
     medical_disclaimer_version = Column(String(20), default="1.0", nullable=False)
 
+    # Согласие на обработку медицинских данных без хранения
+    medical_privacy_consent = Column(Boolean, default=False, nullable=False)
+    medical_privacy_consent_at = Column(DateTime, nullable=True)
+    medical_privacy_version = Column(String(20), default="1.0", nullable=False)
+
     # IP адрес и метаданные для юридических целей
     ip_address = Column(String(45), nullable=True)  # IPv6 поддержка
     user_agent = Column(String(500), nullable=True)

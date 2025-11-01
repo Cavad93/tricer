@@ -17,10 +17,136 @@ import json
 from app.db.session import async_session_maker
 from app.models.user import User
 from app.models.medical_analysis import MedicalAnalysis
+from app.models.user_consent import UserConsent
 from app.services.medical_analysis_service import MedicalAnalysisService
 from app.bot.keyboards import back_to_menu_keyboard
 from app.bot.states import MedicalAnalysisStates
 from sqlalchemy import select
+
+
+async def check_medical_privacy_consent(telegram_id: int, session: AsyncSession) -> bool:
+    """Проверяет, дал ли пользователь согласие на обработку медицинских данных"""
+    result = await session.execute(
+        select(UserConsent).where(UserConsent.telegram_id == telegram_id)
+    )
+    consent = result.scalar_one_or_none()
+
+    if not consent:
+        return False
+
+    return consent.medical_privacy_consent
+
+
+async def show_medical_privacy_consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Показывает форму согласия на обработку медицинских данных"""
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    text = (
+        "🔒 <b>Конфиденциальность медицинских данных</b>\n\n"
+
+        "Перед обработкой твоих медицинских анализов важно объяснить, "
+        "как мы обеспечиваем медицинскую тайну:\n\n"
+
+        "✅ <b>Что мы ДЕЛАЕМ:</b>\n"
+        "• Временно обрабатываем твой анализ через защищенный AI\n"
+        "• Сохраняем ТОЛЬКО результаты оценки (выявленные дефициты, рекомендации)\n"
+        "• Используем результаты для персонализации планов питания\n\n"
+
+        "❌ <b>Что мы НЕ ДЕЛАЕМ:</b>\n"
+        "• НЕ сохраняем сами файлы или фотографии анализов\n"
+        "• НЕ храним сырые данные с конкретными показателями\n"
+        "• НЕ передаем данные третьим лицам\n"
+        "• НЕ используем для других целей\n\n"
+
+        "🛡️ <b>Почему так безопасно?</b>\n"
+        "После обработки анализа через AI остается только краткая сводка "
+        "в виде: \"Выявлен дефицит железа - рекомендуется увеличить красное мясо\". "
+        "Сам документ с анализом НЕ сохраняется в нашей системе.\n\n"
+
+        "📋 <b>Что сохраняется:</b>\n"
+        "• Выявленные дефициты нутриентов (железо, витамины и т.д.)\n"
+        "• Общие рекомендации по питанию\n"
+        "• Флаг необходимости консультации врача\n\n"
+
+        "💡 <b>Зачем это нужно?</b>\n"
+        "Чтобы AI мог составлять персональные планы питания с учетом "
+        "твоих потребностей и восполнять выявленные дефициты.\n\n"
+
+        "⚖️ <i>Ты можешь удалить все данные в любой момент через /settings</i>"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Я согласен, продолжить", callback_data="accept_medical_privacy")],
+        [InlineKeyboardButton("❌ Отказаться", callback_data="decline_medical_privacy")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+
+    if query:
+        await query.edit_message_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    return MedicalAnalysisStates.ASKING_TO_UPLOAD
+
+
+async def accept_medical_privacy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка согласия на обработку медицинских данных"""
+    query = update.callback_query
+    await query.answer()
+
+    user = update.effective_user
+
+    async with async_session_maker() as session:
+        # Получаем или создаем согласие
+        result = await session.execute(
+            select(UserConsent).where(UserConsent.telegram_id == user.id)
+        )
+        consent = result.scalar_one_or_none()
+
+        if not consent:
+            consent = UserConsent(telegram_id=user.id)
+            session.add(consent)
+
+        # Устанавливаем согласие
+        consent.medical_privacy_consent = True
+        consent.medical_privacy_consent_at = datetime.now()
+        consent.medical_privacy_version = "1.0"
+
+        await session.commit()
+
+        logger.info(f"User {user.id} accepted medical privacy consent")
+
+    # Возвращаемся к меню медицинских анализов
+    context.user_data['medical_privacy_accepted'] = True
+    return await medical_analysis_start(update, context)
+
+
+async def decline_medical_privacy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка отказа от согласия"""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
+        "❌ <b>Обработка медицинских анализов недоступна</b>\n\n"
+        "Без согласия на обработку мы не можем анализировать медицинские данные.\n\n"
+        "💡 Ты можешь изменить решение в любой момент, вернувшись в этот раздел.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")
+        ]])
+    )
+
+    return ConversationHandler.END
 
 
 async def medical_analysis_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -32,8 +158,14 @@ async def medical_analysis_start(update: Update, context: ContextTypes.DEFAULT_T
 
     user = update.effective_user
 
-    # Получаем количество сохраненных анализов
+    # Проверяем согласие на обработку медицинских данных
     async with async_session_maker() as session:
+        has_consent = await check_medical_privacy_consent(user.id, session)
+
+        # Если согласия нет и пользователь не принял его в текущей сессии
+        if not has_consent and not context.user_data.get('medical_privacy_accepted'):
+            return await show_medical_privacy_consent(update, context)
+
         result = await session.execute(
             select(User).where(User.telegram_id == user.id)
         )
@@ -233,7 +365,7 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
                 return ConversationHandler.END
 
-            # Формируем сырые данные для сохранения
+            # Формируем данные для анализа AI (НЕ сохраняются в БД, только для обработки!)
             raw_data = {
                 "input_method": "ocr",
                 "extracted_text": extracted_text,
@@ -259,15 +391,13 @@ async def handle_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
                 return MedicalAnalysisStates.WAITING_TEXT_INPUT
 
-            # Сохраняем результаты в БД
+            # Сохраняем результаты в БД (ТОЛЬКО результаты оценки AI, НЕ сами данные!)
             saved_analysis = await MedicalAnalysisService.save_analysis(
                 db=session,
                 user_id=db_user.id,
-                raw_data=raw_data,
                 ai_analysis=analysis_result.get("ai_analysis"),
                 analysis_type="Общий анализ",
-                analysis_date=datetime.now(),
-                file_url=None
+                analysis_date=datetime.now()
             )
 
             # Обновляем медицинские ограничения с учетом новых дефицитов
@@ -345,7 +475,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 )
                 return ConversationHandler.END
 
-            # Формируем сырые данные для сохранения
+            # Формируем данные для анализа AI (НЕ сохраняются в БД, только для обработки!)
             raw_data = {
                 "input_method": "text",
                 "text_input": text_input,
@@ -373,15 +503,13 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 )
                 return ConversationHandler.END
 
-            # Сохраняем результаты в БД
+            # Сохраняем результаты в БД (ТОЛЬКО результаты оценки AI, НЕ сами данные!)
             saved_analysis = await MedicalAnalysisService.save_analysis(
                 db=session,
                 user_id=db_user.id,
-                raw_data=raw_data,
                 ai_analysis=analysis_result.get("ai_analysis"),
                 analysis_type="Общий анализ",
-                analysis_date=datetime.now(),
-                file_url=None
+                analysis_date=datetime.now()
             )
 
             # Обновляем медицинские ограничения с учетом новых дефицитов
@@ -629,6 +757,8 @@ medical_analysis_conversation = ConversationHandler(
     ],
     states={
         MedicalAnalysisStates.ASKING_TO_UPLOAD: [
+            CallbackQueryHandler(accept_medical_privacy_callback, pattern="^accept_medical_privacy$"),
+            CallbackQueryHandler(decline_medical_privacy_callback, pattern="^decline_medical_privacy$"),
             CallbackQueryHandler(add_new_analysis_callback, pattern="^add_new_analysis$"),
             CallbackQueryHandler(upload_file_callback, pattern="^upload_file$"),
             CallbackQueryHandler(input_text_callback, pattern="^input_text$"),

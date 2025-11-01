@@ -313,21 +313,23 @@ class MedicalAnalysisService:
     async def save_analysis(
         db: AsyncSession,
         user_id: int,
-        raw_data: Dict[str, Any],
         ai_analysis: Optional[Dict[str, Any]] = None,
         analysis_type: Optional[str] = None,
         analysis_date: Optional[datetime] = None,
-        file_url: Optional[str] = None,
         user_notes: Optional[str] = None
     ) -> MedicalAnalysis:
-        """Сохранение результатов анализа в БД"""
+        """
+        Сохранение результатов анализа в БД
+
+        ВАЖНО: Сохраняем ТОЛЬКО результаты оценки AI, НЕ сами данные анализа!
+        Это обеспечивает медицинскую тайну - мы не храним конкретные показатели,
+        только выводы: выявленные дефициты и рекомендации по питанию.
+        """
 
         analysis = MedicalAnalysis(
             user_id=user_id,
             analysis_type=analysis_type,
             analysis_date=analysis_date or datetime.now(),
-            raw_data=raw_data,
-            file_url=file_url,
             ai_analysis=ai_analysis,
             detected_deficiencies=ai_analysis.get("detected_deficiencies", []) if ai_analysis else [],
             needs_doctor_consultation=ai_analysis.get("needs_doctor_consultation", False) if ai_analysis else False,
@@ -339,7 +341,7 @@ class MedicalAnalysisService:
         await db.commit()
         await db.refresh(analysis)
 
-        logger.info(f"Сохранен медицинский анализ для пользователя {user_id}")
+        logger.info(f"Сохранен медицинский анализ для пользователя {user_id} (только результаты оценки)")
 
         return analysis
 
