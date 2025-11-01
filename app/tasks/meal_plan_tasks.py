@@ -13,6 +13,19 @@ from loguru import logger
 import asyncio
 
 
+async def _cleanup_async_resources():
+    """
+    Wait for asyncpg connection cleanup to complete.
+    This prevents "Event loop is closed" errors from asyncpg.
+    """
+    try:
+        # Give asyncpg time to complete connection cleanup callbacks
+        # These callbacks are scheduled when async context managers exit
+        await asyncio.sleep(0.3)
+    except Exception as e:
+        logger.warning(f"Error during async cleanup: {e}")
+
+
 @celery_app.task(
     bind=True,                    # Получать self (для retry)
     name='tasks.generate_meal_plan',
@@ -76,16 +89,22 @@ def generate_meal_plan_task(
         finally:
             # Ensure all pending async operations complete before closing the loop
             try:
+                # Wait for asyncpg connection cleanup to complete
+                loop.run_until_complete(_cleanup_async_resources())
+
                 # Give pending tasks a chance to complete
                 pending = asyncio.all_tasks(loop)
                 if pending:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
                 # Allow final cleanup callbacks to run
                 loop.run_until_complete(asyncio.sleep(0.1))
             except Exception as cleanup_error:
                 logger.warning(f"Error during event loop cleanup: {cleanup_error}")
             finally:
-                loop.close()
+                # Only close if the loop is still running
+                if not loop.is_closed():
+                    loop.close()
 
     except Exception as exc:
         from celery.exceptions import SoftTimeLimitExceeded
@@ -236,16 +255,22 @@ def notify_user_plan_ready(self, plan_data: dict, user_id: int):
         finally:
             # Ensure all pending async operations complete before closing the loop
             try:
+                # Wait for asyncpg connection cleanup to complete
+                loop.run_until_complete(_cleanup_async_resources())
+
                 # Give pending tasks a chance to complete
                 pending = asyncio.all_tasks(loop)
                 if pending:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+
                 # Allow final cleanup callbacks to run
                 loop.run_until_complete(asyncio.sleep(0.1))
             except Exception as cleanup_error:
                 logger.warning(f"Error during event loop cleanup: {cleanup_error}")
             finally:
-                loop.close()
+                # Only close if the loop is still running
+                if not loop.is_closed():
+                    loop.close()
 
     except Exception as e:
         logger.error(f"[Celery] Error notifying user {user_id}: {e}", exc_info=True)
