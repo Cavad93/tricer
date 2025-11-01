@@ -153,6 +153,67 @@ logger.add(
 )
 
 
+async def safe_answer_callback_query(query, text: str = None, show_alert: bool = False):
+    """
+    Безопасный ответ на callback query с обработкой устаревших запросов
+
+    Args:
+        query: CallbackQuery объект
+        text: Текст для отображения (опционально)
+        show_alert: Показывать как alert (опционально)
+
+    Returns:
+        bool: True если ответ успешен, False если query устарел
+    """
+    from telegram.error import BadRequest
+
+    try:
+        await query.answer(text=text, show_alert=show_alert)
+        return True
+    except BadRequest as e:
+        if "query is too old" in str(e).lower() or "query id is invalid" in str(e).lower():
+            logger.debug(f"Callback query {query.id} is too old, skipping answer")
+            return False
+        # Если это другая BadRequest ошибка, пробрасываем дальше
+        raise
+
+
+async def safe_edit_or_send_message(query, text: str, **kwargs):
+    """
+    Безопасное редактирование сообщения или отправка нового при ошибке
+
+    Args:
+        query: CallbackQuery объект
+        text: Текст сообщения
+        **kwargs: Дополнительные параметры (reply_markup, parse_mode и т.д.)
+
+    Returns:
+        Message: Отправленное или отредактированное сообщение
+    """
+    from telegram.error import BadRequest
+
+    try:
+        # Сначала пытаемся ответить на callback query
+        await safe_answer_callback_query(query)
+
+        # Затем пытаемся отредактировать сообщение
+        return await query.edit_message_text(text=text, **kwargs)
+    except BadRequest as e:
+        error_msg = str(e).lower()
+        # Если сообщение слишком старое или уже удалено, отправляем новое
+        if any(phrase in error_msg for phrase in [
+            "message is not modified",
+            "message to edit not found",
+            "query is too old",
+            "message can't be edited"
+        ]):
+            logger.debug(f"Cannot edit message, sending new one: {e}")
+            # Отправляем новое сообщение
+            return await query.message.reply_text(text=text, **kwargs)
+        # Если это другая ошибка, пробрасываем дальше
+        raise
+
+
 @track_command('help')
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /help"""
@@ -232,13 +293,13 @@ async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку главного меню"""
     query = update.callback_query
-    await query.answer()
 
     # Сбрасываем флаг ожидания изменений плана
     if "waiting_for_plan_changes" in context.user_data:
         context.user_data["waiting_for_plan_changes"] = False
 
-    await query.edit_message_text(
+    await safe_edit_or_send_message(
+        query,
         "Главное меню:",
         reply_markup=main_menu_keyboard()
     )
@@ -247,9 +308,9 @@ async def main_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def add_food_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку 'Добавить еду'"""
     query = update.callback_query
-    await query.answer()
 
-    await query.edit_message_text(
+    await safe_edit_or_send_message(
+        query,
         "📸 *Добавить еду*\n\n"
         "Отправь мне фото своего блюда, и я автоматически:\n"
         "✅ Распознаю что это за еда\n"
@@ -267,7 +328,6 @@ async def add_food_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ai_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку 'AI-чат'"""
     query = update.callback_query
-    await query.answer()
 
     user = update.effective_user
 
@@ -292,7 +352,8 @@ async def ai_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             limit_info = ""
 
-    await query.edit_message_text(
+    await safe_edit_or_send_message(
+        query,
         "💬 *AI-чат активирован*\n\n"
         "Я - твой персональный AI-нутрициолог! Задай мне любой вопрос о питании.\n\n"
         "🎯 *Я учитываю:*\n"
@@ -316,7 +377,6 @@ async def ai_chat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку 'Профиль'"""
     query = update.callback_query
-    await query.answer()
 
     # Получаем данные из БД
     async with async_session_maker() as session:
@@ -329,7 +389,8 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = result.scalar_one_or_none()
 
         if not user or not user.onboarding_completed:
-            await query.edit_message_text(
+            await safe_edit_or_send_message(
+                query,
                 "У тебя еще нет профиля.\n"
                 "Используй /start чтобы настроить профиль.",
                 reply_markup=back_to_menu_keyboard()
@@ -387,7 +448,8 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ]
 
-        await query.edit_message_text(
+        await safe_edit_or_send_message(
+            query,
             profile_text,
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -397,7 +459,6 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def change_cooking_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик изменения времени на готовку"""
     query = update.callback_query
-    await query.answer()
 
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -410,7 +471,8 @@ async def change_cooking_time_callback(update: Update, context: ContextTypes.DEF
         [InlineKeyboardButton("❌ Отмена", callback_data="profile")]
     ])
 
-    await query.edit_message_text(
+    await safe_edit_or_send_message(
+        query,
         "⏰ <b>Выбери предпочитаемое время на приготовление одного блюда:</b>\n\n"
         "Это влияет на подбор рецептов в планах питания.",
         reply_markup=cooking_time_keyboard,
@@ -421,7 +483,6 @@ async def change_cooking_time_callback(update: Update, context: ContextTypes.DEF
 async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохранение нового времени на готовку"""
     query = update.callback_query
-    await query.answer()
 
     # Маппинг callback_data на минуты
     cooking_time_map = {
@@ -454,7 +515,8 @@ async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAUL
             else:
                 time_text = "любое время"
 
-            await query.edit_message_text(
+            await safe_edit_or_send_message(
+                query,
                 f"✅ Отлично! Время на готовку изменено на: {time_text}.\n\n"
                 f"Теперь рецепты в планах питания будут подбираться с учетом этого времени.",
                 reply_markup=back_to_menu_keyboard()
@@ -464,9 +526,9 @@ async def set_cooking_time_callback(update: Update, context: ContextTypes.DEFAUL
 async def change_weight_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик изменения веса"""
     query = update.callback_query
-    await query.answer()
 
-    await query.edit_message_text(
+    await safe_edit_or_send_message(
+        query,
         "⚖️ <b>Введи свой текущий вес в килограммах</b>\n\n"
         "Например: 75 или 68.5",
         parse_mode='HTML'
@@ -686,7 +748,6 @@ async def wellness_insights_command(update: Update, context: ContextTypes.DEFAUL
 async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку 'Настройки'"""
     query = update.callback_query
-    await query.answer()
 
     user = update.effective_user
 
@@ -697,7 +758,8 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_user = result.scalar_one_or_none()
 
         if not db_user:
-            await query.edit_message_text(
+            await safe_edit_or_send_message(
+                query,
                 "❌ Пользователь не найден",
                 reply_markup=back_to_menu_keyboard()
             )
@@ -729,7 +791,8 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_or_send_message(
+        query,
         settings_text,
         parse_mode='HTML',
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -760,9 +823,28 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Ignored non-critical error: {type(error).__name__}")
         return
 
-    # Если это BadRequest (например, сообщение уже удалено) - тоже игнорируем
+    # Специальная обработка BadRequest для устаревших callback queries
     if isinstance(error, BadRequest):
-        logger.warning(f"BadRequest error (likely message already deleted): {error}")
+        error_msg = str(error).lower()
+
+        # Если это ошибка устаревшего callback query
+        if "query is too old" in error_msg or "query id is invalid" in error_msg:
+            logger.warning(f"Callback query too old: {error}")
+
+            # Если есть callback query, отправляем пользователю новое сообщение
+            if update and update.callback_query:
+                try:
+                    await update.callback_query.message.reply_text(
+                        "⏰ Эта кнопка устарела. Вот свежее меню:",
+                        reply_markup=main_menu_keyboard()
+                    )
+                    logger.info("Sent fresh menu to user after old callback query")
+                except Exception as e:
+                    logger.error(f"Failed to send fresh menu: {e}")
+            return
+
+        # Для других BadRequest ошибок просто логируем
+        logger.warning(f"BadRequest error: {error}")
         return
 
     # Для серьезных ошибок логируем traceback
