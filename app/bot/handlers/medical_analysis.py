@@ -173,10 +173,17 @@ async def medical_analysis_start(update: Update, context: ContextTypes.DEFAULT_T
         db_user = result.scalar_one_or_none()
 
         if not db_user:
-            await query.edit_message_text(
-                "❌ Пользователь не найден",
-                reply_markup=back_to_menu_keyboard()
-            )
+            try:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
+            except Exception as e:
+                logger.debug(f"Could not edit message: {e}")
+                await query.message.reply_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
             return ConversationHandler.END
 
         # Получаем количество анализов
@@ -202,11 +209,19 @@ async def medical_analysis_start(update: Update, context: ContextTypes.DEFAULT_T
         "AI дает рекомендации только по питанию. При отклонениях от нормы обратись к врачу."
     )
 
-    await query.edit_message_text(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        await query.edit_message_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.debug(f"Could not edit message: {e}")
+        await query.message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     return MedicalAnalysisStates.ASKING_TO_UPLOAD
 
@@ -224,13 +239,25 @@ async def add_new_analysis_callback(update: Update, context: ContextTypes.DEFAUL
         [InlineKeyboardButton("🔙 Назад", callback_data="medical_analysis")],
     ]
 
-    await query.edit_message_text(
+    text = (
         "📤 <b>Как ты хочешь добавить анализ?</b>\n\n"
         "• <b>Файл/фото</b> - отправь скан или фото результатов анализа\n"
-        "• <b>Текст</b> - введи показатели вручную (например: \"Гемоглобин 130, Железо 15\")",
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "• <b>Текст</b> - введи показатели вручную (например: \"Гемоглобин 130, Железо 15\")"
     )
+
+    try:
+        await query.edit_message_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.debug(f"Could not edit message: {e}")
+        await query.message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     return MedicalAnalysisStates.ASKING_TO_UPLOAD
 
@@ -242,12 +269,17 @@ async def upload_file_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
 
-    await query.edit_message_text(
+    text = (
         "📄 <b>Отправь файл или фото результатов анализа</b>\n\n"
         "Поддерживаются форматы: PDF, JPG, PNG\n\n"
-        "❌ Для отмены нажми /cancel",
-        parse_mode=ParseMode.HTML
+        "❌ Для отмены нажми /cancel"
     )
+
+    try:
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.debug(f"Could not edit message: {e}")
+        await query.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     return MedicalAnalysisStates.WAITING_FILE
 
@@ -259,15 +291,20 @@ async def input_text_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
 
-    await query.edit_message_text(
+    text = (
         "✍️ <b>Введи показатели анализов</b>\n\n"
         "Можешь написать в свободной форме, например:\n"
         "\"<i>Гемоглобин 130 г/л, Эритроциты 4.5, Железо 15 мкмоль/л, "
         "Витамин D 25 нг/мл, Холестерин 5.2</i>\"\n\n"
         "Или скопируй из электронного результата анализа.\n\n"
-        "❌ Для отмены нажми /cancel",
-        parse_mode=ParseMode.HTML
+        "❌ Для отмены нажми /cancel"
     )
+
+    try:
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.debug(f"Could not edit message: {e}")
+        await query.message.reply_text(text, parse_mode=ParseMode.HTML)
 
     return MedicalAnalysisStates.WAITING_TEXT_INPUT
 
@@ -662,25 +699,44 @@ async def view_history_callback(update: Update, context: ContextTypes.DEFAULT_TY
         db_user = result.scalar_one_or_none()
 
         if not db_user:
-            await query.edit_message_text(
-                "❌ Пользователь не найден",
-                reply_markup=back_to_menu_keyboard()
-            )
+            try:
+                await query.edit_message_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
+            except Exception as e:
+                logger.debug(f"Could not edit message: {e}")
+                await query.message.reply_text(
+                    "❌ Пользователь не найден",
+                    reply_markup=back_to_menu_keyboard()
+                )
             return ConversationHandler.END
 
         # Получаем историю анализов
         analyses = await MedicalAnalysisService.get_user_analyses(session, db_user.id, limit=10)
 
         if not analyses:
-            await query.edit_message_text(
-                "📜 <b>История анализов пуста</b>\n\n"
-                "Ты еще не загружал медицинские анализы.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📤 Добавить анализ", callback_data="add_new_analysis")],
-                    [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
-                ])
-            )
+            try:
+                await query.edit_message_text(
+                    "📜 <b>История анализов пуста</b>\n\n"
+                    "Ты еще не загружал медицинские анализы.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📤 Добавить анализ", callback_data="add_new_analysis")],
+                        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+                    ])
+                )
+            except Exception as e:
+                logger.debug(f"Could not edit message: {e}")
+                await query.message.reply_text(
+                    "📜 <b>История анализов пуста</b>\n\n"
+                    "Ты еще не загружал медицинские анализы.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📤 Добавить анализ", callback_data="add_new_analysis")],
+                        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+                    ])
+                )
             return ConversationHandler.END
 
         # Формируем список анализов
@@ -718,11 +774,19 @@ async def view_history_callback(update: Update, context: ContextTypes.DEFAULT_TY
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ]
 
-        await query.edit_message_text(
-            response,
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            await query.edit_message_text(
+                response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            logger.debug(f"Could not edit message: {e}")
+            await query.message.reply_text(
+                response,
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
         return ConversationHandler.END
 
