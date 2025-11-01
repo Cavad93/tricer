@@ -101,12 +101,61 @@ Migration completed successfully!
 
 ### 6. Запуск бота
 
+#### Быстрый запуск (рекомендуется)
+
+**Для Linux/Mac:**
+```bash
+./start.sh
+```
+
+**Для Windows:**
+```batch
+start.bat
+```
+
+Скрипт автоматически:
+- Проверит и запустит Redis и PostgreSQL
+- Запустит Celery Worker (для фоновых задач)
+- Запустит Celery Beat (для периодических задач)
+- Запустит бота
+
+Логи будут доступны в директории `logs/`:
+- `logs/bot.log` - основной лог бота
+- `logs/celery_worker.log` - лог Celery Worker
+- `logs/celery_beat.log` - лог Celery Beat
+
+#### Остановка бота
+
+**Для Linux/Mac:**
+```bash
+./stop.sh
+```
+
+**Для Windows:**
+Закройте все открытые окна с процессами или нажмите Ctrl+C в каждом.
+
+#### Ручной запуск
+
+Если хотите запустить компоненты вручную:
+
+**Терминал 1 - Celery Worker:**
+```bash
+cd /home/user/tricer
+celery -A app.celery_app worker --loglevel=info
+```
+
+**Терминал 2 - Celery Beat:**
+```bash
+cd /home/user/tricer
+python celery_beat.py
+```
+
+**Терминал 3 - Bot:**
 ```bash
 python -m app.bot.main
 ```
 
 Вы должны увидеть:
-
 ```
 Starting NutriAI Bot...
 Bot started successfully!

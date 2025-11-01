@@ -6,7 +6,8 @@ REM This script starts all necessary services for the bot:
 REM 1. Redis (if not running)
 REM 2. PostgreSQL (if not running)
 REM 3. Celery Worker (background tasks)
-REM 4. NutriAI Bot (main application)
+REM 4. Celery Beat (task scheduler)
+REM 5. NutriAI Bot (main application)
 REM ============================================
 
 echo.
@@ -26,7 +27,7 @@ if not exist "app\bot\main.py" (
 REM ============================================
 REM Step 1: Check and start Redis
 REM ============================================
-echo [1/4] Checking Redis service...
+echo [1/5] Checking Redis service...
 
 sc query Redis >nul 2>&1
 if %errorlevel% equ 0 (
@@ -55,7 +56,7 @@ REM ============================================
 REM Step 2: Check and start PostgreSQL
 REM ============================================
 echo.
-echo [2/4] Checking PostgreSQL service...
+echo [2/5] Checking PostgreSQL service...
 
 sc query postgresql* >nul 2>&1
 if %errorlevel% equ 0 (
@@ -83,7 +84,7 @@ REM ============================================
 REM Step 3: Start Celery Worker in new window
 REM ============================================
 echo.
-echo [3/4] Starting Celery Worker...
+echo [3/5] Starting Celery Worker...
 
 REM Check if Python is available
 python --version >nul 2>&1
@@ -101,10 +102,22 @@ echo [OK] Celery Worker started in new window
 timeout /t 3 /nobreak >nul
 
 REM ============================================
-REM Step 4: Start Bot in new window
+REM Step 4: Start Celery Beat in new window
 REM ============================================
 echo.
-echo [4/4] Starting NutriAI Bot...
+echo [4/5] Starting Celery Beat (task scheduler)...
+
+REM Start Celery Beat in a new window
+start "NutriAI Celery Beat" cmd /k "cd /d %CD% && echo Starting Celery Beat... && python celery_beat.py"
+
+echo [OK] Celery Beat started in new window
+timeout /t 3 /nobreak >nul
+
+REM ============================================
+REM Step 5: Start Bot in new window
+REM ============================================
+echo.
+echo [5/5] Starting NutriAI Bot...
 
 REM Start Bot in a new window
 start "NutriAI Bot" cmd /k "cd /d %CD% && echo Starting NutriAI Bot... && python -m app.bot.main"
@@ -120,12 +133,13 @@ echo ============================================
 echo  NutriAI Bot started successfully!
 echo ============================================
 echo.
-echo Two new windows have been opened:
+echo Three new windows have been opened:
 echo   1. Celery Worker (background tasks)
-echo   2. NutriAI Bot (main application)
+echo   2. Celery Beat (task scheduler)
+echo   3. NutriAI Bot (main application)
 echo.
 echo To stop the bot:
-echo   - Close both windows, or press Ctrl+C in each
+echo   - Close all three windows, or press Ctrl+C in each
 echo.
 echo Monitoring:
 echo   - Bot metrics: http://localhost:8000/metrics
