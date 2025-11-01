@@ -54,6 +54,39 @@ celery_app.conf.update(
 celery_app.autodiscover_tasks(['app.tasks'])
 
 
+# === CELERY BEAT SCHEDULE (Периодические задачи) ===
+from celery.schedules import crontab
+
+celery_app.conf.beat_schedule = {
+    # Обновление кэшированных планов питания (каждый день в 2:00 UTC)
+    'update-cached-meal-plans': {
+        'task': 'tasks.update_cached_meal_plans',
+        'schedule': crontab(hour=2, minute=0),  # Каждый день в 2:00
+        'options': {
+            'expires': 3600,  # Задача истекает через 1 час если не выполнена
+        }
+    },
+
+    # Очистка неиспользуемых кэшированных планов (каждое воскресенье в 3:00 UTC)
+    'cleanup-unused-cached-plans': {
+        'task': 'tasks.cleanup_unused_cached_plans',
+        'schedule': crontab(day_of_week=0, hour=3, minute=0),  # Воскресенье 3:00
+        'options': {
+            'expires': 3600,
+        }
+    },
+
+    # Деактивация истекших планов питания (каждый день в 1:00 UTC)
+    'deactivate-expired-meal-plans': {
+        'task': 'tasks.deactivate_expired_plans',
+        'schedule': crontab(hour=1, minute=0),  # Каждый день в 1:00
+        'options': {
+            'expires': 600,
+        }
+    },
+}
+
+
 # === ОБРАБОТЧИКИ СИГНАЛОВ ДЛЯ УПРАВЛЕНИЯ РЕСУРСАМИ ===
 
 @worker_process_init.connect
