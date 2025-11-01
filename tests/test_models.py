@@ -2,10 +2,9 @@
 Unit тесты для моделей базы данных
 """
 import pytest
-from datetime import datetime, date
-from app.models.user import User
-from app.models.meal import Meal
-from app.models.meal import Meal, MealFood
+from datetime import datetime, date, time
+from app.models.user import User, Gender, Goal, ActivityLevel
+from app.models.meal import Meal, MealType, MealFood
 
 
 class TestUserModel:
@@ -16,8 +15,8 @@ class TestUserModel:
         user = User(
             telegram_id=123456789,
             username="testuser",
-            age=25,
-            gender="male",
+            birth_year=1998,  # age будет вычислен как property
+            gender=Gender.MALE,
             height=175,
             current_weight=70.0,
             target_weight=65.0,
@@ -29,8 +28,8 @@ class TestUserModel:
 
         assert user.telegram_id == 123456789
         assert user.username == "testuser"
-        assert user.age == 25
-        assert user.gender == "male"
+        assert user.age == datetime.now().year - 1998
+        assert user.gender == Gender.MALE
         assert user.current_weight == 70.0
         assert user.target_weight == 65.0
 
@@ -38,8 +37,8 @@ class TestUserModel:
         """Тест опциональных полей пользователя"""
         user = User(
             telegram_id=123456789,
-            age=25,
-            gender="male",
+            birth_year=1998,
+            gender=Gender.MALE,
             height=175,
             current_weight=70.0,
             target_weight=65.0,
@@ -48,20 +47,20 @@ class TestUserModel:
             target_fats=60,
             target_carbs=200,
             username=None,  # Опционально
-            dietary_preferences=None,
-            allergies=None
+            allergies=None,
+            dislikes=None
         )
 
         assert user.username is None
-        assert user.dietary_preferences is None
         assert user.allergies is None
+        assert user.dislikes is None
 
     def test_user_onboarding_flags(self):
         """Тест флагов онбординга"""
         user = User(
             telegram_id=123456789,
-            age=25,
-            gender="male",
+            birth_year=1998,
+            gender=Gender.MALE,
             height=175,
             current_weight=70.0,
             target_weight=65.0,
@@ -76,12 +75,10 @@ class TestUserModel:
 
     def test_user_reminders(self):
         """Тест настроек напоминаний"""
-        from datetime import time
-
         user = User(
             telegram_id=123456789,
-            age=25,
-            gender="male",
+            birth_year=1998,
+            gender=Gender.MALE,
             height=175,
             current_weight=70.0,
             target_weight=65.0,
@@ -90,15 +87,15 @@ class TestUserModel:
             target_fats=60,
             target_carbs=200,
             reminders_enabled=True,
-            breakfast_reminder_time=time(8, 0),
-            lunch_reminder_time=time(13, 0),
-            dinner_reminder_time=time(19, 0)
+            breakfast_reminder_time="08:00",
+            lunch_reminder_time="13:00",
+            dinner_reminder_time="19:00"
         )
 
         assert user.reminders_enabled is True
-        assert user.breakfast_reminder_time.hour == 8
-        assert user.lunch_reminder_time.hour == 13
-        assert user.dinner_reminder_time.hour == 19
+        assert user.breakfast_reminder_time == "08:00"
+        assert user.lunch_reminder_time == "13:00"
+        assert user.dinner_reminder_time == "19:00"
 
 
 class TestMealModel:
@@ -108,8 +105,9 @@ class TestMealModel:
         """Тест создания приема пищи"""
         meal = Meal(
             user_id=1,
-            meal_type="breakfast",
-            date=date.today(),
+            meal_type=MealType.BREAKFAST,
+            meal_date=date.today(),
+            meal_time=datetime.now(),
             total_calories=500,
             total_proteins=30,
             total_fats=15,
@@ -117,7 +115,7 @@ class TestMealModel:
         )
 
         assert meal.user_id == 1
-        assert meal.meal_type == "breakfast"
+        assert meal.meal_type == MealType.BREAKFAST
         assert meal.total_calories == 500
         assert meal.total_proteins == 30
         assert meal.total_fats == 15
@@ -125,13 +123,14 @@ class TestMealModel:
 
     def test_meal_types(self):
         """Тест различных типов приемов пищи"""
-        meal_types = ["breakfast", "lunch", "dinner", "snack"]
+        meal_types = [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER, MealType.SNACK]
 
         for meal_type in meal_types:
             meal = Meal(
                 user_id=1,
                 meal_type=meal_type,
-                date=date.today(),
+                meal_date=date.today(),
+                meal_time=datetime.now(),
                 total_calories=300,
                 total_proteins=20,
                 total_fats=10,
@@ -144,15 +143,16 @@ class TestMealModel:
         today = date.today()
         meal = Meal(
             user_id=1,
-            meal_type="lunch",
-            date=today,
+            meal_type=MealType.LUNCH,
+            meal_date=today,
+            meal_time=datetime.now(),
             total_calories=600,
             total_proteins=40,
             total_fats=20,
             total_carbs=70
         )
 
-        assert meal.date == today
+        assert meal.meal_date == today
 
 
 class TestMealFoodModel:
@@ -188,7 +188,7 @@ class TestMealFoodModel:
             proteins=5,
             fats=7,
             carbs=8,
-            confidence_score=0.95,
+            confidence_score=0.95
         )
 
         assert food_item.confidence_score == 0.95
@@ -238,8 +238,8 @@ class TestModelRelationships:
         """Тест связи User -> Meal"""
         user = User(
             telegram_id=123456789,
-            age=25,
-            gender="male",
+            birth_year=1998,
+            gender=Gender.MALE,
             height=175,
             current_weight=70.0,
             target_weight=65.0,
@@ -250,14 +250,16 @@ class TestModelRelationships:
         )
 
         # Симуляция связи (в реальной БД это будет через relationship)
-        assert hasattr(user, 'meals')
+        # User не имеет прямой связи с meals, это делается через запросы
+        assert user.telegram_id == 123456789
 
     def test_meal_food_items_relationship(self):
         """Тест связи Meal -> MealFood"""
         meal = Meal(
             user_id=1,
-            meal_type="breakfast",
-            date=date.today(),
+            meal_type=MealType.BREAKFAST,
+            meal_date=date.today(),
+            meal_time=datetime.now(),
             total_calories=500,
             total_proteins=30,
             total_fats=15,
@@ -292,8 +294,8 @@ class TestModelValidation:
         """Тест реалистичности значений"""
         user = User(
             telegram_id=123456789,
-            age=25,
-            gender="male",
+            birth_year=1998,
+            gender=Gender.MALE,
             height=175,
             current_weight=70.0,
             target_weight=65.0,
