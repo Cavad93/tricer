@@ -12,6 +12,7 @@ from app.services.scheduler_service import get_scheduler
 from app.services.meal_service import MealService
 from app.services.usage_service import UsageService
 from app.services.food_correction_service import FoodCorrectionService
+from app.services.food_warning_service import FoodWarningService
 from app.bot.keyboards import meal_type_keyboard, back_to_menu_keyboard, main_menu_keyboard
 from app.bot.states import FoodAddStates
 from app.models.meal import MealType
@@ -209,11 +210,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 # Проверяем персональные факты и показываем предупреждения
                 try:
-                    from app.db.session import async_session_maker
-                    from app.models.user import User
-                    from app.services.food_warning_service import FoodWarningService
-                    from sqlalchemy import select
-
                     async with async_session_maker() as db_session:
                         # Получаем пользователя
                         result_user = await db_session.execute(
