@@ -171,22 +171,58 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         "updated_at": user.updated_at.isoformat() if user.updated_at else None
     }
 
-    # Получаем планы питания
+    # Получаем планы питания с днями и запланированными приемами пищи
     meal_plans_result = await db.execute(
         select(MealPlan).where(MealPlan.user_id == user.id)
     )
     meal_plans = meal_plans_result.scalars().all()
 
-    user_data["meal_plans"] = [
-        {
+    meal_plans_data = []
+    for plan in meal_plans:
+        # Получаем дни плана питания
+        meal_plan_days_result = await db.execute(
+            select(MealPlanDay).where(MealPlanDay.meal_plan_id == plan.id).order_by(MealPlanDay.day_number)
+        )
+        meal_plan_days = meal_plan_days_result.scalars().all()
+
+        days_data = []
+        for day in meal_plan_days:
+            # Получаем запланированные приемы пищи для каждого дня
+            planned_meals_result = await db.execute(
+                select(PlannedMeal).where(PlannedMeal.meal_plan_day_id == day.id)
+            )
+            planned_meals = planned_meals_result.scalars().all()
+
+            days_data.append({
+                "id": day.id,
+                "day_number": day.day_number,
+                "date": day.date.isoformat() if day.date else None,
+                "planned_meals": [
+                    {
+                        "id": pm.id,
+                        "meal_type": pm.meal_type,
+                        "recipe_name": pm.recipe_name,
+                        "ingredients": pm.ingredients,
+                        "cooking_instructions": pm.cooking_instructions,
+                        "calories": pm.calories,
+                        "proteins": pm.proteins,
+                        "fats": pm.fats,
+                        "carbs": pm.carbs
+                    }
+                    for pm in planned_meals
+                ]
+            })
+
+        meal_plans_data.append({
             "id": plan.id,
             "period": plan.period.value if plan.period else None,
             "start_date": plan.start_date.isoformat() if plan.start_date else None,
             "end_date": plan.end_date.isoformat() if plan.end_date else None,
+            "days": days_data,
             "created_at": plan.created_at.isoformat() if plan.created_at else None
-        }
-        for plan in meal_plans
-    ]
+        })
+
+    user_data["meal_plans"] = meal_plans_data
 
     # Получаем медицинские анализы
     analyses_result = await db.execute(
@@ -223,14 +259,21 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         for msg in chat_messages
     ]
 
-    # Получаем дневник питания (meals)
+    # Получаем дневник питания (meals) с продуктами (MealFood)
     meals_result = await db.execute(
         select(Meal).where(Meal.user_id == user.id).order_by(Meal.meal_datetime.desc())
     )
     meals = meals_result.scalars().all()
 
-    user_data["meal_diary"] = [
-        {
+    meal_diary = []
+    for meal in meals:
+        # Получаем продукты для каждого приема пищи
+        meal_foods_result = await db.execute(
+            select(MealFood).where(MealFood.meal_id == meal.id)
+        )
+        meal_foods = meal_foods_result.scalars().all()
+
+        meal_diary.append({
             "id": meal.id,
             "meal_type": meal.meal_type,
             "meal_datetime": meal.meal_datetime.isoformat() if meal.meal_datetime else None,
@@ -238,10 +281,23 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
             "total_proteins": meal.total_proteins,
             "total_fats": meal.total_fats,
             "total_carbs": meal.total_carbs,
+            "foods": [
+                {
+                    "id": food.id,
+                    "food_name": food.food_name,
+                    "quantity": food.quantity,
+                    "unit": food.unit,
+                    "calories": food.calories,
+                    "proteins": food.proteins,
+                    "fats": food.fats,
+                    "carbs": food.carbs
+                }
+                for food in meal_foods
+            ],
             "created_at": meal.created_at.isoformat() if meal.created_at else None
-        }
-        for meal in meals
-    ]
+        })
+
+    user_data["meal_diary"] = meal_diary
 
     # Получаем статистику использования
     usage_result = await db.execute(
@@ -294,39 +350,72 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         for log in wellness_logs
     ]
 
-    # Получаем продукты в кладовой
+    # Получаем продукты в кладовой с историей использования
     pantry_result = await db.execute(
         select(UserPantry).where(UserPantry.user_id == user.id)
     )
     pantry_items = pantry_result.scalars().all()
 
-    user_data["pantry"] = [
-        {
+    pantry_data = []
+    for item in pantry_items:
+        # Получаем историю использования для каждого продукта
+        usage_logs_result = await db.execute(
+            select(PantryUsageLog).where(PantryUsageLog.pantry_item_id == item.id).order_by(PantryUsageLog.used_at.desc())
+        )
+        usage_logs = usage_logs_result.scalars().all()
+
+        pantry_data.append({
             "id": item.id,
             "product_name": item.product_name,
             "quantity": item.quantity,
             "unit": item.unit,
+            "usage_history": [
+                {
+                    "id": log.id,
+                    "quantity_used": log.quantity_used,
+                    "used_at": log.used_at.isoformat() if log.used_at else None
+                }
+                for log in usage_logs
+            ],
             "added_at": item.added_at.isoformat() if item.added_at else None
-        }
-        for item in pantry_items
-    ]
+        })
 
-    # Получаем списки покупок (через meal_plan_id, т.к. ShoppingList не имеет user_id)
+    user_data["pantry"] = pantry_data
+
+    # Получаем списки покупок с товарами (через meal_plan_id, т.к. ShoppingList не имеет user_id)
     meal_plan_ids_list = [plan.id for plan in meal_plans]
     shopping_lists_result = await db.execute(
         select(ShoppingList).where(ShoppingList.meal_plan_id.in_(meal_plan_ids_list)).order_by(ShoppingList.created_at.desc())
     ) if meal_plan_ids_list else None
     shopping_lists = shopping_lists_result.scalars().all() if shopping_lists_result else []
 
-    user_data["shopping_lists"] = [
-        {
+    shopping_lists_data = []
+    for slist in shopping_lists:
+        # Получаем товары для каждого списка покупок
+        shopping_items_result = await db.execute(
+            select(ShoppingItem).where(ShoppingItem.shopping_list_id == slist.id)
+        )
+        shopping_items = shopping_items_result.scalars().all()
+
+        shopping_lists_data.append({
             "id": slist.id,
             "meal_plan_id": slist.meal_plan_id,
             "total_estimated_cost": slist.total_estimated_cost,
+            "items": [
+                {
+                    "id": item.id,
+                    "product_name": item.product_name,
+                    "quantity": item.quantity,
+                    "unit": item.unit,
+                    "estimated_cost": item.estimated_cost,
+                    "is_purchased": item.is_purchased
+                }
+                for item in shopping_items
+            ],
             "created_at": slist.created_at.isoformat() if slist.created_at else None
-        }
-        for slist in shopping_lists
-    ]
+        })
+
+    user_data["shopping_lists"] = shopping_lists_data
 
     # Получаем коррекции распознавания
     corrections_result = await db.execute(
@@ -361,15 +450,31 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         for consent in consents
     ]
 
-    # Логируем статистику экспорта
+    # Логируем статистику экспорта с вложенными данными
+    total_meal_foods = sum(len(meal.get("foods", [])) for meal in user_data.get("meal_diary", []))
+    total_shopping_items = sum(len(slist.get("items", [])) for slist in user_data.get("shopping_lists", []))
+    total_pantry_usage = sum(len(item.get("usage_history", [])) for item in user_data.get("pantry", []))
+    total_meal_plan_days = sum(len(plan.get("days", [])) for plan in user_data.get("meal_plans", []))
+    total_planned_meals = sum(
+        len(day.get("planned_meals", []))
+        for plan in user_data.get("meal_plans", [])
+        for day in plan.get("days", [])
+    )
+
     stats = {
         "meal_plans": len(user_data.get("meal_plans", [])),
+        "meal_plan_days": total_meal_plan_days,
+        "planned_meals": total_planned_meals,
         "medical_analyses": len(user_data.get("medical_analyses", [])),
         "chat_messages": len(user_data.get("chat_history", [])),
         "meals": len(user_data.get("meal_diary", [])),
+        "meal_foods": total_meal_foods,
         "wellness_logs": len(user_data.get("wellness_logs", [])),
         "pantry_items": len(user_data.get("pantry", [])),
+        "pantry_usage_logs": total_pantry_usage,
         "shopping_lists": len(user_data.get("shopping_lists", [])),
+        "shopping_items": total_shopping_items,
+        "food_corrections": len(user_data.get("food_corrections", [])),
         "consents": len(user_data.get("consents", []))
     }
     logger.info(f"✅ Data export completed for user_id={user.id}, telegram_id={telegram_id}. Stats: {stats}")
