@@ -6,7 +6,15 @@ from enum import IntEnum, auto
 
 class OnboardingStates(IntEnum):
     """Состояния онбординга"""
+    # Юридические согласия (152-ФЗ, 323-ФЗ)
+    MEDICAL_DISCLAIMER = auto()  # Показ медицинского дисклеймера
+    PERSONAL_DATA_CONSENT = auto()  # Согласие на обработку персональных данных
+    MEDICAL_DATA_CONSENT = auto()  # Согласие на обработку медицинских данных
+
+    # Старый дисклеймер (для обратной совместимости)
     DISCLAIMER = auto()  # Показ дисклеймера
+
+    # Базовая информация
     PREFERRED_NAME = auto()
     COUNTRY = auto()
     CITY = auto()
@@ -20,6 +28,7 @@ class OnboardingStates(IntEnum):
     DIET_TYPE = auto()
     BUDGET_CATEGORY = auto()
     ALLERGIES = auto()
+
     # Медицинская информация (Этап 4)
     CHRONIC_CONDITIONS = auto()  # Хронические заболевания
     REMOVED_ORGANS = auto()  # Удаленные органы
@@ -83,3 +92,10 @@ class PantryStates(IntEnum):
 class ReminderSettingsStates(IntEnum):
     """Состояния для настройки напоминаний после создания плана"""
     WAITING_CUSTOM_TIME = auto()  # Ожидание ввода своего времени
+
+
+class PrivacyStates(IntEnum):
+    """Состояния для управления конфиденциальностью (152-ФЗ)"""
+    CONFIRMING_DELETE = auto()  # Подтверждение удаления аккаунта
+    EXPORTING_DATA = auto()  # Экспорт данных
+    REVOKING_CONSENT = auto()  # Отзыв согласия
