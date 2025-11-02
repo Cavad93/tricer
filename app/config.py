@@ -71,6 +71,9 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Data Protection (152-ФЗ)
+    ENCRYPTION_KEY: str  # Fernet key for encrypting medical data
+
     # Server
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
