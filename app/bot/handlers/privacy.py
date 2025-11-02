@@ -110,15 +110,33 @@ async def export_data_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode="HTML"
             )
 
+            # Кнопка возврата
+            keyboard = [
+                [InlineKeyboardButton("👤 Профиль", callback_data="profile")],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
             await query.edit_message_text(
                 "✅ Данные успешно экспортированы!",
+                reply_markup=reply_markup,
                 parse_mode="HTML"
             )
 
     except Exception as e:
         logger.error(f"Export data error: {e}")
+
+        # Кнопка возврата при ошибке
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="export_data")],
+            [InlineKeyboardButton("👤 Профиль", callback_data="profile")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await query.edit_message_text(
             "❌ Ошибка при экспорте данных. Попробуйте позже.",
+            reply_markup=reply_markup,
             parse_mode="HTML"
         )
 
@@ -596,8 +614,14 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
             user = result.scalar_one_or_none()
 
             if not user:
+                keyboard = [
+                    [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
                 await query.edit_message_text(
                     "❌ Пользователь не найден",
+                    reply_markup=reply_markup,
                     parse_mode="HTML"
                 )
                 return ConversationHandler.END
@@ -692,9 +716,9 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
             logger.debug(f"Deleting FoodRecognitionCorrection for user_id={user_id}")
             await session.execute(delete(FoodRecognitionCorrection).where(FoodRecognitionCorrection.user_id == user_id))
 
-            # 16. Удаляем историю согласий (UserConsent)
-            logger.debug(f"Deleting UserConsent for user_id={user_id}")
-            await session.execute(delete(UserConsent).where(UserConsent.user_id == user_id))
+            # 16. Удаляем историю согласий (UserConsent) - используем telegram_id!
+            logger.debug(f"Deleting UserConsent for telegram_id={telegram_id}")
+            await session.execute(delete(UserConsent).where(UserConsent.telegram_id == telegram_id))
 
             # 17. В конце удаляем самого пользователя (User)
             logger.debug(f"Deleting User user_id={user_id}")
@@ -716,8 +740,18 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
 
     except Exception as e:
         logger.error(f"Delete account error: {e}")
+
+        # Кнопка возврата при ошибке
+        keyboard = [
+            [InlineKeyboardButton("🔄 Попробовать снова", callback_data="delete_account")],
+            [InlineKeyboardButton("👤 Профиль", callback_data="profile")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
         await query.edit_message_text(
             "❌ Ошибка при удалении аккаунта. Попробуйте позже.",
+            reply_markup=reply_markup,
             parse_mode="HTML"
         )
 
