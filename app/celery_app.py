@@ -14,7 +14,10 @@ celery_app = Celery(
     'nutriai',
     broker=settings.REDIS_URL,           # Redis как брокер сообщений
     backend=settings.REDIS_URL,          # Redis для хранения результатов
-    include=['app.tasks.meal_plan_tasks']  # Автоматически импортировать задачи
+    include=[
+        'app.tasks.meal_plan_tasks',
+        'app.tasks.cached_meal_plan_tasks'  # ИСПРАВЛЕНО: Добавлен импорт кэшированных задач
+    ]
 )
 
 # Конфигурация Celery

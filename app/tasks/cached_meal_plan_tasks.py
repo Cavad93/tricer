@@ -310,3 +310,45 @@ async def _cleanup_async():
         except Exception as e:
             logger.error(f"Error in cleanup task: {repr(e)}")
             raise
+
+
+@celery_app.task(name='tasks.deactivate_expired_plans')
+def deactivate_expired_plans_task():
+    """
+    Деактивирует истёкшие планы питания.
+
+    Критерии деактивации:
+    - План активен (is_active=True)
+    - Дата окончания плана (end_date) прошла
+
+    Запускается каждый день в 1:00 UTC через Celery Beat.
+    """
+    try:
+        logger.info("🔄 Starting deactivation of expired meal plans...")
+        return run_async_task(_deactivate_expired_plans_async)
+    finally:
+        try:
+            run_async_task(cleanup_celery_connections)
+        except Exception as cleanup_error:
+            logger.warning(f"Error during connection cleanup: {cleanup_error}")
+
+
+async def _deactivate_expired_plans_async():
+    """
+    Асинхронная часть деактивации истёкших планов
+    """
+    try:
+        async with celery_session_maker() as session:
+            # Используем метод сервиса для деактивации
+            deactivated_count = await MealPlanService.deactivate_expired_plans(session)
+
+            logger.info(f"✅ Deactivated {deactivated_count} expired meal plans")
+
+            return {
+                "status": "success",
+                "deactivated_count": deactivated_count,
+                "timestamp": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"❌ Error deactivating expired plans: {repr(e)}")
+        raise
