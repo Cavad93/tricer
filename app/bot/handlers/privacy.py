@@ -311,11 +311,12 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         for item in pantry_items
     ]
 
-    # Получаем списки покупок
+    # Получаем списки покупок (через meal_plan_id, т.к. ShoppingList не имеет user_id)
+    meal_plan_ids_list = [plan.id for plan in meal_plans]
     shopping_lists_result = await db.execute(
-        select(ShoppingList).where(ShoppingList.user_id == user.id).order_by(ShoppingList.created_at.desc())
-    )
-    shopping_lists = shopping_lists_result.scalars().all()
+        select(ShoppingList).where(ShoppingList.meal_plan_id.in_(meal_plan_ids_list)).order_by(ShoppingList.created_at.desc())
+    ) if meal_plan_ids_list else None
+    shopping_lists = shopping_lists_result.scalars().all() if shopping_lists_result else []
 
     user_data["shopping_lists"] = [
         {
@@ -472,14 +473,18 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
 
             # 6. Удаляем элементы списков покупок (ShoppingItem) - зависят от ShoppingList
             logger.debug(f"Deleting ShoppingItem for user_id={user_id}")
-            shopping_lists = await session.execute(select(ShoppingList.id).where(ShoppingList.user_id == user_id))
-            shopping_list_ids = [sl[0] for sl in shopping_lists.all()]
+            # ShoppingList связан через meal_plan_id, получаем списки через планы питания
+            shopping_lists = await session.execute(
+                select(ShoppingList.id).where(ShoppingList.meal_plan_id.in_(meal_plan_ids))
+            ) if meal_plan_ids else None
+            shopping_list_ids = [sl[0] for sl in shopping_lists.all()] if shopping_lists else []
             if shopping_list_ids:
                 await session.execute(delete(ShoppingItem).where(ShoppingItem.shopping_list_id.in_(shopping_list_ids)))
 
             # 7. Удаляем списки покупок (ShoppingList)
             logger.debug(f"Deleting ShoppingList for user_id={user_id}")
-            await session.execute(delete(ShoppingList).where(ShoppingList.user_id == user_id))
+            if meal_plan_ids:
+                await session.execute(delete(ShoppingList).where(ShoppingList.meal_plan_id.in_(meal_plan_ids)))
 
             # 8. Удаляем логи использования кладовой (PantryUsageLog) - зависят от UserPantry
             logger.debug(f"Deleting PantryUsageLog for user_id={user_id}")
