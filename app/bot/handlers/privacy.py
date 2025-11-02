@@ -666,24 +666,25 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
             if meal_plan_ids:
                 await session.execute(delete(MealPlanDay).where(MealPlanDay.meal_plan_id.in_(meal_plan_ids)))
 
-            # 5. Удаляем планы питания (MealPlan)
-            logger.debug(f"Deleting MealPlan for user_id={user_id}")
-            await session.execute(delete(MealPlan).where(MealPlan.user_id == user_id))
-
-            # 6. Удаляем элементы списков покупок (ShoppingItem) - зависят от ShoppingList
+            # 5. Удаляем элементы списков покупок (ShoppingItem) - ПЕРЕД удалением ShoppingList
             logger.debug(f"Deleting ShoppingItem for user_id={user_id}")
             # ShoppingList связан через meal_plan_id, получаем списки через планы питания
-            shopping_lists = await session.execute(
-                select(ShoppingList.id).where(ShoppingList.meal_plan_id.in_(meal_plan_ids))
-            ) if meal_plan_ids else None
-            shopping_list_ids = [sl[0] for sl in shopping_lists.all()] if shopping_lists else []
-            if shopping_list_ids:
-                await session.execute(delete(ShoppingItem).where(ShoppingItem.shopping_list_id.in_(shopping_list_ids)))
+            if meal_plan_ids:
+                shopping_lists = await session.execute(
+                    select(ShoppingList.id).where(ShoppingList.meal_plan_id.in_(meal_plan_ids))
+                )
+                shopping_list_ids = [sl[0] for sl in shopping_lists.all()]
+                if shopping_list_ids:
+                    await session.execute(delete(ShoppingItem).where(ShoppingItem.shopping_list_id.in_(shopping_list_ids)))
 
-            # 7. Удаляем списки покупок (ShoppingList)
+            # 6. Удаляем списки покупок (ShoppingList) - ПЕРЕД удалением MealPlan
             logger.debug(f"Deleting ShoppingList for user_id={user_id}")
             if meal_plan_ids:
                 await session.execute(delete(ShoppingList).where(ShoppingList.meal_plan_id.in_(meal_plan_ids)))
+
+            # 7. Удаляем планы питания (MealPlan) - В ПОСЛЕДНЮЮ ОЧЕРЕДЬ
+            logger.debug(f"Deleting MealPlan for user_id={user_id}")
+            await session.execute(delete(MealPlan).where(MealPlan.user_id == user_id))
 
             # 8. Удаляем логи использования кладовой (PantryUsageLog) - зависят от UserPantry
             logger.debug(f"Deleting PantryUsageLog for user_id={user_id}")
