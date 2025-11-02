@@ -24,8 +24,17 @@ from app.bot.texts import (
 from app.bot.states import PrivacyStates
 from app.db.session import async_session_maker
 from app.models.user import User
-from app.models.meal_plan import MealPlan
+from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal
 from app.models.medical_analysis import MedicalAnalysis
+from app.models.chat import ChatMessage
+from app.models.meal import Meal, MealFood
+from app.models.usage import DailyUsage
+from app.models.micronutrients import DailyMicronutrients
+from app.models.wellness_log import WellnessLog
+from app.models.pantry import UserPantry, PantryUsageLog
+from app.models.shopping_list import ShoppingList, ShoppingItem
+from app.models.food_correction import FoodRecognitionCorrection
+from app.models.user_consent import UserConsent
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,12 +65,13 @@ async def privacy_settings_command(update: Update, context: ContextTypes.DEFAULT
 
 async def export_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Обработка кнопки "Экспортировать данные"
+    Обработка кнопки "Экспортировать данные" (152-ФЗ: право на получение данных)
     """
     query = update.callback_query
     await query.answer()
 
     telegram_id = query.from_user.id
+    logger.info(f"Export data request from telegram_id={telegram_id}")
 
     # Показываем сообщение о подготовке
     await query.edit_message_text(
@@ -115,8 +125,10 @@ async def export_data_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
     """
-    Собирает все данные пользователя для экспорта
+    Собирает все данные пользователя для экспорта (152-ФЗ compliance)
     """
+    logger.info(f"Starting data export for telegram_id={telegram_id}")
+
     # Получаем пользователя
     result = await db.execute(
         select(User).where(User.telegram_id == telegram_id)
@@ -124,7 +136,10 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
     user = result.scalar_one_or_none()
 
     if not user:
+        logger.warning(f"User not found for telegram_id={telegram_id}")
         return None
+
+    logger.debug(f"Collecting data for user_id={user.id}")
 
     # Базовые данные
     user_data = {
@@ -192,15 +207,184 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         for analysis in analyses
     ]
 
+    # Получаем историю чата
+    chat_result = await db.execute(
+        select(ChatMessage).where(ChatMessage.user_id == user.id).order_by(ChatMessage.timestamp)
+    )
+    chat_messages = chat_result.scalars().all()
+
+    user_data["chat_history"] = [
+        {
+            "id": msg.id,
+            "role": msg.role,
+            "content": msg.content[:200] + "..." if len(msg.content) > 200 else msg.content,  # Обрезаем длинные сообщения
+            "timestamp": msg.timestamp.isoformat() if msg.timestamp else None
+        }
+        for msg in chat_messages
+    ]
+
+    # Получаем дневник питания (meals)
+    meals_result = await db.execute(
+        select(Meal).where(Meal.user_id == user.id).order_by(Meal.meal_datetime.desc())
+    )
+    meals = meals_result.scalars().all()
+
+    user_data["meal_diary"] = [
+        {
+            "id": meal.id,
+            "meal_type": meal.meal_type,
+            "meal_datetime": meal.meal_datetime.isoformat() if meal.meal_datetime else None,
+            "total_calories": meal.total_calories,
+            "total_proteins": meal.total_proteins,
+            "total_fats": meal.total_fats,
+            "total_carbs": meal.total_carbs,
+            "created_at": meal.created_at.isoformat() if meal.created_at else None
+        }
+        for meal in meals
+    ]
+
+    # Получаем статистику использования
+    usage_result = await db.execute(
+        select(DailyUsage).where(DailyUsage.user_id == user.id).order_by(DailyUsage.date.desc())
+    )
+    usage_stats = usage_result.scalars().all()
+
+    user_data["usage_statistics"] = [
+        {
+            "date": usage.date.isoformat() if usage.date else None,
+            "photos_analyzed": usage.photos_analyzed,
+            "chat_messages_sent": usage.chat_messages_sent
+        }
+        for usage in usage_stats
+    ]
+
+    # Получаем данные о микронутриентах
+    micronutrients_result = await db.execute(
+        select(DailyMicronutrients).where(DailyMicronutrients.user_id == user.id).order_by(DailyMicronutrients.date.desc())
+    )
+    micronutrients = micronutrients_result.scalars().all()
+
+    user_data["micronutrients_history"] = [
+        {
+            "date": micro.date.isoformat() if micro.date else None,
+            "vitamins": micro.vitamins,
+            "minerals": micro.minerals,
+            "created_at": micro.created_at.isoformat() if micro.created_at else None
+        }
+        for micro in micronutrients
+    ]
+
+    # Получаем дневник самочувствия
+    wellness_result = await db.execute(
+        select(WellnessLog).where(WellnessLog.user_id == user.id).order_by(WellnessLog.log_datetime.desc())
+    )
+    wellness_logs = wellness_result.scalars().all()
+
+    user_data["wellness_logs"] = [
+        {
+            "id": log.id,
+            "log_datetime": log.log_datetime.isoformat() if log.log_datetime else None,
+            "energy_level": log.energy_level,
+            "mood": log.mood,
+            "digestion": log.digestion,
+            "sleep_quality": log.sleep_quality,
+            "notes": log.notes,
+            "created_at": log.created_at.isoformat() if log.created_at else None
+        }
+        for log in wellness_logs
+    ]
+
+    # Получаем продукты в кладовой
+    pantry_result = await db.execute(
+        select(UserPantry).where(UserPantry.user_id == user.id)
+    )
+    pantry_items = pantry_result.scalars().all()
+
+    user_data["pantry"] = [
+        {
+            "id": item.id,
+            "product_name": item.product_name,
+            "quantity": item.quantity,
+            "unit": item.unit,
+            "added_at": item.added_at.isoformat() if item.added_at else None
+        }
+        for item in pantry_items
+    ]
+
+    # Получаем списки покупок
+    shopping_lists_result = await db.execute(
+        select(ShoppingList).where(ShoppingList.user_id == user.id).order_by(ShoppingList.created_at.desc())
+    )
+    shopping_lists = shopping_lists_result.scalars().all()
+
+    user_data["shopping_lists"] = [
+        {
+            "id": slist.id,
+            "meal_plan_id": slist.meal_plan_id,
+            "total_estimated_cost": slist.total_estimated_cost,
+            "created_at": slist.created_at.isoformat() if slist.created_at else None
+        }
+        for slist in shopping_lists
+    ]
+
+    # Получаем коррекции распознавания
+    corrections_result = await db.execute(
+        select(FoodRecognitionCorrection).where(FoodRecognitionCorrection.user_id == user.id)
+    )
+    corrections = corrections_result.scalars().all()
+
+    user_data["food_corrections"] = [
+        {
+            "id": corr.id,
+            "original_recognition": corr.original_recognition,
+            "corrected_food_name": corr.corrected_food_name,
+            "corrected_at": corr.corrected_at.isoformat() if corr.corrected_at else None
+        }
+        for corr in corrections
+    ]
+
+    # Получаем историю согласий
+    consents_result = await db.execute(
+        select(UserConsent).where(UserConsent.user_id == user.id).order_by(UserConsent.consent_date.desc())
+    )
+    consents = consents_result.scalars().all()
+
+    user_data["consents"] = [
+        {
+            "id": consent.id,
+            "consent_type": consent.consent_type,
+            "is_granted": consent.is_granted,
+            "consent_date": consent.consent_date.isoformat() if consent.consent_date else None,
+            "ip_address": consent.ip_address
+        }
+        for consent in consents
+    ]
+
+    # Логируем статистику экспорта
+    stats = {
+        "meal_plans": len(user_data.get("meal_plans", [])),
+        "medical_analyses": len(user_data.get("medical_analyses", [])),
+        "chat_messages": len(user_data.get("chat_history", [])),
+        "meals": len(user_data.get("meal_diary", [])),
+        "wellness_logs": len(user_data.get("wellness_logs", [])),
+        "pantry_items": len(user_data.get("pantry", [])),
+        "shopping_lists": len(user_data.get("shopping_lists", [])),
+        "consents": len(user_data.get("consents", []))
+    }
+    logger.info(f"✅ Data export completed for user_id={user.id}, telegram_id={telegram_id}. Stats: {stats}")
+
     return user_data
 
 
 async def delete_account_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Обработка кнопки "Удалить аккаунт"
+    Обработка кнопки "Удалить аккаунт" (152-ФЗ: право на удаление данных)
     """
     query = update.callback_query
     await query.answer()
+
+    telegram_id = query.from_user.id
+    logger.info(f"Delete account request from telegram_id={telegram_id}")
 
     keyboard = [
         [InlineKeyboardButton("✅ Да, удалить навсегда", callback_data="confirm_delete")],
@@ -248,17 +432,102 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
 
             user_id = user.id
 
-            # Удаляем все связанные данные
-            # 1. Планы питания
+            logger.info(f"Starting full account deletion for user_id={user_id}, telegram_id={telegram_id}")
+
+            # Удаляем все связанные данные в правильном порядке (от зависимых к независимым)
+
+            # 1. Удаляем элементы еды (MealFood) - зависят от Meal
+            logger.debug(f"Deleting MealFood for user_id={user_id}")
+            # MealFood связан через meal_id, нужно удалить через meals пользователя
+            meals_to_delete = await session.execute(select(Meal.id).where(Meal.user_id == user_id))
+            meal_ids = [m[0] for m in meals_to_delete.all()]
+            if meal_ids:
+                await session.execute(delete(MealFood).where(MealFood.meal_id.in_(meal_ids)))
+
+            # 2. Удаляем приемы пищи (Meal)
+            logger.debug(f"Deleting Meals for user_id={user_id}")
+            await session.execute(delete(Meal).where(Meal.user_id == user_id))
+
+            # 3. Удаляем запланированные приемы пищи (PlannedMeal) - зависят от MealPlanDay
+            logger.debug(f"Deleting PlannedMeal for user_id={user_id}")
+            meal_plans_to_delete = await session.execute(select(MealPlan.id).where(MealPlan.user_id == user_id))
+            meal_plan_ids = [mp[0] for mp in meal_plans_to_delete.all()]
+            if meal_plan_ids:
+                # Получаем все MealPlanDay для этих планов
+                meal_plan_days = await session.execute(
+                    select(MealPlanDay.id).where(MealPlanDay.meal_plan_id.in_(meal_plan_ids))
+                )
+                meal_plan_day_ids = [mpd[0] for mpd in meal_plan_days.all()]
+                if meal_plan_day_ids:
+                    await session.execute(delete(PlannedMeal).where(PlannedMeal.meal_plan_day_id.in_(meal_plan_day_ids)))
+
+            # 4. Удаляем дни планов питания (MealPlanDay)
+            logger.debug(f"Deleting MealPlanDay for user_id={user_id}")
+            if meal_plan_ids:
+                await session.execute(delete(MealPlanDay).where(MealPlanDay.meal_plan_id.in_(meal_plan_ids)))
+
+            # 5. Удаляем планы питания (MealPlan)
+            logger.debug(f"Deleting MealPlan for user_id={user_id}")
             await session.execute(delete(MealPlan).where(MealPlan.user_id == user_id))
 
-            # 2. Медицинские анализы
+            # 6. Удаляем элементы списков покупок (ShoppingItem) - зависят от ShoppingList
+            logger.debug(f"Deleting ShoppingItem for user_id={user_id}")
+            shopping_lists = await session.execute(select(ShoppingList.id).where(ShoppingList.user_id == user_id))
+            shopping_list_ids = [sl[0] for sl in shopping_lists.all()]
+            if shopping_list_ids:
+                await session.execute(delete(ShoppingItem).where(ShoppingItem.shopping_list_id.in_(shopping_list_ids)))
+
+            # 7. Удаляем списки покупок (ShoppingList)
+            logger.debug(f"Deleting ShoppingList for user_id={user_id}")
+            await session.execute(delete(ShoppingList).where(ShoppingList.user_id == user_id))
+
+            # 8. Удаляем логи использования кладовой (PantryUsageLog) - зависят от UserPantry
+            logger.debug(f"Deleting PantryUsageLog for user_id={user_id}")
+            pantry_items = await session.execute(select(UserPantry.id).where(UserPantry.user_id == user_id))
+            pantry_item_ids = [pi[0] for pi in pantry_items.all()]
+            if pantry_item_ids:
+                await session.execute(delete(PantryUsageLog).where(PantryUsageLog.pantry_item_id.in_(pantry_item_ids)))
+
+            # 9. Удаляем продукты в кладовой (UserPantry)
+            logger.debug(f"Deleting UserPantry for user_id={user_id}")
+            await session.execute(delete(UserPantry).where(UserPantry.user_id == user_id))
+
+            # 10. Удаляем сообщения чата (ChatMessage)
+            logger.debug(f"Deleting ChatMessage for user_id={user_id}")
+            await session.execute(delete(ChatMessage).where(ChatMessage.user_id == user_id))
+
+            # 11. Удаляем статистику использования (DailyUsage)
+            logger.debug(f"Deleting DailyUsage for user_id={user_id}")
+            await session.execute(delete(DailyUsage).where(DailyUsage.user_id == user_id))
+
+            # 12. Удаляем данные о микронутриентах (DailyMicronutrients)
+            logger.debug(f"Deleting DailyMicronutrients for user_id={user_id}")
+            await session.execute(delete(DailyMicronutrients).where(DailyMicronutrients.user_id == user_id))
+
+            # 13. Удаляем медицинские анализы (MedicalAnalysis)
+            logger.debug(f"Deleting MedicalAnalysis for user_id={user_id}")
             await session.execute(delete(MedicalAnalysis).where(MedicalAnalysis.user_id == user_id))
 
-            # 3. Пользователя
+            # 14. Удаляем дневник самочувствия (WellnessLog)
+            logger.debug(f"Deleting WellnessLog for user_id={user_id}")
+            await session.execute(delete(WellnessLog).where(WellnessLog.user_id == user_id))
+
+            # 15. Удаляем коррекции распознавания (FoodRecognitionCorrection)
+            logger.debug(f"Deleting FoodRecognitionCorrection for user_id={user_id}")
+            await session.execute(delete(FoodRecognitionCorrection).where(FoodRecognitionCorrection.user_id == user_id))
+
+            # 16. Удаляем историю согласий (UserConsent)
+            logger.debug(f"Deleting UserConsent for user_id={user_id}")
+            await session.execute(delete(UserConsent).where(UserConsent.user_id == user_id))
+
+            # 17. В конце удаляем самого пользователя (User)
+            logger.debug(f"Deleting User user_id={user_id}")
             await session.delete(user)
 
+            # Коммитим все изменения
             await session.commit()
+
+            logger.info(f"✅ Account fully deleted: user_id={user_id}, telegram_id={telegram_id}")
 
             await query.edit_message_text(
                 "✅ <b>Аккаунт успешно удален</b>\n\n"
