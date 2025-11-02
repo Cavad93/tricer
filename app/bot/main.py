@@ -433,18 +433,40 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 change_text = f"{abs(weight_change)} кг" if weight_change < 0 else f"+{weight_change} кг"
                 weight_text += f"{change_emoji} Изменение: {change_text}\n"
 
+        # Экранируем специальные символы для MarkdownV2
+        def escape_markdown(text):
+            """Экранирует специальные символы для MarkdownV2"""
+            special_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+            for char in special_chars:
+                text = text.replace(char, f'\\{char}')
+            return text
+
+        # Формируем текст профиля
+        age_text = escape_markdown(f"{user.age} лет")
+        height_text = escape_markdown(f"{user.height} см")
+        weight_text_escaped = escape_markdown(weight_text)
+        calories_text = escape_markdown(f"{user.target_calories} ккал")
+        proteins_text = escape_markdown(f"{user.target_proteins}г")
+        fats_text = escape_markdown(f"{user.target_fats}г")
+        carbs_text = escape_markdown(f"{user.target_carbs}г")
+        cooking_text_escaped = escape_markdown(cooking_time_text)
+
         profile_text = (
             "👤 *Твой профиль*\n\n"
-            f"Возраст: {user.age} лет\n"
-            f"Рост: {user.height} см\n"
-            f"{weight_text}\n"
+            f"Возраст: {age_text}\n"
+            f"Рост: {height_text}\n"
+            f"{weight_text_escaped}\n"
             f"📊 *Целевые показатели на день:*\n"
-            f"🔥 Калории: {user.target_calories} ккал\n"
-            f"🥩 Белки: {user.target_proteins}г\n"
-            f"🧈 Жиры: {user.target_fats}г\n"
-            f"🍞 Углеводы: {user.target_carbs}г\n\n"
+            f"🔥 Калории: {calories_text}\n"
+            f"🥩 Белки: {proteins_text}\n"
+            f"🧈 Жиры: {fats_text}\n"
+            f"🍞 Углеводы: {carbs_text}\n\n"
             f"⚙️ *Предпочтения:*\n"
-            f"{cooking_time_text}"
+            f"{cooking_text_escaped}\n"
+            "────────────\n"
+            "⚠️ _Напоминание: NutriAI не является медицинским сервисом\\.\n"
+            "При проблемах со здоровьем обратитесь к врачу\\._\n"
+            "────────────"
         )
 
         # Добавляем кнопки управления профилем
@@ -453,13 +475,15 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("⚖️ Изменить вес", callback_data="change_weight")],
             [InlineKeyboardButton("⏰ Изменить время на готовку", callback_data="change_cooking_time")],
+            [InlineKeyboardButton("📦 Экспорт данных", callback_data="export_data")],
+            [InlineKeyboardButton("🗑️ Удалить аккаунт", callback_data="delete_account")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
         ]
 
         await safe_edit_or_send_message(
             query,
             profile_text,
-            parse_mode="Markdown",
+            parse_mode="MarkdownV2",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
