@@ -101,10 +101,11 @@ async def accept_medical_disclaimer_callback(update: Update, context: ContextTyp
     # Показываем согласие на обработку персональных данных (152-ФЗ)
     from app.bot.texts import PERSONAL_DATA_CONSENT
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from app.config import settings
 
     keyboard = [
         [InlineKeyboardButton("✅ Согласен", callback_data="accept_data_consent")],
-        [InlineKeyboardButton("📄 Политика конфиденциальности", url="https://your-site.com/privacy")],
+        [InlineKeyboardButton("📄 Политика конфиденциальности", url=settings.PRIVACY_POLICY_URL)],
         [InlineKeyboardButton("❌ Отказаться", callback_data="decline_data_consent")]
     ]
 

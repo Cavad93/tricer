@@ -36,9 +36,11 @@ async def privacy_settings_command(update: Update, context: ContextTypes.DEFAULT
     """
     Команда /privacy_settings - управление конфиденциальностью
     """
+    from app.config import settings
+
     keyboard = [
         [InlineKeyboardButton("📦 Экспортировать данные", callback_data="export_data")],
-        [InlineKeyboardButton("📄 Политика конфиденциальности", url="https://your-site.com/privacy")],
+        [InlineKeyboardButton("📄 Политика конфиденциальности", url=settings.PRIVACY_POLICY_URL)],
         [InlineKeyboardButton("🗑️ Удалить аккаунт", callback_data="delete_account")],
         [InlineKeyboardButton("⚠️ Отозвать согласие", callback_data="revoke_consent")],
         [InlineKeyboardButton("◀️ Назад", callback_data="main_menu")]
@@ -133,16 +135,15 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
             "preferred_name": user.preferred_name,
             "country": user.country,
             "city": user.city,
-            "sex": user.sex,
+            "gender": user.gender.value if user.gender else None,
             "birth_year": user.birth_year,
-            "age": user.age,
             "height": user.height,
             "current_weight": user.current_weight,
             "target_weight": user.target_weight,
-            "goal": user.goal,
-            "activity_level": user.activity_level,
-            "diet_type": user.diet_type,
-            "budget_category": user.budget_category,
+            "goal": user.goal.value if user.goal else None,
+            "activity_level": user.activity_level.value if user.activity_level else None,
+            "diet_type": user.diet_type.value if user.diet_type else None,
+            "budget_category": user.budget_category.value if user.budget_category else None,
             "allergies": user.allergies,
         },
         "medical_data": {

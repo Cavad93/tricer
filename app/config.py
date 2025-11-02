@@ -73,6 +73,7 @@ class Settings(BaseSettings):
 
     # Data Protection (152-ФЗ)
     ENCRYPTION_KEY: str  # Fernet key for encrypting medical data
+    PRIVACY_POLICY_URL: str = "https://telegra.ph/Privacy-Policy-NutriAI-01-15"  # URL политики конфиденциальности
 
     # Server
     API_HOST: str = "0.0.0.0"
