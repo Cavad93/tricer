@@ -22,7 +22,7 @@ from app.bot.texts import (
     PRIVACY_SETTINGS_TEXT
 )
 from app.bot.states import PrivacyStates
-from app.db.session import get_db
+from app.db.session import async_session_maker
 from app.models.user import User
 from app.models.meal_plan import MealPlan
 from app.models.medical_analysis import MedicalAnalysis
@@ -71,9 +71,9 @@ async def export_data_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
     try:
-        async with get_db() as db:
+        async with async_session_maker() as session:
             # Получаем данные пользователя
-            user_data = await _collect_user_data(db, telegram_id)
+            user_data = await _collect_user_data(session, telegram_id)
 
             if not user_data:
                 await query.edit_message_text(
@@ -232,9 +232,9 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
     )
 
     try:
-        async with get_db() as db:
+        async with async_session_maker() as session:
             # Получаем пользователя
-            result = await db.execute(
+            result = await session.execute(
                 select(User).where(User.telegram_id == telegram_id)
             )
             user = result.scalar_one_or_none()
@@ -250,15 +250,15 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
 
             # Удаляем все связанные данные
             # 1. Планы питания
-            await db.execute(delete(MealPlan).where(MealPlan.user_id == user_id))
+            await session.execute(delete(MealPlan).where(MealPlan.user_id == user_id))
 
             # 2. Медицинские анализы
-            await db.execute(delete(MedicalAnalysis).where(MedicalAnalysis.user_id == user_id))
+            await session.execute(delete(MedicalAnalysis).where(MedicalAnalysis.user_id == user_id))
 
             # 3. Пользователя
-            await db.delete(user)
+            await session.delete(user)
 
-            await db.commit()
+            await session.commit()
 
             await query.edit_message_text(
                 "✅ <b>Аккаунт успешно удален</b>\n\n"
