@@ -393,9 +393,38 @@ async def current_weight_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         context.user_data["current_weight"] = weight
 
+        # Рассчитываем рекомендуемый диапазон веса
+        height = context.user_data.get("height")
+        gender = context.user_data.get("gender")
+
+        if height:
+            height_m = height / 100  # конвертируем см в метры
+
+            # Здоровый ИМТ: 18.5-24.9
+            min_healthy_weight = 18.5 * (height_m ** 2)
+            max_healthy_weight = 24.9 * (height_m ** 2)
+
+            # Корректируем для пола (женщины обычно на 5-10% меньше)
+            if gender == Gender.FEMALE:
+                min_healthy_weight *= 0.95
+                max_healthy_weight *= 0.95
+
+            recommendation_text = (
+                f"✅ Текущий вес: {weight} кг\n\n"
+                f"💡 <b>Рекомендуемый диапазон для твоего роста ({height} см):</b>\n"
+                f"   {min_healthy_weight:.1f} - {max_healthy_weight:.1f} кг\n"
+                f"   (на основе здорового ИМТ 18.5-24.9)\n\n"
+                "Какой вес ты хочешь достичь? (в кг, например, 65):"
+            )
+        else:
+            recommendation_text = (
+                f"✅ Текущий вес: {weight} кг\n\n"
+                "Какой вес ты хочешь достичь? (в кг, например, 65):"
+            )
+
         await update.message.reply_text(
-            f"✅ Текущий вес: {weight} кг\n\n"
-            "Какой вес ты хочешь достичь? (в кг, например, 65):"
+            recommendation_text,
+            parse_mode="HTML"
         )
 
         return OnboardingStates.TARGET_WEIGHT
