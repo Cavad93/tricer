@@ -872,6 +872,28 @@ async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAU
     return MealPlanStates.ASKING_PRICE_CALCULATION
 
 
+async def confirm_medical_generation_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка подтверждения создания плана с медицинскими ограничениями"""
+    from app.bot.texts import PRICE_CALCULATION_QUESTION
+
+    query = update.callback_query
+    await query.answer()
+
+    # Показываем вопрос о расчёте цены
+    price_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Да, рассчитать цену", callback_data="price_yes")],
+        [InlineKeyboardButton("⏩ Нет, пропустить", callback_data="price_no")]
+    ])
+
+    await query.edit_message_text(
+        PRICE_CALCULATION_QUESTION,
+        reply_markup=price_keyboard,
+        parse_mode='HTML'
+    )
+
+    return MealPlanStates.ASKING_PRICE_CALCULATION
+
+
 async def handle_price_calculation_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка ответа "Да" на вопрос о расчёте цены"""
     query = update.callback_query

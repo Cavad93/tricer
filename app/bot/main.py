@@ -72,6 +72,7 @@ from app.bot.handlers.meal_plan import (
     skip_chronic_conditions_check_callback,
     handle_acute_conditions_response,
     skip_acute_conditions_callback,
+    confirm_medical_generation_callback,
     handle_price_calculation_yes,
     handle_price_calculation_no,
     handle_feedback_positive,
@@ -1132,6 +1133,8 @@ def main():
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
             MealPlanStates.ASKING_PRICE_CALCULATION: [
+                # Подтверждение создания плана с медицинскими ограничениями
+                CallbackQueryHandler(confirm_medical_generation_callback, pattern="^confirm_medical_generation$"),
                 # Вопрос о необходимости расчёта цены
                 CallbackQueryHandler(handle_price_calculation_yes, pattern="^price_yes$"),
                 CallbackQueryHandler(handle_price_calculation_no, pattern="^price_no$"),
