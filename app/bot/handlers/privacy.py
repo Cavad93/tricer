@@ -35,6 +35,10 @@ from app.models.pantry import UserPantry, PantryUsageLog
 from app.models.shopping_list import ShoppingList, ShoppingItem
 from app.models.food_correction import FoodRecognitionCorrection
 from app.models.user_consent import UserConsent
+from app.models.temporary_meal_plan import TemporaryMealPlan
+from app.models.insight_fact import InsightFact
+from app.models.weight_history import WeightHistory
+from app.models.user_steps import UserSteps
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -716,11 +720,27 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
             logger.debug(f"Deleting FoodRecognitionCorrection for user_id={user_id}")
             await session.execute(delete(FoodRecognitionCorrection).where(FoodRecognitionCorrection.user_id == user_id))
 
-            # 16. Удаляем историю согласий (UserConsent) - используем telegram_id!
+            # 16. Удаляем временные планы питания (TemporaryMealPlan)
+            logger.debug(f"Deleting TemporaryMealPlan for user_id={user_id}")
+            await session.execute(delete(TemporaryMealPlan).where(TemporaryMealPlan.user_id == user_id))
+
+            # 17. Удаляем инсайты о корреляциях (InsightFact)
+            logger.debug(f"Deleting InsightFact for user_id={user_id}")
+            await session.execute(delete(InsightFact).where(InsightFact.user_id == user_id))
+
+            # 18. Удаляем историю веса (WeightHistory)
+            logger.debug(f"Deleting WeightHistory for user_id={user_id}")
+            await session.execute(delete(WeightHistory).where(WeightHistory.user_id == user_id))
+
+            # 19. Удаляем данные о шагах (UserSteps)
+            logger.debug(f"Deleting UserSteps for user_id={user_id}")
+            await session.execute(delete(UserSteps).where(UserSteps.user_id == user_id))
+
+            # 20. Удаляем историю согласий (UserConsent) - используем telegram_id!
             logger.debug(f"Deleting UserConsent for telegram_id={telegram_id}")
             await session.execute(delete(UserConsent).where(UserConsent.telegram_id == telegram_id))
 
-            # 17. В конце удаляем самого пользователя (User)
+            # 21. В конце удаляем самого пользователя (User)
             logger.debug(f"Deleting User user_id={user_id}")
             await session.delete(user)
 
