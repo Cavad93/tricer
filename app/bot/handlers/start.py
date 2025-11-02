@@ -75,22 +75,134 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         "Перед началом важно прочитать условия использования..."
     )
 
-    # Показываем дисклеймер
-    from app.bot.texts import MEDICAL_DISCLAIMER
+    # Показываем расширенный медицинский дисклеймер (152-ФЗ, 323-ФЗ)
+    from app.bot.texts import MEDICAL_DISCLAIMER_INITIAL
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
     keyboard = [
-        [InlineKeyboardButton("✅ Согласен", callback_data="disclaimer_accept")],
-        [InlineKeyboardButton("❌ Не согласен", callback_data="disclaimer_decline")]
+        [InlineKeyboardButton("✅ Согласен", callback_data="accept_medical_disclaimer")],
+        [InlineKeyboardButton("❌ Отказаться", callback_data="decline_medical_disclaimer")]
     ]
 
     await update.message.reply_text(
-        MEDICAL_DISCLAIMER,
+        MEDICAL_DISCLAIMER_INITIAL,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='HTML'
     )
 
-    return OnboardingStates.DISCLAIMER
+    return OnboardingStates.MEDICAL_DISCLAIMER
+
+
+async def accept_medical_disclaimer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка принятия медицинского дисклеймера"""
+    query = update.callback_query
+    await query.answer()
+
+    # Показываем согласие на обработку персональных данных (152-ФЗ)
+    from app.bot.texts import PERSONAL_DATA_CONSENT
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Согласен", callback_data="accept_data_consent")],
+        [InlineKeyboardButton("📄 Политика конфиденциальности", url="https://your-site.com/privacy")],
+        [InlineKeyboardButton("❌ Отказаться", callback_data="decline_data_consent")]
+    ]
+
+    await query.edit_message_text(
+        PERSONAL_DATA_CONSENT,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.PERSONAL_DATA_CONSENT
+
+
+async def decline_medical_disclaimer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка отказа от медицинского дисклеймера"""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
+        "😔 К сожалению, без согласия с условиями я не могу продолжить работу.\n\n"
+        "Если передумаешь, отправь /start снова."
+    )
+
+    return ConversationHandler.END
+
+
+async def accept_data_consent_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка принятия согласия на обработку персональных данных"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем согласие в контексте
+    context.user_data['data_consent_accepted'] = True
+    context.user_data['consent_timestamp'] = datetime.utcnow().isoformat()
+
+    # Показываем согласие на обработку медицинских данных (опционально)
+    from app.bot.texts import MEDICAL_DATA_COLLECTION_DISCLAIMER
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("✅ Согласен", callback_data="accept_medical_data")],
+        [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_medical_data")]
+    ]
+
+    await query.edit_message_text(
+        MEDICAL_DATA_COLLECTION_DISCLAIMER,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.MEDICAL_DATA_CONSENT
+
+
+async def decline_data_consent_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка отказа от согласия на обработку данных"""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
+        "😔 Без согласия на обработку персональных данных я не могу работать.\n\n"
+        "Это требование законодательства РФ (152-ФЗ).\n\n"
+        "Если передумаешь, отправь /start снова."
+    )
+
+    return ConversationHandler.END
+
+
+async def accept_medical_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка принятия согласия на медицинские данные"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем согласие
+    context.user_data['medical_data_consent_accepted'] = True
+
+    # Переходим к сбору базовых данных
+    await query.edit_message_text(
+        "✅ Отлично! Теперь давай познакомимся поближе.\n\n"
+        "Как тебя зовут? (Можешь указать любое имя, которым я буду тебя называть)"
+    )
+
+    return OnboardingStates.PREFERRED_NAME
+
+
+async def skip_medical_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка пропуска согласия на медицинские данные"""
+    query = update.callback_query
+    await query.answer()
+
+    # Не сохраняем согласие на медицинские данные
+    context.user_data['medical_data_consent_accepted'] = False
+
+    # Переходим к сбору базовых данных
+    await query.edit_message_text(
+        "Хорошо, без медицинских данных.\n\n"
+        "Как тебя зовут? (Можешь указать любое имя, которым я буду тебя называть)"
+    )
+
+    return OnboardingStates.PREFERRED_NAME
 
 
 async def preferred_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -799,6 +911,20 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 onboarding_conversation = ConversationHandler(
     entry_points=[CommandHandler("start", start_command)],
     states={
+        # Новые экраны согласий (152-ФЗ, 323-ФЗ)
+        OnboardingStates.MEDICAL_DISCLAIMER: [
+            CallbackQueryHandler(accept_medical_disclaimer_callback, pattern="^accept_medical_disclaimer$"),
+            CallbackQueryHandler(decline_medical_disclaimer_callback, pattern="^decline_medical_disclaimer$")
+        ],
+        OnboardingStates.PERSONAL_DATA_CONSENT: [
+            CallbackQueryHandler(accept_data_consent_callback, pattern="^accept_data_consent$"),
+            CallbackQueryHandler(decline_data_consent_callback, pattern="^decline_data_consent$")
+        ],
+        OnboardingStates.MEDICAL_DATA_CONSENT: [
+            CallbackQueryHandler(accept_medical_data_callback, pattern="^accept_medical_data$"),
+            CallbackQueryHandler(skip_medical_data_callback, pattern="^skip_medical_data$")
+        ],
+        # Старый дисклеймер (для обратной совместимости)
         OnboardingStates.DISCLAIMER: [
             CallbackQueryHandler(disclaimer_accept_callback, pattern="^disclaimer_accept$"),
             CallbackQueryHandler(disclaimer_decline_callback, pattern="^disclaimer_decline$")

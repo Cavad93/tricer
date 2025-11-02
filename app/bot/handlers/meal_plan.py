@@ -783,7 +783,71 @@ async def skip_acute_conditions_callback(update: Update, context: ContextTypes.D
 
 async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback: bool = False) -> int:
     """Начинает процесс создания плана - показывает вопрос о расчёте цены"""
-    from app.bot.texts import MEDICAL_CHECK_COMPLETE, PRICE_CALCULATION_QUESTION
+    from app.bot.texts import (
+        MEDICAL_CHECK_COMPLETE,
+        PRICE_CALCULATION_QUESTION,
+        MEAL_PLAN_MEDICAL_DISCLAIMER,
+        MEAL_PLAN_GENERATION_DISCLAIMER
+    )
+    from app.db.session import async_session_maker
+    from app.models.user import User
+    from sqlalchemy import select
+
+    # Получаем пользователя из БД для проверки медицинских ограничений
+    telegram_id = update.effective_user.id
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        user = result.scalar_one_or_none()
+
+        # Если у пользователя есть медицинские ограничения - показываем дисклеймер
+        if user and (user.chronic_conditions or user.removed_organs):
+            conditions_list = ""
+            if user.chronic_conditions:
+                conditions_list += "\n".join([f"• {cond}" for cond in user.chronic_conditions])
+            if user.removed_organs:
+                if conditions_list:
+                    conditions_list += "\n"
+                conditions_list += "\n".join([f"• Удален: {organ}" for organ in user.removed_organs])
+
+            disclaimer_text = MEAL_PLAN_MEDICAL_DISCLAIMER.format(
+                conditions_list=conditions_list
+            )
+
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Продолжить", callback_data="confirm_medical_generation")],
+                [InlineKeyboardButton("❌ Отменить", callback_data="cancel_plan")]
+            ])
+
+            if is_callback:
+                await update.callback_query.edit_message_text(
+                    disclaimer_text,
+                    reply_markup=keyboard,
+                    parse_mode='HTML'
+                )
+            else:
+                await update.message.reply_text(
+                    disclaimer_text,
+                    reply_markup=keyboard,
+                    parse_mode='HTML'
+                )
+
+            # Сохраняем состояние для продолжения после подтверждения
+            context.user_data['awaiting_medical_confirmation'] = True
+            return MealPlanStates.ASKING_PRICE_CALCULATION
+
+        # Если нет медицинских ограничений - показываем общий дисклеймер
+        if is_callback:
+            await update.callback_query.edit_message_text(
+                MEAL_PLAN_GENERATION_DISCLAIMER,
+                parse_mode='HTML'
+            )
+        else:
+            await update.message.reply_text(
+                MEAL_PLAN_GENERATION_DISCLAIMER,
+                parse_mode='HTML'
+            )
 
     # Показываем сообщение о завершении медицинских уточнений
     if is_callback:

@@ -110,6 +110,14 @@ from app.bot.handlers.reminders import (
 from app.bot.handlers.reports import get_reports_conversation_handler
 from app.bot.handlers.wellness import wellness_survey_conversation
 from app.bot.handlers.medical_analysis import medical_analysis_conversation
+from app.bot.handlers.privacy import (
+    privacy_settings_command,
+    export_data_callback,
+    delete_account_callback,
+    confirm_delete_account_callback,
+    revoke_consent_callback,
+    cancel_privacy_action
+)
 from app.bot.handlers.steps import (
     handle_steps_skip,
     handle_steps_range
@@ -1202,6 +1210,11 @@ def main():
     application.add_handler(CommandHandler("chat_stats", chat_stats_command))
     application.add_handler(CommandHandler("wellness_insights", wellness_insights_command))
 
+    # Команды управления конфиденциальностью (152-ФЗ)
+    application.add_handler(CommandHandler("privacy_settings", privacy_settings_command))
+    application.add_handler(CommandHandler("export_data", export_data_callback))
+    application.add_handler(CommandHandler("delete_account", delete_account_callback))
+
     # Callback handlers для кнопок
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
     application.add_handler(CallbackQueryHandler(add_food_callback, pattern="^add_food$"))
@@ -1221,6 +1234,13 @@ def main():
     application.add_handler(CallbackQueryHandler(ai_chat_callback, pattern="^ai_chat$"))
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
+
+    # Callback handlers для управления конфиденциальностью (152-ФЗ)
+    application.add_handler(CallbackQueryHandler(export_data_callback, pattern="^export_data$"))
+    application.add_handler(CallbackQueryHandler(delete_account_callback, pattern="^delete_account$"))
+    application.add_handler(CallbackQueryHandler(confirm_delete_account_callback, pattern="^confirm_delete$"))
+    application.add_handler(CallbackQueryHandler(revoke_consent_callback, pattern="^revoke_consent$"))
+    application.add_handler(CallbackQueryHandler(cancel_privacy_action, pattern="^privacy_settings$"))
 
     # Callback handlers для плана питания
     application.add_handler(CallbackQueryHandler(view_meal_plan, pattern="^view_plan_"))

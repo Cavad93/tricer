@@ -1,9 +1,10 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum, LargeBinary
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
 from datetime import datetime
 import enum
@@ -94,10 +95,78 @@ class User(Base):
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
     # Медицинская информация (Этап 4)
+    # ВАЖНО: Эти поля оставлены для обратной совместимости и миграции
+    # Используйте зашифрованные версии ниже для новых данных
     chronic_conditions = Column(JSONB, default=list)  # Список хронических заболеваний
     removed_organs = Column(JSONB, default=list)  # Список удаленных органов
     medical_restrictions = Column(JSONB, default=dict)  # Медицинские ограничения по питанию (генерируется AI)
     medical_notes = Column(String(1000), nullable=True)  # Дополнительные медицинские заметки
+
+    # Зашифрованные медицинские поля (152-ФЗ) - добавлены для защиты данных
+    _chronic_conditions_encrypted = Column(LargeBinary, nullable=True)
+    _removed_organs_encrypted = Column(LargeBinary, nullable=True)
+    _medical_restrictions_encrypted = Column(LargeBinary, nullable=True)
+
+    # Hybrid properties для работы с шифрованными данными
+    @hybrid_property
+    def chronic_conditions_encrypted(self):
+        """Получает расшифрованный список хронических заболеваний"""
+        if self._chronic_conditions_encrypted:
+            from app.services.encryption_service import get_encryption_service
+            encryption = get_encryption_service()
+            return encryption.decrypt_list(self._chronic_conditions_encrypted)
+        # Для обратной совместимости возвращаем незашифрованное поле
+        return self.chronic_conditions
+
+    @chronic_conditions_encrypted.setter
+    def chronic_conditions_encrypted(self, value):
+        """Шифрует и сохраняет список хронических заболеваний"""
+        if value is None:
+            self._chronic_conditions_encrypted = None
+        else:
+            from app.services.encryption_service import get_encryption_service
+            encryption = get_encryption_service()
+            self._chronic_conditions_encrypted = encryption.encrypt_list(value)
+
+    @hybrid_property
+    def removed_organs_encrypted(self):
+        """Получает расшифрованный список удаленных органов"""
+        if self._removed_organs_encrypted:
+            from app.services.encryption_service import get_encryption_service
+            encryption = get_encryption_service()
+            return encryption.decrypt_list(self._removed_organs_encrypted)
+        # Для обратной совместимости
+        return self.removed_organs
+
+    @removed_organs_encrypted.setter
+    def removed_organs_encrypted(self, value):
+        """Шифрует и сохраняет список удаленных органов"""
+        if value is None:
+            self._removed_organs_encrypted = None
+        else:
+            from app.services.encryption_service import get_encryption_service
+            encryption = get_encryption_service()
+            self._removed_organs_encrypted = encryption.encrypt_list(value)
+
+    @hybrid_property
+    def medical_restrictions_encrypted(self):
+        """Получает расшифрованные медицинские ограничения"""
+        if self._medical_restrictions_encrypted:
+            from app.services.encryption_service import get_encryption_service
+            encryption = get_encryption_service()
+            return encryption.decrypt_dict(self._medical_restrictions_encrypted)
+        # Для обратной совместимости
+        return self.medical_restrictions
+
+    @medical_restrictions_encrypted.setter
+    def medical_restrictions_encrypted(self, value):
+        """Шифрует и сохраняет медицинские ограничения"""
+        if value is None:
+            self._medical_restrictions_encrypted = None
+        else:
+            from app.services.encryption_service import get_encryption_service
+            encryption = get_encryption_service()
+            self._medical_restrictions_encrypted = encryption.encrypt_dict(value)
 
     # Напоминания о приемах пищи
     reminders_enabled = Column(Boolean, default=True)  # Включены ли напоминания
