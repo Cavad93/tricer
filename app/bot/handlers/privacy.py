@@ -327,15 +327,17 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
 
     # Получаем статистику использования
     usage_result = await db.execute(
-        select(DailyUsage).where(DailyUsage.user_id == user.id).order_by(DailyUsage.date.desc())
+        select(DailyUsage).where(DailyUsage.user_id == user.id).order_by(DailyUsage.usage_date.desc())
     )
     usage_stats = usage_result.scalars().all()
 
     user_data["usage_statistics"] = [
         {
-            "date": usage.date.isoformat() if usage.date else None,
-            "photos_analyzed": usage.photos_analyzed,
-            "chat_messages_sent": usage.chat_messages_sent
+            "usage_date": usage.usage_date.isoformat() if usage.usage_date else None,
+            "photo_recognitions": usage.photo_recognitions,
+            "chat_messages": usage.chat_messages,
+            "created_at": usage.created_at.isoformat() if usage.created_at else None,
+            "updated_at": usage.updated_at.isoformat() if usage.updated_at else None
         }
         for usage in usage_stats
     ]
@@ -365,13 +367,21 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
     user_data["wellness_logs"] = [
         {
             "id": log.id,
+            "meal_id": log.meal_id,
             "log_datetime": log.log_datetime.isoformat() if log.log_datetime else None,
+            "sleep_hours": log.sleep_hours,
+            "sleep_quality": log.sleep_quality,
             "energy_level": log.energy_level,
             "mood": log.mood,
-            "digestion": log.digestion,
-            "sleep_quality": log.sleep_quality,
+            "digestive_comfort": log.digestive_comfort,
+            "mental_clarity": log.mental_clarity,
+            "hunger_level": log.hunger_level,
+            "stress_level": log.stress_level,
+            "physical_symptoms": log.physical_symptoms,
             "notes": log.notes,
-            "created_at": log.created_at.isoformat() if log.created_at else None
+            "time_after_meal_minutes": log.time_after_meal_minutes,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "updated_at": log.updated_at.isoformat() if log.updated_at else None
         }
         for log in wellness_logs
     ]
@@ -478,29 +488,33 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
     user_data["food_corrections"] = [
         {
             "id": corr.id,
+            "photo_hash": corr.photo_hash,
             "original_recognition": corr.original_recognition,
-            "corrected_food_name": corr.corrected_food_name,
-            "corrected_at": corr.corrected_at.isoformat() if corr.corrected_at else None
+            "corrected_data": corr.corrected_data,
+            "user_clarification": corr.user_clarification,
+            "created_at": corr.created_at.isoformat() if corr.created_at else None
         }
         for corr in corrections
     ]
 
-    # Получаем историю согласий
+    # Получаем историю согласий (по telegram_id, т.к. UserConsent не имеет user_id)
     consents_result = await db.execute(
-        select(UserConsent).where(UserConsent.user_id == user.id).order_by(UserConsent.consent_date.desc())
+        select(UserConsent).where(UserConsent.telegram_id == user.telegram_id)
     )
-    consents = consents_result.scalars().all()
+    consent = consents_result.scalar_one_or_none()
 
-    user_data["consents"] = [
-        {
-            "id": consent.id,
-            "consent_type": consent.consent_type,
-            "is_granted": consent.is_granted,
-            "consent_date": consent.consent_date.isoformat() if consent.consent_date else None,
-            "ip_address": consent.ip_address
-        }
-        for consent in consents
-    ]
+    user_data["consent"] = {
+        "medical_disclaimer_accepted": consent.medical_disclaimer_accepted if consent else None,
+        "medical_disclaimer_accepted_at": consent.medical_disclaimer_accepted_at.isoformat() if consent and consent.medical_disclaimer_accepted_at else None,
+        "medical_disclaimer_version": consent.medical_disclaimer_version if consent else None,
+        "medical_privacy_consent": consent.medical_privacy_consent if consent else None,
+        "medical_privacy_consent_at": consent.medical_privacy_consent_at.isoformat() if consent and consent.medical_privacy_consent_at else None,
+        "medical_privacy_version": consent.medical_privacy_version if consent else None,
+        "ip_address": consent.ip_address if consent else None,
+        "user_agent": consent.user_agent if consent else None,
+        "created_at": consent.created_at.isoformat() if consent and consent.created_at else None,
+        "updated_at": consent.updated_at.isoformat() if consent and consent.updated_at else None
+    }
 
     # Логируем статистику экспорта с вложенными данными
     total_meal_foods = sum(len(meal.get("foods", [])) for meal in user_data.get("meal_diary", []))
@@ -527,7 +541,7 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
         "shopping_lists": len(user_data.get("shopping_lists", [])),
         "shopping_items": total_shopping_items,
         "food_corrections": len(user_data.get("food_corrections", [])),
-        "consents": len(user_data.get("consents", []))
+        "consent_exists": user_data.get("consent") is not None
     }
     logger.info(f"✅ Data export completed for user_id={user.id}, telegram_id={telegram_id}. Stats: {stats}")
 
