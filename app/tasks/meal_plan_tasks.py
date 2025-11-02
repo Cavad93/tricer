@@ -32,6 +32,7 @@ def generate_meal_plan_task(
     preferences: dict = None,
     medical_context: dict = None,
     calculate_prices: bool = True,
+    shop_preference: str = "single",  # "single" или "multiple"
     start_date: str = None  # ISO format: "2025-01-15"
 ):
     """
@@ -43,6 +44,7 @@ def generate_meal_plan_task(
         preferences: Предпочтения пользователя
         medical_context: Медицинский контекст
         calculate_prices: Рассчитывать ли цены
+        shop_preference: Предпочтения по магазинам ("single" - один, "multiple" - несколько)
         start_date: Дата начала плана (ISO format)
 
     Returns:
@@ -66,6 +68,7 @@ def generate_meal_plan_task(
             preferences,
             medical_context,
             calculate_prices,
+            shop_preference,
             parsed_start_date
         )
 
@@ -99,6 +102,7 @@ async def _generate_meal_plan_async(
     preferences: dict,
     medical_context: dict,
     calculate_prices: bool,
+    shop_preference: str = "single",
     start_date=None
 ) -> dict:
     """
@@ -150,7 +154,8 @@ async def _generate_meal_plan_async(
         shopping_list = await ShoppingListService.create_shopping_list(
             session,
             meal_plan.id,
-            search_prices=calculate_prices
+            search_prices=calculate_prices,
+            shop_preference=shop_preference
         )
 
         logger.info(f"[Celery] Shopping list created: total_cost={shopping_list.total_cost}")

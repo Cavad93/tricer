@@ -74,7 +74,8 @@ class ShoppingListService:
     async def create_shopping_list(
         session: AsyncSession,
         meal_plan_id: int,
-        search_prices: bool = True
+        search_prices: bool = True,
+        shop_preference: str = "single"
     ) -> ShoppingList:
         """
         Создать список покупок для плана питания
@@ -83,6 +84,7 @@ class ShoppingListService:
             session: Сессия БД
             meal_plan_id: ID плана питания
             search_prices: Искать ли цены в интернете
+            shop_preference: "single" - один магазин для всех, "multiple" - разные магазины
 
         Returns:
             ShoppingList: Созданный список покупок
@@ -170,6 +172,36 @@ class ShoppingListService:
             )
 
             session.add(shopping_item)
+
+        # Если выбрана опция "один магазин" - ищем наиболее выгодный
+        if shop_preference == "single" and search_prices:
+            await session.flush()  # Сохраняем items чтобы можно было их получить
+
+            # Получаем все items
+            items_result = await session.execute(
+                select(ShoppingItem).where(ShoppingItem.shopping_list_id == shopping_list.id)
+            )
+            items = items_result.scalars().all()
+
+            # Собираем статистику по магазинам
+            shop_stats = defaultdict(lambda: {"total": 0.0, "count": 0})
+            for item in items:
+                if item.shop_name and item.estimated_price > 0:
+                    shop_stats[item.shop_name]["total"] += item.estimated_price
+                    shop_stats[item.shop_name]["count"] += 1
+
+            # Выбираем магазин с наибольшим количеством продуктов
+            # (приоритет - покрытие, а не цена, для удобства)
+            if shop_stats:
+                best_shop = max(shop_stats.items(), key=lambda x: (x[1]["count"], -x[1]["total"]))[0]
+                logger.info(f"Selected single shop: {best_shop} with {shop_stats[best_shop]['count']} items")
+
+                # Обновляем все items на этот магазин
+                for item in items:
+                    if item.shop_name:
+                        item.shop_name = best_shop
+                        # Очищаем URL так как он может быть от другого магазина
+                        item.shop_url = None
 
         # Обновляем общую стоимость
         shopping_list.total_cost = round(total_cost, 2)

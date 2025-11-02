@@ -896,14 +896,27 @@ async def confirm_medical_generation_callback(update: Update, context: ContextTy
 
 async def handle_price_calculation_yes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Обработка ответа "Да" на вопрос о расчёте цены"""
+    from app.bot.texts import SHOP_PREFERENCE_QUESTION
+
     query = update.callback_query
     await query.answer()
 
     # Сохраняем выбор пользователя
     context.user_data["calculate_prices"] = True
 
-    # Начинаем генерацию плана
-    return await start_generation_process(update, context)
+    # Показываем вопрос о предпочтениях по магазинам
+    shop_keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📍 Один магазин", callback_data="shop_single")],
+        [InlineKeyboardButton("🛍 Несколько магазинов", callback_data="shop_multiple")]
+    ])
+
+    await query.edit_message_text(
+        SHOP_PREFERENCE_QUESTION,
+        reply_markup=shop_keyboard,
+        parse_mode='HTML'
+    )
+
+    return MealPlanStates.ASKING_SHOP_PREFERENCE
 
 
 async def handle_price_calculation_no(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -913,6 +926,32 @@ async def handle_price_calculation_no(update: Update, context: ContextTypes.DEFA
 
     # Сохраняем выбор пользователя
     context.user_data["calculate_prices"] = False
+    # Если не рассчитываем цены, то вопрос о магазинах не актуален
+    context.user_data["shop_preference"] = "single"  # По умолчанию
+
+    # Начинаем генерацию плана
+    return await start_generation_process(update, context)
+
+
+async def handle_shop_single(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора 'Один магазин'"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем выбор пользователя
+    context.user_data["shop_preference"] = "single"
+
+    # Начинаем генерацию плана
+    return await start_generation_process(update, context)
+
+
+async def handle_shop_multiple(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка выбора 'Несколько магазинов'"""
+    query = update.callback_query
+    await query.answer()
+
+    # Сохраняем выбор пользователя
+    context.user_data["shop_preference"] = "multiple"
 
     # Начинаем генерацию плана
     return await start_generation_process(update, context)
@@ -949,6 +988,7 @@ async def start_generation_process(update: Update, context: ContextTypes.DEFAULT
         "acute_conditions": context.user_data.get("acute_conditions")
     }
     calculate_prices = context.user_data.get("calculate_prices", False)
+    shop_preference = context.user_data.get("shop_preference", "single")  # По умолчанию один магазин
     start_date = context.user_data.get("plan_start_date")
 
     # Конвертируем start_date в ISO string если есть
@@ -963,6 +1003,7 @@ async def start_generation_process(update: Update, context: ContextTypes.DEFAULT
             preferences,
             medical_context,
             calculate_prices,
+            shop_preference,
             start_date_str
         ),
         notify_user_plan_ready.s(update.effective_user.id)  # .s() означает partial signature

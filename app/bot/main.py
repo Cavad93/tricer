@@ -75,6 +75,8 @@ from app.bot.handlers.meal_plan import (
     confirm_medical_generation_callback,
     handle_price_calculation_yes,
     handle_price_calculation_no,
+    handle_shop_single,
+    handle_shop_multiple,
     handle_feedback_positive,
     handle_feedback_negative,
     handle_change_request,
@@ -1138,6 +1140,12 @@ def main():
                 # Вопрос о необходимости расчёта цены
                 CallbackQueryHandler(handle_price_calculation_yes, pattern="^price_yes$"),
                 CallbackQueryHandler(handle_price_calculation_no, pattern="^price_no$"),
+                CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
+            ],
+            MealPlanStates.ASKING_SHOP_PREFERENCE: [
+                # Вопрос о предпочтениях по магазинам (один или несколько)
+                CallbackQueryHandler(handle_shop_single, pattern="^shop_single$"),
+                CallbackQueryHandler(handle_shop_multiple, pattern="^shop_multiple$"),
                 CallbackQueryHandler(cancel_meal_plan, pattern="^main_menu$")
             ],
             MealPlanStates.ASKING_FEEDBACK: [

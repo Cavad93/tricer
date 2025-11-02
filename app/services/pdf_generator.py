@@ -660,19 +660,38 @@ class PDFGeneratorService:
             story.append(Paragraph(category, styles['CustomHeading']))
 
             # Таблица с товарами
-            table_data = [['Продукт', 'Количество', 'Цена']]
+            # Проверяем, есть ли хотя бы у одного товара магазин
+            has_shops = any(item.shop_name for item in category_items)
+
+            if has_shops:
+                table_data = [['Продукт', 'Количество', 'Цена', 'Магазин']]
+            else:
+                table_data = [['Продукт', 'Количество', 'Цена']]
 
             for item in category_items:
                 price_text = f"~{item.estimated_price:.2f} ₽" if item.estimated_price else "-"
 
-                table_data.append([
-                    item.product_name,
-                    f"{item.quantity} {item.unit}",
-                    price_text
-                ])
+                if has_shops:
+                    shop_text = item.shop_name if item.shop_name else "-"
+                    table_data.append([
+                        item.product_name,
+                        f"{item.quantity} {item.unit}",
+                        price_text,
+                        shop_text
+                    ])
+                else:
+                    table_data.append([
+                        item.product_name,
+                        f"{item.quantity} {item.unit}",
+                        price_text
+                    ])
 
             # Создаем таблицу
-            table = Table(table_data, colWidths=[9*cm, 4*cm, 3*cm])
+            if has_shops:
+                table = Table(table_data, colWidths=[7*cm, 3*cm, 2.5*cm, 3.5*cm])
+            else:
+                table = Table(table_data, colWidths=[9*cm, 4*cm, 3*cm])
+
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498DB')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
