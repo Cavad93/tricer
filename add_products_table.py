@@ -9,7 +9,7 @@ import asyncio
 from sqlalchemy import text
 from loguru import logger
 
-from app.db.session import async_engine
+from app.db.session import engine
 
 
 async def add_products_table():
@@ -50,7 +50,7 @@ async def add_products_table():
     ]
 
     try:
-        async with async_engine.begin() as conn:
+        async with engine.begin() as conn:
             logger.info("Creating products table...")
             await conn.execute(text(create_table_sql))
             logger.info("✅ Table 'products' created successfully")

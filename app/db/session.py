@@ -69,6 +69,7 @@ async def init_db():
     from app.models.wellness_log import WellnessLog  # noqa
     from app.models.pantry import UserPantry, PantryUsageLog  # noqa
     from app.models.insight_fact import InsightFact  # noqa
+    from app.models.product import Product  # noqa
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
