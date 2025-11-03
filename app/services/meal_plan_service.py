@@ -425,6 +425,32 @@ class MealPlanService:
    • Приоритет: сначала скоропортящиеся продукты (овощи, молочка, мясо), потом остальные.
 """
 
+        # Формируем секцию с wellness данными (хронические заболевания и удаленные органы)
+        wellness_text = ""
+        if (user.chronic_conditions and len(user.chronic_conditions) > 0) or (user.removed_organs and len(user.removed_organs) > 0):
+            wellness_text = "\n\n🏥 WELLNESS ИНФОРМАЦИЯ (для подбора оптимального рациона):\n"
+            wellness_text += "⚠️ ВАЖНО: Следующая информация используется ТОЛЬКО для персонализации питания, НЕ для диагностики или лечения!\n\n"
+
+            if user.chronic_conditions and len(user.chronic_conditions) > 0:
+                wellness_text += "📋 ХРОНИЧЕСКИЕ ЗАБОЛЕВАНИЯ (для учета в питании):\n"
+                for condition in user.chronic_conditions:
+                    wellness_text += f"  • {condition}\n"
+                wellness_text += "\n"
+                wellness_text += "💡 Рекомендации:\n"
+                wellness_text += "  - Подбирай блюда, которые могут быть полезны при данных состояниях\n"
+                wellness_text += "  - Избегай продуктов, которые могут усугубить симптомы\n"
+                wellness_text += "  - Помни: это wellness-рекомендации, не медицинские назначения\n\n"
+
+            if user.removed_organs and len(user.removed_organs) > 0:
+                wellness_text += "🔧 УДАЛЕННЫЕ ОРГАНЫ (для учета в питании):\n"
+                for organ in user.removed_organs:
+                    wellness_text += f"  • {organ}\n"
+                wellness_text += "\n"
+                wellness_text += "💡 Рекомендации:\n"
+                wellness_text += "  - Учитывай особенности пищеварения при данных изменениях\n"
+                wellness_text += "  - Корректируй размер порций и частоту приемов пищи при необходимости\n"
+                wellness_text += "  - Помни: это wellness-рекомендации, не медицинские назначения\n\n"
+
         # Формируем секцию с персональными фактами о корреляциях
         insights_text = ""
         if personal_insights:
@@ -520,7 +546,7 @@ class MealPlanService:
 - Цель: {goal_desc}
 - Тип питания: {diet_desc}
 - Бюджет: {budget_desc}{exclusions_text}
-
+{wellness_text}
 ⚠️ ВАЖНО: Учитывай возраст, вес и уровень активности при расчёте микронутриентов!
    Для более активных людей и людей с большим весом потребности в некоторых микронутриентах выше.
 

@@ -537,6 +537,89 @@ async def budget_category_callback(update: Update, context: ContextTypes.DEFAULT
 
     await query.edit_message_text(
         f"✅ Бюджет: {budget_text}\n\n"
+        "📋 <b>Дополнительная информация для подбора оптимального рациона</b>\n\n"
+        "Есть ли у тебя какие-либо хронические заболевания, которые следует учитывать при планировании питания?\n\n"
+        "<i>Примеры: диабет, гипертония, гастрит, панкреатит и т.д.</i>\n\n"
+        "Напиши их через запятую или нажми 'Пропустить':",
+        reply_markup=skip_keyboard("chronic_conditions"),
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.CHRONIC_CONDITIONS
+
+
+async def chronic_conditions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода хронических заболеваний"""
+    if update.message:
+        conditions_text = update.message.text.strip()
+        conditions = [c.strip() for c in conditions_text.split(",") if c.strip()]
+        context.user_data["chronic_conditions"] = conditions
+    else:
+        context.user_data["chronic_conditions"] = []
+
+    # Переходим к вопросу об удаленных органах
+    await update.message.reply_text(
+        "✅ Информация сохранена\n\n"
+        "Были ли у тебя удалены какие-либо органы, которые следует учитывать при планировании питания?\n\n"
+        "<i>Примеры: желчный пузырь, аппендикс, часть желудка, часть кишечника и т.д.</i>\n\n"
+        "Напиши их через запятую или нажми 'Пропустить':",
+        reply_markup=skip_keyboard("removed_organs"),
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.REMOVED_ORGANS
+
+
+async def skip_chronic_conditions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск ввода хронических заболеваний"""
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["chronic_conditions"] = []
+
+    # Переходим к вопросу об удаленных органах
+    await query.edit_message_text(
+        "✅ Пропущено\n\n"
+        "Были ли у тебя удалены какие-либо органы, которые следует учитывать при планировании питания?\n\n"
+        "<i>Примеры: желчный пузырь, аппендикс, часть желудка, часть кишечника и т.д.</i>\n\n"
+        "Напиши их через запятую или нажми 'Пропустить':",
+        reply_markup=skip_keyboard("removed_organs"),
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.REMOVED_ORGANS
+
+
+async def removed_organs_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода удаленных органов"""
+    if update.message:
+        organs_text = update.message.text.strip()
+        organs = [o.strip() for o in organs_text.split(",") if o.strip()]
+        context.user_data["removed_organs"] = organs
+    else:
+        context.user_data["removed_organs"] = []
+
+    # Переходим к вопросу об исключениях из рациона
+    await update.message.reply_text(
+        "✅ Информация сохранена\n\n"
+        "Есть ли продукты, которые ты категорически не хочешь видеть в рационе?\n\n"
+        "Напиши их через запятую или нажми 'Пропустить':",
+        reply_markup=skip_keyboard("food_exclusions")
+    )
+
+    return OnboardingStates.FOOD_EXCLUSIONS
+
+
+async def skip_removed_organs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск ввода удаленных органов"""
+    query = update.callback_query
+    await query.answer()
+
+    context.user_data["removed_organs"] = []
+
+    # Переходим к вопросу об исключениях из рациона
+    await query.edit_message_text(
+        "✅ Пропущено\n\n"
         "Есть ли продукты, которые ты категорически не хочешь видеть в рационе?\n\n"
         "Напиши их через запятую или нажми 'Пропустить':",
         reply_markup=skip_keyboard("food_exclusions")
@@ -698,6 +781,9 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 user.diet_type = user_data["diet_type"]
                 user.budget_category = user_data.get("budget_category", BudgetCategory.NORMAL)
                 user.food_exclusions = user_data.get("food_exclusions", [])
+                # Wellness данные
+                user.chronic_conditions = user_data.get("chronic_conditions", [])
+                user.removed_organs = user_data.get("removed_organs", [])
                 # Настройки проверки дневника
                 user.diary_check_enabled = user_data.get("diary_check_enabled", True)
                 user.diary_check_time = user_data.get("diary_check_time")
@@ -729,6 +815,9 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     diet_type=user_data["diet_type"],
                     budget_category=user_data.get("budget_category", BudgetCategory.NORMAL),
                     food_exclusions=user_data.get("food_exclusions", []),
+                    # Wellness данные
+                    chronic_conditions=user_data.get("chronic_conditions", []),
+                    removed_organs=user_data.get("removed_organs", []),
                     # Настройки проверки дневника
                     diary_check_enabled=user_data.get("diary_check_enabled", True),
                     diary_check_time=user_data.get("diary_check_time"),
@@ -856,6 +945,14 @@ onboarding_conversation = ConversationHandler(
         ],
         OnboardingStates.BUDGET_CATEGORY: [
             CallbackQueryHandler(budget_category_callback, pattern="^budget_")
+        ],
+        OnboardingStates.CHRONIC_CONDITIONS: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, chronic_conditions_handler),
+            CallbackQueryHandler(skip_chronic_conditions_callback, pattern="^skip_chronic_conditions")
+        ],
+        OnboardingStates.REMOVED_ORGANS: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, removed_organs_handler),
+            CallbackQueryHandler(skip_removed_organs_callback, pattern="^skip_removed_organs")
         ],
         OnboardingStates.FOOD_EXCLUSIONS: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, food_exclusions_handler),

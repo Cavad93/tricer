@@ -27,6 +27,11 @@ class OnboardingStates(IntEnum):
     DIET_TYPE = auto()
     BUDGET_CATEGORY = auto()
     FOOD_EXCLUSIONS = auto()  # Продукты, которые категорически не хочет в рационе
+
+    # Wellness информация (для подбора оптимального рациона)
+    CHRONIC_CONDITIONS = auto()  # Хронические заболевания для учета в планировании питания
+    REMOVED_ORGANS = auto()  # Удаленные органы для учета в планировании питания
+
     DIARY_CHECK_TIME = auto()  # Выбор времени проверки дневника
     CALCULATING = auto()
 

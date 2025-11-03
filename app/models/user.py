@@ -93,6 +93,10 @@ class User(Base):
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
+    # Wellness данные (для подбора оптимального рациона, НЕ для диагностики)
+    chronic_conditions = Column(JSONB, default=list)  # Список хронических заболеваний для учета при планировании питания
+    removed_organs = Column(JSONB, default=list)  # Список удаленных органов для учета при планировании питания
+
     # Напоминания о приемах пищи
     reminders_enabled = Column(Boolean, default=True)  # Включены ли напоминания
     breakfast_reminder_time = Column(String, nullable=True)  # Время напоминания о завтраке (HH:MM)
