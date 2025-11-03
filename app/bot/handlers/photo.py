@@ -238,6 +238,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data["recognized_food"] = {
                     "dishes": dishes,
                     "total_nutrition": result.get("total_nutrition", {}),
+                    "total_micronutrients": result.get("total_micronutrients", {}),
                     "photo_file_id": photo.file_id,
                     "is_packaged": result.get("is_packaged", False),
                     "package_info": result.get("package_info", {})
@@ -509,6 +510,7 @@ async def handle_clarification(update: Update, context: ContextTypes.DEFAULT_TYP
                 context.user_data["recognized_food"] = {
                     "dishes": dishes,
                     "total_nutrition": result.get("total_nutrition", {}),
+                    "total_micronutrients": result.get("total_micronutrients", {}),
                     "photo_file_id": context.user_data.get("recognized_food", {}).get("photo_file_id")
                 }
 

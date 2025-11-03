@@ -21,21 +21,25 @@ class Settings(BaseSettings):
 
     # === CLAUDE MODELS CONFIGURATION ===
     # Разные модели для разных задач для оптимизации стоимости и скорости
+    # Дата обновления: 03.11.2025
 
-    # Claude Sonnet 4.5 - премиум модель для сложных задач
-    # Используется для: анализ меню ресторана, сложные консультации, медицинский анализ
+    # Claude Sonnet 4.5 (сентябрь 2025) - премиум модель для сложных задач
+    # Используется для: анализ меню ресторана, AI-чат, сложные консультации
     # Цена: $3/$15 per million tokens (input/output)
-    CLAUDE_MODEL_SONNET_4: str = "claude-sonnet-4-5"
+    # Лучшая модель для кодинга и сложных агентов
+    CLAUDE_MODEL_SONNET: str = "claude-sonnet-4-5"
 
-    # Claude Haiku 4.5 - быстрая и дешевая модель с хорошим качеством
-    # Используется для: составление планов питания, проверка дневника, веб-поиск и извлечение данных
-    # Цена: $1/$5 per million tokens (input/output) - в 3 раза дешевле
+    # Claude Haiku 4.5 (октябрь 2025) - быстрая и дешевая модель с отличным качеством
+    # Используется для: составление планов питания, проверка дневника, веб-поиск данных о продуктах
+    # Цена: $1/$5 per million tokens (input/output) - в 3 раза дешевле Sonnet
+    # Производительность кодинга как у Sonnet 4, но в 2 раза быстрее и в 3 раза дешевле
+    # Features: 200K context, 64K output, reasoning support
     CLAUDE_MODEL_HAIKU_4_5: str = "claude-haiku-4-5"
 
-    # Claude Haiku 3.5 - модель для анализа фото еды
+    # Claude Haiku 3.5 (октябрь 2024) - специально для анализа фото еды
     # Используется для: распознавание еды по фото
     # Цена: $1/$5 per million tokens (input/output)
-    CLAUDE_MODEL_HAIKU_3_5: str = "claude-3-5-haiku-latest"
+    CLAUDE_MODEL_HAIKU_3_5: str = "claude-3-5-haiku-20241022"
 
     # По умолчанию (для обратной совместимости)
     CLAUDE_MODEL: str = "claude-sonnet-4-5"

@@ -835,9 +835,10 @@ class ClaudeAIService:
 Если блюдо безопасно, верни is_safe: true и пустой массив warnings.
 Альтернативу предлагай только если is_safe: false."""
 
+            # Используем Haiku 4.5 для проверки дневника (быстрее и дешевле)
             response = await self._call_with_rate_limit_and_retry(
                 self.async_client.messages.create,
-                model=self.model,
+                model=settings.CLAUDE_MODEL_HAIKU_4_5,
                 max_tokens=1000,
                 messages=[{
                     "role": "user",
