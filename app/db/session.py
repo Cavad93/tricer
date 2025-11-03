@@ -65,7 +65,6 @@ async def init_db():
     from app.models.user_consent import UserConsent  # noqa
     from app.models.micronutrients import DailyMicronutrients  # noqa
     from app.models.food_correction import FoodRecognitionCorrection  # noqa
-    from app.models.medical_analysis import MedicalAnalysis  # noqa
     from app.models.wellness_log import WellnessLog  # noqa
     from app.models.pantry import UserPantry, PantryUsageLog  # noqa
     from app.models.insight_fact import InsightFact  # noqa

@@ -597,16 +597,28 @@ async def allergies_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     else:
         context.user_data["allergies"] = []
 
-    # Переходим к медицинским вопросам (Этап 4)
+    # Переходим к выбору времени проверки дневника
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    keyboard = [
+        [InlineKeyboardButton("🌅 Утром (09:00)", callback_data="diary_check_09:00")],
+        [InlineKeyboardButton("🌆 Днем (14:00)", callback_data="diary_check_14:00")],
+        [InlineKeyboardButton("🌃 Вечером (20:00)", callback_data="diary_check_20:00")],
+        [InlineKeyboardButton("🌙 Перед сном (22:00)", callback_data="diary_check_22:00")],
+        [InlineKeyboardButton("⏩ Не нужно напоминать", callback_data="diary_check_skip")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        "🏥 Теперь несколько вопросов о твоём здоровье.\n\n"
-        "Есть ли у тебя хронические заболевания, которые я должен учитывать при составлении рациона?\n"
-        "(Например: диабет, гипертония, заболевания ЖКТ и т.д.)\n\n"
-        "Напиши их через запятую или нажми 'Пропустить' если нет:",
-        reply_markup=skip_keyboard("chronic_conditions")
+        "📝 <b>Проверка дневника питания</b>\n\n"
+        "Хочешь, чтобы я напоминал тебе проверить дневник питания?\n\n"
+        "Это поможет тебе не забывать записывать приемы пищи! 📊\n\n"
+        "Выбери удобное время:",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
     )
 
-    return OnboardingStates.CHRONIC_CONDITIONS
+    return OnboardingStates.DIARY_CHECK_TIME
 
 
 async def skip_allergies_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -616,100 +628,6 @@ async def skip_allergies_callback(update: Update, context: ContextTypes.DEFAULT_
 
     context.user_data["allergies"] = []
 
-    # Переходим к медицинским вопросам (Этап 4)
-    await query.edit_message_text(
-        "🏥 Теперь несколько вопросов о твоём здоровье.\n\n"
-        "Есть ли у тебя хронические заболевания, которые я должен учитывать при составлении рациона?\n"
-        "(Например: диабет, гипертония, заболевания ЖКТ и т.д.)\n\n"
-        "Напиши их через запятую или нажми 'Пропустить' если нет:",
-        reply_markup=skip_keyboard("chronic_conditions")
-    )
-
-    return OnboardingStates.CHRONIC_CONDITIONS
-
-
-async def chronic_conditions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка ввода хронических заболеваний"""
-    if update.message:
-        conditions_text = update.message.text.strip()
-        conditions = [c.strip() for c in conditions_text.split(",") if c.strip()]
-        context.user_data["chronic_conditions"] = conditions
-    else:
-        context.user_data["chronic_conditions"] = []
-
-    # Переходим к вопросу об удаленных органах
-    await update.message.reply_text(
-        "Были ли удалены какие-то органы?\n"
-        "(Например: желчный пузырь, аппендикс и т.д.)\n\n"
-        "Напиши их через запятую или нажми 'Пропустить' если нет:",
-        reply_markup=skip_keyboard("removed_organs")
-    )
-
-    return OnboardingStates.REMOVED_ORGANS
-
-
-async def skip_chronic_conditions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Пропуск ввода хронических заболеваний"""
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["chronic_conditions"] = []
-
-    # Переходим к вопросу об удаленных органах
-    await query.edit_message_text(
-        "Были ли удалены какие-то органы?\n"
-        "(Например: желчный пузырь, аппендикс и т.д.)\n\n"
-        "Напиши их через запятую или нажми 'Пропустить' если нет:",
-        reply_markup=skip_keyboard("removed_organs")
-    )
-
-    return OnboardingStates.REMOVED_ORGANS
-
-
-async def removed_organs_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка ввода удаленных органов"""
-    if update.message:
-        organs_text = update.message.text.strip()
-        organs = [o.strip() for o in organs_text.split(",") if o.strip()]
-        context.user_data["removed_organs"] = organs
-    else:
-        context.user_data["removed_organs"] = []
-
-    # Переходим к выбору времени проверки дневника
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-    keyboard = [
-        [InlineKeyboardButton("🌅 Утром (09:00)", callback_data="diary_check_09:00")],
-        [InlineKeyboardButton("🌆 Днем (14:00)", callback_data="diary_check_14:00")],
-        [InlineKeyboardButton("🌃 Вечером (20:00)", callback_data="diary_check_20:00")],
-        [InlineKeyboardButton("🌙 Перед сном (22:00)", callback_data="diary_check_22:00")],
-        [InlineKeyboardButton("⏩ Не нужно напоминать", callback_data="diary_check_skip")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        "📝 <b>Проверка дневника питания</b>\n\n"
-        "Я могу напоминать тебе о заполнении дневника, если вижу, что ты записал "
-        "меньше 70% от рекомендуемых калорий.\n\n"
-        "Это важно, потому что:\n"
-        "• Точный учет помогает достичь целей\n"
-        "• AI-анализ работает лучше с полными данными\n"
-        "• Ты видишь реальную картину своего питания\n\n"
-        "В какое время тебе удобно получать напоминание?",
-        reply_markup=reply_markup,
-        parse_mode='HTML'
-    )
-
-    return OnboardingStates.DIARY_CHECK_TIME
-
-
-async def skip_removed_organs_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Пропуск ввода удаленных органов"""
-    query = update.callback_query
-    await query.answer()
-
-    context.user_data["removed_organs"] = []
-
     # Переходим к выбору времени проверки дневника
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -724,13 +642,9 @@ async def skip_removed_organs_callback(update: Update, context: ContextTypes.DEF
 
     await query.edit_message_text(
         "📝 <b>Проверка дневника питания</b>\n\n"
-        "Я могу напоминать тебе о заполнении дневника, если вижу, что ты записал "
-        "меньше 70% от рекомендуемых калорий.\n\n"
-        "Это важно, потому что:\n"
-        "• Точный учет помогает достичь целей\n"
-        "• AI-анализ работает лучше с полными данными\n"
-        "• Ты видишь реальную картину своего питания\n\n"
-        "В какое время тебе удобно получать напоминание?",
+        "Хочешь, чтобы я напоминал тебе проверить дневник питания?\n\n"
+        "Это поможет тебе не забывать записывать приемы пищи! 📊\n\n"
+        "Выбери удобное время:",
         reply_markup=reply_markup,
         parse_mode='HTML'
     )
@@ -999,14 +913,6 @@ onboarding_conversation = ConversationHandler(
         OnboardingStates.ALLERGIES: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, allergies_handler),
             CallbackQueryHandler(skip_allergies_callback, pattern="^skip_allergies")
-        ],
-        OnboardingStates.CHRONIC_CONDITIONS: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, chronic_conditions_handler),
-            CallbackQueryHandler(skip_chronic_conditions_callback, pattern="^skip_chronic_conditions")
-        ],
-        OnboardingStates.REMOVED_ORGANS: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, removed_organs_handler),
-            CallbackQueryHandler(skip_removed_organs_callback, pattern="^skip_removed_organs")
         ],
         OnboardingStates.DIARY_CHECK_TIME: [
             CallbackQueryHandler(diary_check_time_callback, pattern="^diary_check_")

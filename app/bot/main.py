@@ -114,7 +114,6 @@ from app.bot.handlers.reminders import (
 )
 from app.bot.handlers.reports import get_reports_conversation_handler
 from app.bot.handlers.wellness import wellness_survey_conversation
-from app.bot.handlers.medical_analysis import medical_analysis_conversation
 from app.bot.handlers.privacy import (
     privacy_settings_command,
     export_data_callback,
@@ -1227,7 +1226,6 @@ def main():
     application.add_handler(change_weight_conversation)  # Обработчик изменения веса
     application.add_handler(pantry_conversation)  # Обработчик продуктов дома
     application.add_handler(reminder_settings_conversation)  # Обработчик настройки напоминаний после создания плана
-    application.add_handler(medical_analysis_conversation)  # Обработчик медицинских анализов - ПЕРЕД food_add_conversation!
     application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан" - ПЕРЕД food_add_conversation!
     application.add_handler(food_add_conversation)  # Обработчик фото с ConversationHandler (перехватывает ВСЕ фото)
     application.add_handler(meal_plan_conversation)  # Обработчик плана питания

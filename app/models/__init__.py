@@ -9,7 +9,6 @@ from app.models.micronutrients import DailyMicronutrients, MicronutrientTargets
 from app.models.food_correction import FoodRecognitionCorrection
 from app.models.user_consent import UserConsent
 from app.models.chat import ChatMessage
-from app.models.medical_analysis import MedicalAnalysis
 from app.models.wellness_log import WellnessLog
 from app.models.weight_history import WeightHistory
 from app.models.user_steps import UserSteps
@@ -42,7 +41,6 @@ __all__ = [
     "FoodRecognitionCorrection",
     "UserConsent",
     "ChatMessage",
-    "MedicalAnalysis",
     "WellnessLog",
     "WeightHistory",
     "UserSteps",

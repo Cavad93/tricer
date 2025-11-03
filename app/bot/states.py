@@ -6,10 +6,9 @@ from enum import IntEnum, auto
 
 class OnboardingStates(IntEnum):
     """Состояния онбординга"""
-    # Юридические согласия (152-ФЗ, 323-ФЗ)
-    MEDICAL_DISCLAIMER = auto()  # Показ медицинского дисклеймера
+    # Юридические согласия (152-ФЗ)
+    MEDICAL_DISCLAIMER = auto()  # Показ дисклеймера о том, что бот не является медицинским сервисом
     PERSONAL_DATA_CONSENT = auto()  # Согласие на обработку персональных данных
-    MEDICAL_DATA_CONSENT = auto()  # Согласие на обработку медицинских данных
 
     # Старый дисклеймер (для обратной совместимости)
     DISCLAIMER = auto()  # Показ дисклеймера
@@ -28,10 +27,6 @@ class OnboardingStates(IntEnum):
     DIET_TYPE = auto()
     BUDGET_CATEGORY = auto()
     ALLERGIES = auto()
-
-    # Медицинская информация (Этап 4)
-    CHRONIC_CONDITIONS = auto()  # Хронические заболевания
-    REMOVED_ORGANS = auto()  # Удаленные органы
     DIARY_CHECK_TIME = auto()  # Выбор времени проверки дневника
     CALCULATING = auto()
 
@@ -59,23 +54,12 @@ class MealPlanStates(IntEnum):
     ASKING_BATCH_COOKING = auto()  # Вопрос о приготовлении с запасом (на 3-5 дней)
     ASKING_COOKING_TIME = auto()  # Уточнение времени на готовку
     ASKING_PREFERENCES = auto()  # Уточнение предпочтений перед созданием
-    # Медицинские уточнения (Этап 4 - доработка)
-    CHECKING_CHRONIC_CONDITIONS = auto()  # Уточнение состояния хронических заболеваний
     CHECKING_ACUTE_CONDITIONS = auto()  # Проверка наличия острых заболеваний/состояний
     ASKING_PRICE_CALCULATION = auto()  # Вопрос о необходимости расчёта цены
     ASKING_SHOP_PREFERENCE = auto()  # Вопрос о предпочтениях по магазинам (один или несколько)
     GENERATING = auto()  # Генерация плана
     ASKING_FEEDBACK = auto()  # Запрос обратной связи после создания
     ASKING_CHANGES = auto()  # Сбор пожеланий по изменениям
-
-
-class MedicalAnalysisStates(IntEnum):
-    """Состояния для загрузки и анализа медицинских анализов (Этап 4)"""
-    ASKING_TO_UPLOAD = auto()  # Предлагаем загрузить анализы
-    WAITING_FILE = auto()  # Ожидание файла с анализами
-    WAITING_TEXT_INPUT = auto()  # Ожидание текстового ввода показателей
-    ANALYZING = auto()  # Анализ данных с помощью AI
-    SHOWING_RESULTS = auto()  # Показ результатов анализа
 
 
 class ProfileStates(IntEnum):
