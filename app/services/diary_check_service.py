@@ -6,7 +6,7 @@ from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
-from telegram import Bot
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.models.user import User
 from app.models.meal import Meal
@@ -17,6 +17,21 @@ from loguru import logger
 
 class DiaryCheckService:
     """Сервис для проверки и напоминаний о заполнении дневника"""
+
+    @staticmethod
+    def _create_diary_reminder_keyboard() -> InlineKeyboardMarkup:
+        """
+        Создает клавиатуру с кнопками для напоминания о дневнике
+
+        Returns:
+            InlineKeyboardMarkup: Клавиатура с кнопками навигации
+        """
+        keyboard = [
+            [InlineKeyboardButton("📸 Добавить еду", callback_data="add_food")],
+            [InlineKeyboardButton("📊 Мой дневник", callback_data="diary")],
+            [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+        ]
+        return InlineKeyboardMarkup(keyboard)
 
     @staticmethod
     async def check_and_notify_incomplete_diaries(bot: Bot, current_time: str):
@@ -98,11 +113,15 @@ class DiaryCheckService:
                     session=session
                 )
 
-                # Отправляем сообщение
+                # Создаем клавиатуру с кнопками
+                keyboard = DiaryCheckService._create_diary_reminder_keyboard()
+
+                # Отправляем сообщение с кнопками
                 await bot.send_message(
                     chat_id=user.telegram_id,
                     text=message,
-                    parse_mode='HTML'
+                    parse_mode='HTML',
+                    reply_markup=keyboard
                 )
 
                 logger.info(f"Sent diary reminder to user {user.id}")
