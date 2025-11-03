@@ -25,7 +25,6 @@ from app.bot.states import PrivacyStates
 from app.db.session import async_session_maker
 from app.models.user import User
 from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal
-from app.models.medical_analysis import MedicalAnalysis
 from app.models.chat import ChatMessage
 from app.models.meal import Meal, MealFood
 from app.models.usage import DailyUsage
@@ -258,24 +257,8 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
 
     user_data["meal_plans"] = meal_plans_data
 
-    # Получаем медицинские анализы
-    analyses_result = await db.execute(
-        select(MedicalAnalysis).where(MedicalAnalysis.user_id == user.id)
-    )
-    analyses = analyses_result.scalars().all()
-
-    user_data["medical_analyses"] = [
-        {
-            "id": analysis.id,
-            "analysis_type": analysis.analysis_type,
-            "analysis_date": analysis.analysis_date.isoformat() if analysis.analysis_date else None,
-            "detected_deficiencies": analysis.detected_deficiencies,
-            "needs_doctor_consultation": analysis.needs_doctor_consultation,
-            "recommendations": analysis.recommendations,
-            "created_at": analysis.created_at.isoformat() if analysis.created_at else None
-        }
-        for analysis in analyses
-    ]
+    # Медицинские анализы НЕ хранятся в боте (Постановление №1684)
+    # Бот не является медицинским изделием и не выполняет диагностических функций
 
     # Получаем историю чата
     chat_result = await db.execute(
@@ -703,9 +686,7 @@ async def confirm_delete_account_callback(update: Update, context: ContextTypes.
             logger.debug(f"Deleting DailyMicronutrients for user_id={user_id}")
             await session.execute(delete(DailyMicronutrients).where(DailyMicronutrients.user_id == user_id))
 
-            # 13. Удаляем медицинские анализы (MedicalAnalysis)
-            logger.debug(f"Deleting MedicalAnalysis for user_id={user_id}")
-            await session.execute(delete(MedicalAnalysis).where(MedicalAnalysis.user_id == user_id))
+            # 13. Медицинские анализы НЕ хранятся (Постановление №1684 - бот не медицинское изделие)
 
             # 14. Удаляем дневник самочувствия (WellnessLog)
             logger.debug(f"Deleting WellnessLog for user_id={user_id}")

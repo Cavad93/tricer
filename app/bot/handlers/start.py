@@ -850,15 +850,9 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
             await session.refresh(user)
             logger.info(f"User {update.effective_user.id} profile saved to database")
 
-            # Генерируем медицинские ограничения на основе введенных данных (Этап 4)
-            if user.chronic_conditions or user.removed_organs:
-                try:
-                    from app.services.medical_analysis_service import MedicalAnalysisService
-                    logger.info(f"Generating medical restrictions for user {user.id}")
-                    await MedicalAnalysisService.generate_medical_restrictions(user, session)
-                    logger.info(f"Medical restrictions generated for user {user.id}")
-                except Exception as e:
-                    logger.error("Error generating medical restrictions: {}", repr(e))
+            # Wellness данные (chronic_conditions, removed_organs) используются как ФИЛЬТР КОНТЕНТА
+            # при формировании рациона - для ИСКЛЮЧЕНИЯ нежелательных продуктов
+            # Это НЕ медицинские рекомендации! (Постановление №1684)
 
             # Добавляем начальный вес в историю
             try:
