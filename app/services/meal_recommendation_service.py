@@ -338,7 +338,7 @@ class MealRecommendationService:
                 "planned_meal": planned_meal,  # Блюдо из плана (если есть)
                 "user_preferences": {
                     "diet_type": user.diet_type.value if user.diet_type else "omnivore",
-                    "allergies": user.allergies or [],
+                    "food_exclusions": user.food_exclusions or [],
                     "dislikes": user.dislikes or [],
                     "budget": user.budget_category.value if user.budget_category else "normal",
                     "cooking_time": user.preferred_cooking_time_minutes

@@ -220,7 +220,7 @@ class ChatService:
 
             # Предпочтения и ограничения
             "diet_type": user.diet_type.value if user.diet_type else None,
-            "allergies": user.allergies or [],
+            "food_exclusions": user.food_exclusions or [],
             "dislikes": user.dislikes or [],
             "budget_category": user.budget_category.value if user.budget_category else None,
             "preferred_cooking_time_minutes": user.preferred_cooking_time_minutes,

@@ -189,7 +189,7 @@ class MealPlanService:
             budget_category=user.budget_category.value if user.budget_category else "normal",
             diet_preferences={
                 "diet_type": user.diet_type.value if user.diet_type else "omnivore",
-                "allergies": user.allergies or [],
+                "food_exclusions": user.food_exclusions or [],
             }
         )
 
@@ -362,10 +362,10 @@ class MealPlanService:
             "Средняя (3-5 умеренных тренировок в неделю)"
         )
 
-        # Формируем информацию об аллергиях
-        allergies_text = ""
-        if user.allergies and len(user.allergies) > 0:
-            allergies_text = f"\n❗ АЛЛЕРГИИ/ИСКЛЮЧЕНИЯ: {', '.join(user.allergies)}"
+        # Формируем информацию об исключениях из рациона
+        exclusions_text = ""
+        if user.food_exclusions and len(user.food_exclusions) > 0:
+            exclusions_text = f"\n❗ ИСКЛЮЧЕНИЯ ИЗ РАЦИОНА: {', '.join(user.food_exclusions)}"
 
         period_text = {
             PlanPeriod.DAY: "на 1 день",
@@ -519,7 +519,7 @@ class MealPlanService:
 - Уровень активности: {activity_level_desc}
 - Цель: {goal_desc}
 - Тип питания: {diet_desc}
-- Бюджет: {budget_desc}{allergies_text}
+- Бюджет: {budget_desc}{exclusions_text}
 
 ⚠️ ВАЖНО: Учитывай возраст, вес и уровень активности при расчёте микронутриентов!
    Для более активных людей и людей с большим весом потребности в некоторых микронутриентах выше.
@@ -571,7 +571,7 @@ class MealPlanService:
 4. ВАЖНО:
    - Соблюдай бюджетную категорию "{user.budget_category.value if user.budget_category else "normal"}"
    - Строго соблюдай тип питания "{user.diet_type.value if user.diet_type else "omnivore"}"
-   - Исключи все аллергены: {user.allergies if user.allergies else "нет"}
+   - Исключи из рациона: {user.food_exclusions if user.food_exclusions else "нет исключений"}
    - Суммарные КБЖУ за день должны быть близки к целевым показателям (±50 ккал)
    - Рецепты должны быть реалистичными и легко воспроизводимыми
    - Учитывай доступность продуктов в России

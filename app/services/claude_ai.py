@@ -364,13 +364,13 @@ class ClaudeAIService:
             # System prompt с ПОЛНЫМ контекстом пользователя
             preferred_name = user_context.get('preferred_name', 'друг')
 
-            # Формируем информацию об аллергиях и непереносимостях
-            medical_info = ""
-            allergies = user_context.get('allergies', [])
+            # Формируем информацию об исключениях из рациона
+            exclusions_info = ""
+            exclusions = user_context.get('food_exclusions', [])
 
-            if allergies:
-                medical_info = "\nАЛЛЕРГИИ И НЕПЕРЕНОСИМОСТЬ (учитывай ОБЯЗАТЕЛЬНО!):\n"
-                medical_info += f"- Аллергии: {', '.join(allergies)}\n"
+            if exclusions:
+                exclusions_info = "\nИСКЛЮЧЕНИЯ ИЗ РАЦИОНА (учитывай ОБЯЗАТЕЛЬНО!):\n"
+                exclusions_info += f"- Не хочет в рационе: {', '.join(exclusions)}\n"
 
             # Формируем информацию о недавних приемах пищи
             recent_meals_info = ""
@@ -449,7 +449,7 @@ class ClaudeAIService:
 
 ПРЕДПОЧТЕНИЯ:
 - Диета: {user_context.get('diet_type', 'всеядный')}{extra_info}
-{medical_info}
+{exclusions_info}
 СТАТИСТИКА СЕГОДНЯ (реальные данные из дневника):
 - Потреблено калорий: {user_context.get('today_calories', 0)} / {user_context.get('target_calories', 0)} ккал
 - Белки: {user_context.get('today_proteins', 0)}г / {user_context.get('target_proteins', 0)}г
@@ -855,7 +855,7 @@ class ClaudeAIService:
 - Тип питания: {user_prefs['diet_type']}
 - Бюджет: {user_prefs['budget']}
 - Время на готовку: {user_prefs['cooking_time']} минут (если указано)
-{f"- Аллергии: {', '.join(user_prefs['allergies'])}" if user_prefs['allergies'] else ""}
+{f"- Не хочет в рационе: {', '.join(user_prefs['food_exclusions'])}" if user_prefs['food_exclusions'] else ""}
 {f"- Не любит: {', '.join(user_prefs['dislikes'])}" if user_prefs['dislikes'] else ""}
 {plan_info}
 {planned_meal_info}
@@ -866,7 +866,7 @@ class ClaudeAIService:
 3. Второй и третий - альтернативные полезные варианты
 4. Для каждого блюда укажи точные КБЖУ
 5. Учти оставшиеся калории и макронутриенты
-6. Учти предпочтения и аллергии
+6. Учти предпочтения и исключения из рациона
 
 ВАЖНО: Верни ответ в формате JSON со структурой:
 {{
@@ -945,22 +945,22 @@ class ClaudeAIService:
             }
         """
         try:
-            allergies = user_context.get("allergies", [])
+            exclusions = user_context.get("food_exclusions", [])
 
-            allergy_info = ""
-            if allergies:
-                allergy_info = f"⚠️ Аллергии пользователя: {', '.join(allergies)}"
+            exclusions_info = ""
+            if exclusions:
+                exclusions_info = f"⚠️ Продукты, которые пользователь категорически не хочет в рационе: {', '.join(exclusions)}"
 
-            prompt = f"""Проверь безопасность выбора еды для пользователя.
+            prompt = f"""Проверь, подходит ли это блюдо для пользователя.
 
 ВЫБОР ПОЛЬЗОВАТЕЛЯ: {meal_choice}
 
-{allergy_info if allergy_info else "Аллергий нет."}
+{exclusions_info if exclusions_info else "Нет исключений из рациона."}
 
 ТВОЯ ЗАДАЧА:
-1. Оцени, может ли данное блюдо содержать аллергены
-2. Учти все аллергии пользователя
-3. Если есть риски - предложи безопасную альтернативу
+1. Оцени, содержит ли блюдо продукты, которые пользователь не хочет в рационе
+2. Учти все исключения пользователя
+3. Если есть нежелательные продукты - предложи подходящую альтернативу
 
 ВАЖНО: Верни ответ в формате JSON:
 {{
@@ -1021,29 +1021,28 @@ class ClaudeAIService:
             Текст с рекомендациями в поддерживающем тоне
         """
         try:
-            allergies = user_context.get("allergies", [])
+            exclusions = user_context.get("food_exclusions", [])
 
-            allergy_info = ""
-            if allergies:
-                allergy_info = f"Аллергии пользователя: {', '.join(allergies)}\n"
+            exclusions_info = ""
+            if exclusions:
+                exclusions_info = f"Продукты, которые пользователь не хочет в рационе: {', '.join(exclusions)}\n"
 
             warnings_text = "\n".join(f"- {w}" for w in warnings)
 
-            prompt = f"""Пользователь выбрал блюдо, которое может содержать аллергены, но это его выбор и мы его уважаем.
+            prompt = f"""Пользователь выбрал блюдо, которое содержит нежелательные для него продукты, но это его выбор и мы его уважаем.
 
 ВЫБРАННОЕ БЛЮДО: {meal_choice}
 
 ПРЕДУПРЕЖДЕНИЯ:
 {warnings_text}
 
-{allergy_info if allergy_info else ""}
+{exclusions_info if exclusions_info else ""}
 
 ТВОЯ ЗАДАЧА:
 1. Сгенерировать поддерживающее сообщение БЕЗ осуждения
 2. Признать право человека на свой выбор
-3. Дать конкретные рекомендации как минимизировать возможную аллергическую реакцию
-4. Напомнить о важности осторожности при аллергиях
-5. Закончить позитивным настроем
+3. Дать практические советы, как можно модифицировать блюдо или сбалансировать рацион
+4. Закончить позитивным настроем
 
 ТОН: Понимающий, поддерживающий, дружелюбный, без осуждения или "чтения морали"
 

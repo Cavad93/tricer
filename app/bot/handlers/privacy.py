@@ -181,7 +181,7 @@ async def _collect_user_data(db: AsyncSession, telegram_id: int) -> dict:
             "activity_level": user.activity_level.value if user.activity_level else None,
             "diet_type": user.diet_type.value if user.diet_type else None,
             "budget_category": user.budget_category.value if user.budget_category else None,
-            "allergies": user.allergies,
+            "food_exclusions": user.food_exclusions,
         },
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "updated_at": user.updated_at.isoformat() if user.updated_at else None

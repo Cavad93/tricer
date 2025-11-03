@@ -537,22 +537,22 @@ async def budget_category_callback(update: Update, context: ContextTypes.DEFAULT
 
     await query.edit_message_text(
         f"✅ Бюджет: {budget_text}\n\n"
-        "Есть ли у тебя аллергии или продукты, которые ты не ешь?\n\n"
+        "Есть ли продукты, которые ты категорически не хочешь видеть в рационе?\n\n"
         "Напиши их через запятую или нажми 'Пропустить':",
-        reply_markup=skip_keyboard("allergies")
+        reply_markup=skip_keyboard("food_exclusions")
     )
 
-    return OnboardingStates.ALLERGIES
+    return OnboardingStates.FOOD_EXCLUSIONS
 
 
-async def allergies_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка ввода аллергий"""
+async def food_exclusions_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Обработка ввода исключений из рациона"""
     if update.message:
-        allergies_text = update.message.text.strip()
-        allergies = [a.strip() for a in allergies_text.split(",") if a.strip()]
-        context.user_data["allergies"] = allergies
+        exclusions_text = update.message.text.strip()
+        exclusions = [e.strip() for e in exclusions_text.split(",") if e.strip()]
+        context.user_data["food_exclusions"] = exclusions
     else:
-        context.user_data["allergies"] = []
+        context.user_data["food_exclusions"] = []
 
     # Переходим к выбору времени проверки дневника
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -578,12 +578,12 @@ async def allergies_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return OnboardingStates.DIARY_CHECK_TIME
 
 
-async def skip_allergies_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Пропуск ввода аллергий"""
+async def skip_food_exclusions_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск ввода исключений из рациона"""
     query = update.callback_query
     await query.answer()
 
-    context.user_data["allergies"] = []
+    context.user_data["food_exclusions"] = []
 
     # Переходим к выбору времени проверки дневника
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -697,10 +697,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                 user.target_carbs = nutrition_targets.carbs
                 user.diet_type = user_data["diet_type"]
                 user.budget_category = user_data.get("budget_category", BudgetCategory.NORMAL)
-                user.allergies = user_data.get("allergies", [])
-                # Медицинская информация (Этап 4)
-                user.chronic_conditions = user_data.get("chronic_conditions", [])
-                user.removed_organs = user_data.get("removed_organs", [])
+                user.food_exclusions = user_data.get("food_exclusions", [])
                 # Настройки проверки дневника
                 user.diary_check_enabled = user_data.get("diary_check_enabled", True)
                 user.diary_check_time = user_data.get("diary_check_time")
@@ -731,10 +728,7 @@ async def calculate_and_save_profile(update: Update, context: ContextTypes.DEFAU
                     target_carbs=nutrition_targets.carbs,
                     diet_type=user_data["diet_type"],
                     budget_category=user_data.get("budget_category", BudgetCategory.NORMAL),
-                    allergies=user_data.get("allergies", []),
-                    # Медицинская информация (Этап 4)
-                    chronic_conditions=user_data.get("chronic_conditions", []),
-                    removed_organs=user_data.get("removed_organs", []),
+                    food_exclusions=user_data.get("food_exclusions", []),
                     # Настройки проверки дневника
                     diary_check_enabled=user_data.get("diary_check_enabled", True),
                     diary_check_time=user_data.get("diary_check_time"),
@@ -863,9 +857,9 @@ onboarding_conversation = ConversationHandler(
         OnboardingStates.BUDGET_CATEGORY: [
             CallbackQueryHandler(budget_category_callback, pattern="^budget_")
         ],
-        OnboardingStates.ALLERGIES: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, allergies_handler),
-            CallbackQueryHandler(skip_allergies_callback, pattern="^skip_allergies")
+        OnboardingStates.FOOD_EXCLUSIONS: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, food_exclusions_handler),
+            CallbackQueryHandler(skip_food_exclusions_callback, pattern="^skip_food_exclusions")
         ],
         OnboardingStates.DIARY_CHECK_TIME: [
             CallbackQueryHandler(diary_check_time_callback, pattern="^diary_check_")

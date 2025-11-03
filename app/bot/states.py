@@ -26,7 +26,7 @@ class OnboardingStates(IntEnum):
     ACTIVITY_LEVEL = auto()
     DIET_TYPE = auto()
     BUDGET_CATEGORY = auto()
-    ALLERGIES = auto()
+    FOOD_EXCLUSIONS = auto()  # Продукты, которые категорически не хочет в рационе
     DIARY_CHECK_TIME = auto()  # Выбор времени проверки дневника
     CALCULATING = auto()
 

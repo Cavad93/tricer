@@ -88,8 +88,8 @@ class User(Base):
 
     # Предпочтения
     diet_type = Column(SQLEnum(DietType), default=DietType.OMNIVORE)
-    allergies = Column(JSONB, default=list)  # Список аллергий
-    dislikes = Column(JSONB, default=list)  # Список нелюбимых продуктов
+    food_exclusions = Column(JSONB, default=list)  # Исключения из рациона (категорически не хочу в рационе)
+    dislikes = Column(JSONB, default=list)  # Список нелюбимых продуктов (просто не нравится)
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 

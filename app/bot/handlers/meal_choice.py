@@ -64,7 +64,7 @@ async def handle_meal_variant_choice(update: Update, context: ContextTypes.DEFAU
 
             # Формируем контекст для проверки
             user_context = {
-                "allergies": db_user.allergies or []
+                "food_exclusions": db_user.food_exclusions or []
             }
 
             # Проверяем безопасность
@@ -184,7 +184,7 @@ async def handle_custom_meal_input(update: Update, context: ContextTypes.DEFAULT
 
             # Формируем контекст для проверки
             user_context = {
-                "allergies": db_user.allergies or []
+                "food_exclusions": db_user.food_exclusions or []
             }
 
             # Проверяем безопасность
