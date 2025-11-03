@@ -193,16 +193,16 @@ python migrate_encrypt_personal_data.py
 
 ### Генерация ключа из SECRET_KEY
 Если `ENCRYPTION_KEY` не указан:
-- Используется **PBKDF2** (Password-Based Key Derivation Function 2)
+- Используется **PBKDF2-HMAC** (Password-Based Key Derivation Function 2)
 - Алгоритм: **SHA-256**
 - Итераций: **100,000**
 - Соль: `nutriai_encryption_salt_v1` (фиксированная)
 
 ```python
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 
-kdf = PBKDF2(
+kdf = PBKDF2HMAC(
     algorithm=hashes.SHA256(),
     length=32,
     salt=b'nutriai_encryption_salt_v1',
