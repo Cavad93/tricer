@@ -22,6 +22,7 @@ from app.db.session import async_session_maker
 from sqlalchemy import select
 from app.models.user import User
 from app.bot.handlers.start import onboarding_conversation
+from app.bot.handlers.disclaimer import disclaimer_command
 from app.bot.handlers.photo import (
     photo_handler,
     handle_verification,
@@ -226,6 +227,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Показать эту справку\n"
         "/profile - Мой профиль\n"
         "/menu - Главное меню\n"
+        "/disclaimer - О функциях и ограничениях бота\n"
         "/clear_chat - Очистить историю AI-чата\n"
         "/chat_stats - Статистика использования\n"
         "/wellness_insights - AI-анализ самочувствия\n\n"
@@ -239,6 +241,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• Твоих целей и параметров\n"
         "• Истории нашего разговора\n"
         "• Научных данных о питании\n\n"
+        "⚠️ *Важно:* NutriAI не является медицинским сервисом. Используй /disclaimer для подробной информации.\n\n"
         "*Нужна помощь?* Просто напиши мне!"
     )
 
@@ -1222,6 +1225,7 @@ def main():
     application.add_handler(CommandHandler("clear_chat", clear_chat_command))
     application.add_handler(CommandHandler("chat_stats", chat_stats_command))
     application.add_handler(CommandHandler("wellness_insights", wellness_insights_command))
+    application.add_handler(CommandHandler("disclaimer", disclaimer_command))
 
     # Команды управления конфиденциальностью (152-ФЗ)
     application.add_handler(CommandHandler("privacy_settings", privacy_settings_command))

@@ -535,11 +535,28 @@ async def budget_category_callback(update: Update, context: ContextTypes.DEFAULT
         BudgetCategory.PREMIUM: "Премиум",
     }[budget]
 
+    # Показываем wellness дисклеймер перед сбором данных о здоровье
+    from app.bot.texts import MEDICAL_DATA_COLLECTION_DISCLAIMER
+
     await query.edit_message_text(
-        f"✅ Бюджет: {budget_text}\n\n"
+        f"✅ Бюджет: {budget_text}\n\n" + MEDICAL_DATA_COLLECTION_DISCLAIMER,
+        reply_markup=skip_keyboard("wellness_disclaimer"),
+        parse_mode='HTML'
+    )
+
+    return OnboardingStates.CHRONIC_CONDITIONS
+
+
+async def skip_wellness_disclaimer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Пропуск wellness дисклеймера - переход к вопросу о хронических заболеваниях"""
+    query = update.callback_query
+    await query.answer()
+
+    await query.edit_message_text(
         "📋 <b>Дополнительная информация для подбора оптимального рациона</b>\n\n"
         "Есть ли у тебя какие-либо хронические заболевания, которые следует учитывать при планировании питания?\n\n"
         "<i>Примеры: диабет, гипертония, гастрит, панкреатит и т.д.</i>\n\n"
+        "⚠️ <b>Напоминаем:</b> эта информация используется ТОЛЬКО для персонализации рациона, а НЕ для диагностики или лечения.\n\n"
         "Напиши их через запятую или нажми 'Пропустить':",
         reply_markup=skip_keyboard("chronic_conditions"),
         parse_mode='HTML'
@@ -562,6 +579,7 @@ async def chronic_conditions_handler(update: Update, context: ContextTypes.DEFAU
         "✅ Информация сохранена\n\n"
         "Были ли у тебя удалены какие-либо органы, которые следует учитывать при планировании питания?\n\n"
         "<i>Примеры: желчный пузырь, аппендикс, часть желудка, часть кишечника и т.д.</i>\n\n"
+        "⚠️ <b>Напоминаем:</b> эта информация используется ТОЛЬКО для персонализации рациона, а НЕ для диагностики или лечения.\n\n"
         "Напиши их через запятую или нажми 'Пропустить':",
         reply_markup=skip_keyboard("removed_organs"),
         parse_mode='HTML'
@@ -582,6 +600,7 @@ async def skip_chronic_conditions_callback(update: Update, context: ContextTypes
         "✅ Пропущено\n\n"
         "Были ли у тебя удалены какие-либо органы, которые следует учитывать при планировании питания?\n\n"
         "<i>Примеры: желчный пузырь, аппендикс, часть желудка, часть кишечника и т.д.</i>\n\n"
+        "⚠️ <b>Напоминаем:</b> эта информация используется ТОЛЬКО для персонализации рациона, а НЕ для диагностики или лечения.\n\n"
         "Напиши их через запятую или нажми 'Пропустить':",
         reply_markup=skip_keyboard("removed_organs"),
         parse_mode='HTML'
@@ -948,6 +967,7 @@ onboarding_conversation = ConversationHandler(
         ],
         OnboardingStates.CHRONIC_CONDITIONS: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, chronic_conditions_handler),
+            CallbackQueryHandler(skip_wellness_disclaimer_callback, pattern="^skip_wellness_disclaimer"),
             CallbackQueryHandler(skip_chronic_conditions_callback, pattern="^skip_chronic_conditions")
         ],
         OnboardingStates.REMOVED_ORGANS: [
