@@ -79,7 +79,6 @@ def setup_bot_logger(level: str = "INFO"):
     # 5. STRUCTURED.JSON - JSON формат
     logger.add(
         bot_dir / "structured.json",
-        format=_json_serialize,
         level="DEBUG",
         rotation="00:00",
         retention=RETENTION,
@@ -155,7 +154,6 @@ def setup_worker_logger(level: str = "INFO"):
     # 5. STRUCTURED.JSON
     logger.add(
         worker_dir / "structured.json",
-        format=_json_serialize,
         level="DEBUG",
         rotation="00:00",
         retention=RETENTION,
@@ -231,7 +229,6 @@ def setup_beat_logger(level: str = "INFO"):
     # 5. STRUCTURED.JSON
     logger.add(
         beat_dir / "structured.json",
-        format=_json_serialize,
         level="DEBUG",
         rotation="00:00",
         retention=RETENTION,
@@ -242,16 +239,6 @@ def setup_beat_logger(level: str = "INFO"):
 
     logger.info(f"Beat logging configured. Level: {level}, Directory: {beat_dir}")
     return logger
-
-
-def _json_serialize(record):
-    """
-    Сериализация записи лога в JSON формат.
-
-    Функция для loguru serialize=True режима.
-    """
-    # loguru уже предоставляет serialize=True, но мы можем кастомизировать
-    return record
 
 
 # Удобные функции
