@@ -701,9 +701,9 @@ async def edit_profile_menu_callback(update: Update, context: ContextTypes.DEFAU
          InlineKeyboardButton("📏 Рост", callback_data="edit_height")],
         [InlineKeyboardButton("🎯 Целевой вес", callback_data="edit_target_weight"),
          InlineKeyboardButton("🏃 Цель", callback_data="edit_goal")],
-        [InlineKeyboardButton("⚡ Активность", callback_data="edit_activity"),
+        [InlineKeyboardButton("⚡ Активность", callback_data="edit_activity_level"),
          InlineKeyboardButton("🥗 Тип питания", callback_data="edit_diet_type")],
-        [InlineKeyboardButton("💰 Бюджет", callback_data="edit_budget")],
+        [InlineKeyboardButton("💰 Бюджет", callback_data="edit_budget_category")],
         [InlineKeyboardButton("📋 Хронические заболевания", callback_data="edit_chronic_conditions")],
         [InlineKeyboardButton("🔧 Удаленные органы", callback_data="edit_removed_organs")],
         [InlineKeyboardButton("❗ Пищевые исключения", callback_data="edit_food_exclusions")],
@@ -1220,6 +1220,9 @@ def main():
         edit_height_callback, save_height_handler,
         edit_target_weight_callback, save_target_weight_handler,
         edit_goal_callback, save_goal_callback,
+        edit_activity_level_callback, save_activity_level_callback,
+        edit_diet_type_callback, save_diet_type_callback,
+        edit_budget_category_callback, save_budget_category_callback,
         cancel_edit_callback
     )
 
@@ -1232,6 +1235,9 @@ def main():
             CallbackQueryHandler(edit_height_callback, pattern="^edit_height$"),
             CallbackQueryHandler(edit_target_weight_callback, pattern="^edit_target_weight$"),
             CallbackQueryHandler(edit_goal_callback, pattern="^edit_goal$"),
+            CallbackQueryHandler(edit_activity_level_callback, pattern="^edit_activity_level$"),
+            CallbackQueryHandler(edit_diet_type_callback, pattern="^edit_diet_type$"),
+            CallbackQueryHandler(edit_budget_category_callback, pattern="^edit_budget_category$"),
         ],
         states={
             ProfileStates.EDITING_CHRONIC_CONDITIONS: [
@@ -1263,6 +1269,18 @@ def main():
             ],
             ProfileStates.EDITING_GOAL: [
                 CallbackQueryHandler(save_goal_callback, pattern="^set_goal_"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_ACTIVITY_LEVEL: [
+                CallbackQueryHandler(save_activity_level_callback, pattern="^activity_"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_DIET_TYPE: [
+                CallbackQueryHandler(save_diet_type_callback, pattern="^diet_"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_BUDGET: [
+                CallbackQueryHandler(save_budget_category_callback, pattern="^budget_"),
                 CallbackQueryHandler(profile_callback, pattern="^profile$")
             ],
         },

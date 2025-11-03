@@ -802,6 +802,351 @@ async def save_goal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 
+# ============================================================================
+# РЕДАКТИРОВАНИЕ УРОВНЯ АКТИВНОСТИ (activity_level)
+# ============================================================================
+
+async def edit_activity_level_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало редактирования уровня активности"""
+    query = update.callback_query
+    await query.answer()
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Показываем текущий уровень активности
+        activity_names = {
+            ActivityLevel.MINIMAL: "😴 Минимальная (сидячий образ жизни)",
+            ActivityLevel.LOW: "🚶 Низкая (1-3 тренировки/неделя)",
+            ActivityLevel.MEDIUM: "🏃 Средняя (3-5 тренировок/неделя)",
+            ActivityLevel.HIGH: "💪 Высокая (5-7 тренировок/неделя)",
+            ActivityLevel.VERY_HIGH: "🔥 Очень высокая (2+ тренировки/день)"
+        }
+
+        current_text = activity_names.get(user.activity_level, "Не указано")
+
+        # Импортируем готовую клавиатуру
+        from app.bot.keyboards import activity_level_keyboard
+        keyboard_markup = activity_level_keyboard()
+
+        # Добавляем кнопку отмены
+        keyboard = keyboard_markup.inline_keyboard + [
+            [InlineKeyboardButton("❌ Отмена", callback_data="profile")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            f"🏃 <b>Редактирование уровня активности</b>\n\n"
+            f"<b>Текущий уровень:</b> {current_text}\n\n"
+            f"⚠️ <b>Важно:</b> При изменении уровня активности целевые калории и БЖУ "
+            f"будут автоматически пересчитаны.\n\n"
+            f"Выбери новый уровень активности:",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+
+    return ProfileStates.EDITING_ACTIVITY_LEVEL
+
+
+async def save_activity_level_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение выбранного уровня активности с пересчётом КБЖУ"""
+    query = update.callback_query
+    await query.answer()
+
+    # Парсим callback_data для получения значения
+    activity_map = {
+        "activity_minimal": ActivityLevel.MINIMAL,
+        "activity_low": ActivityLevel.LOW,
+        "activity_medium": ActivityLevel.MEDIUM,
+        "activity_high": ActivityLevel.HIGH,
+        "activity_very_high": ActivityLevel.VERY_HIGH
+    }
+
+    new_activity = activity_map.get(query.data)
+    if not new_activity:
+        await query.edit_message_text("❌ Неверный уровень активности")
+        return ConversationHandler.END
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Сохраняем новый уровень активности
+        user.activity_level = new_activity
+
+        # Пересчитываем КБЖУ
+        from app.services.nutrition_service import calculate_nutrition_targets
+        nutrition = calculate_nutrition_targets(
+            weight=user.weight,
+            height=user.height,
+            age=user.age,
+            sex=user.sex,
+            activity_level=user.activity_level,
+            goal=user.goal
+        )
+
+        user.target_calories = nutrition["calories"]
+        user.target_protein = nutrition["protein"]
+        user.target_fats = nutrition["fats"]
+        user.target_carbs = nutrition["carbs"]
+
+        await session.commit()
+
+    activity_names = {
+        ActivityLevel.MINIMAL: "😴 Минимальная (сидячий образ жизни)",
+        ActivityLevel.LOW: "🚶 Низкая (1-3 тренировки/неделя)",
+        ActivityLevel.MEDIUM: "🏃 Средняя (3-5 тренировок/неделя)",
+        ActivityLevel.HIGH: "💪 Высокая (5-7 тренировок/неделя)",
+        ActivityLevel.VERY_HIGH: "🔥 Очень высокая (2+ тренировки/день)"
+    }
+
+    keyboard = [
+        [InlineKeyboardButton("👤 Вернуться в профиль", callback_data="profile")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        f"✅ <b>Уровень активности обновлён!</b>\n\n"
+        f"<b>Новый уровень:</b> {activity_names[new_activity]}\n\n"
+        f"Целевые калории и БЖУ пересчитаны автоматически.",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+    return ConversationHandler.END
+
+
+# ============================================================================
+# РЕДАКТИРОВАНИЕ ТИПА ПИТАНИЯ (diet_type)
+# ============================================================================
+
+async def edit_diet_type_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало редактирования типа питания"""
+    query = update.callback_query
+    await query.answer()
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Показываем текущий тип питания
+        diet_names = {
+            DietType.OMNIVORE: "🍖 Всеядный",
+            DietType.VEGETARIAN: "🥗 Вегетарианец",
+            DietType.VEGAN: "🌱 Веган",
+            DietType.PESCATARIAN: "🐟 Пескетарианец"
+        }
+
+        current_text = diet_names.get(user.diet_type, "Не указано")
+
+        # Импортируем готовую клавиатуру
+        from app.bot.keyboards import diet_type_keyboard
+        keyboard_markup = diet_type_keyboard()
+
+        # Добавляем кнопку отмены
+        keyboard = keyboard_markup.inline_keyboard + [
+            [InlineKeyboardButton("❌ Отмена", callback_data="profile")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            f"🍽️ <b>Редактирование типа питания</b>\n\n"
+            f"<b>Текущий тип:</b> {current_text}\n\n"
+            f"⚠️ <b>Важно:</b> Тип питания влияет на формирование рациона - "
+            f"из меню будут исключены неподходящие продукты.\n\n"
+            f"Выбери новый тип питания:",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+
+    return ProfileStates.EDITING_DIET_TYPE
+
+
+async def save_diet_type_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение выбранного типа питания"""
+    query = update.callback_query
+    await query.answer()
+
+    # Парсим callback_data для получения значения
+    diet_map = {
+        "diet_omnivore": DietType.OMNIVORE,
+        "diet_vegetarian": DietType.VEGETARIAN,
+        "diet_vegan": DietType.VEGAN,
+        "diet_pescatarian": DietType.PESCATARIAN
+    }
+
+    new_diet = diet_map.get(query.data)
+    if not new_diet:
+        await query.edit_message_text("❌ Неверный тип питания")
+        return ConversationHandler.END
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Сохраняем новый тип питания
+        user.diet_type = new_diet
+        await session.commit()
+
+    diet_names = {
+        DietType.OMNIVORE: "🍖 Всеядный",
+        DietType.VEGETARIAN: "🥗 Вегетарианец",
+        DietType.VEGAN: "🌱 Веган",
+        DietType.PESCATARIAN: "🐟 Пескетарианец"
+    }
+
+    keyboard = [
+        [InlineKeyboardButton("👤 Вернуться в профиль", callback_data="profile")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        f"✅ <b>Тип питания обновлён!</b>\n\n"
+        f"<b>Новый тип:</b> {diet_names[new_diet]}\n\n"
+        f"Изменения будут учтены при формировании следующих рационов.",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+    return ConversationHandler.END
+
+
+# ============================================================================
+# РЕДАКТИРОВАНИЕ БЮДЖЕТНОЙ КАТЕГОРИИ (budget_category)
+# ============================================================================
+
+async def edit_budget_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало редактирования бюджетной категории"""
+    query = update.callback_query
+    await query.answer()
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Показываем текущий бюджет
+        budget_names = {
+            BudgetCategory.ECONOMY: "💰 Эконом",
+            BudgetCategory.NORMAL: "💵 Норм",
+            BudgetCategory.PREMIUM: "💎 Премиум"
+        }
+
+        current_text = budget_names.get(user.budget_category, "Не указано")
+
+        # Импортируем готовую клавиатуру
+        from app.bot.keyboards import budget_category_keyboard
+        keyboard_markup = budget_category_keyboard()
+
+        # Добавляем кнопку отмены
+        keyboard = keyboard_markup.inline_keyboard + [
+            [InlineKeyboardButton("❌ Отмена", callback_data="profile")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            f"💰 <b>Редактирование бюджетной категории</b>\n\n"
+            f"<b>Текущий бюджет:</b> {current_text}\n\n"
+            f"⚠️ <b>Важно:</b> Бюджет влияет на формирование списка покупок - "
+            f"подбираются продукты в соответствующем ценовом диапазоне.\n\n"
+            f"Выбери новую бюджетную категорию:",
+            reply_markup=reply_markup,
+            parse_mode='HTML'
+        )
+
+    return ProfileStates.EDITING_BUDGET
+
+
+async def save_budget_category_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохранение выбранной бюджетной категории"""
+    query = update.callback_query
+    await query.answer()
+
+    # Парсим callback_data для получения значения
+    budget_map = {
+        "budget_economy": BudgetCategory.ECONOMY,
+        "budget_normal": BudgetCategory.NORMAL,
+        "budget_premium": BudgetCategory.PREMIUM
+    }
+
+    new_budget = budget_map.get(query.data)
+    if not new_budget:
+        await query.edit_message_text("❌ Неверная бюджетная категория")
+        return ConversationHandler.END
+
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_id == update.effective_user.id)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            await query.edit_message_text("❌ Пользователь не найден")
+            return ConversationHandler.END
+
+        # Сохраняем новый бюджет
+        user.budget_category = new_budget
+        await session.commit()
+
+    budget_names = {
+        BudgetCategory.ECONOMY: "💰 Эконом",
+        BudgetCategory.NORMAL: "💵 Норм",
+        BudgetCategory.PREMIUM: "💎 Премиум"
+    }
+
+    keyboard = [
+        [InlineKeyboardButton("👤 Вернуться в профиль", callback_data="profile")],
+        [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        f"✅ <b>Бюджетная категория обновлена!</b>\n\n"
+        f"<b>Новый бюджет:</b> {budget_names[new_budget]}\n\n"
+        f"Изменения будут учтены при формировании следующих списков покупок.",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
+
+    return ConversationHandler.END
+
+
+# ============================================================================
+# ОБРАБОТЧИК ОТМЕНЫ
+# ============================================================================
+
 # Обработчик отмены редактирования
 async def cancel_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
