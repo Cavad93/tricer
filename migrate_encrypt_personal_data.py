@@ -21,31 +21,30 @@ async def migrate():
         async with engine.begin() as conn:
             logger.info("Adding encrypted columns to users table...")
 
-            # Добавляем новые зашифрованные поля
-            await conn.execute(text("""
-                -- Telegram данные (зашифрованные)
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS username_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_name_encrypted TEXT;
+            # Добавляем новые зашифрованные поля (каждую команду отдельно для asyncpg)
+            columns = [
+                # Telegram данные (зашифрованные)
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS username_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_name_encrypted TEXT",
+                # Локация (зашифрованная)
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS country_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS city_encrypted TEXT",
+                # Профиль (зашифрованный)
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_year_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS height_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS current_weight_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS target_weight_encrypted TEXT",
+                # Предпочтения (зашифрованные)
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS food_exclusions_encrypted TEXT",
+                # Wellness данные (зашифрованные)
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS chronic_conditions_encrypted TEXT",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS removed_organs_encrypted TEXT",
+            ]
 
-                -- Локация (зашифрованная)
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS country_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS city_encrypted TEXT;
-
-                -- Профиль (зашифрованный)
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_year_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS height_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS current_weight_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS target_weight_encrypted TEXT;
-
-                -- Предпочтения (зашифрованные)
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS food_exclusions_encrypted TEXT;
-
-                -- Wellness данные (зашифрованные)
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS chronic_conditions_encrypted TEXT;
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS removed_organs_encrypted TEXT;
-            """))
+            for column_sql in columns:
+                await conn.execute(text(column_sql))
 
             logger.info("✅ Encrypted columns added successfully")
 
