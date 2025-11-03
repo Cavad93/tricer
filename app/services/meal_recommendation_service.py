@@ -342,8 +342,7 @@ class MealRecommendationService:
                     "dislikes": user.dislikes or [],
                     "budget": user.budget_category.value if user.budget_category else "normal",
                     "cooking_time": user.preferred_cooking_time_minutes
-                },
-                "medical_restrictions": user.medical_restrictions or {}
+                }
             }
 
         except Exception as e:

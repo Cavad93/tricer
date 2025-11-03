@@ -54,7 +54,6 @@ class MealPlanStates(IntEnum):
     ASKING_BATCH_COOKING = auto()  # Вопрос о приготовлении с запасом (на 3-5 дней)
     ASKING_COOKING_TIME = auto()  # Уточнение времени на готовку
     ASKING_PREFERENCES = auto()  # Уточнение предпочтений перед созданием
-    CHECKING_ACUTE_CONDITIONS = auto()  # Проверка наличия острых заболеваний/состояний
     ASKING_PRICE_CALCULATION = auto()  # Вопрос о необходимости расчёта цены
     ASKING_SHOP_PREFERENCE = auto()  # Вопрос о предпочтениях по магазинам (один или несколько)
     GENERATING = auto()  # Генерация плана

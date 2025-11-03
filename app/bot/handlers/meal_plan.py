@@ -668,38 +668,8 @@ async def handle_preference_response(update: Update, context: ContextTypes.DEFAU
         context.user_data["special_requests"] = response
 
         # Все вопросы о предпочтениях заданы
-        # Теперь проверяем, нужно ли уточнить медицинские данные (Этап 4 - доработка)
-        async with async_session_maker() as session:
-            result = await session.execute(
-                select(User).where(User.telegram_id == update.effective_user.id)
-            )
-            user = result.scalar_one_or_none()
-
-            # Проверяем есть ли у пользователя хронические заболевания
-            has_chronic = user and user.chronic_conditions and len(user.chronic_conditions) > 0
-
-            if has_chronic:
-                # Есть хронические заболевания - уточняем их состояние
-                from app.bot.texts import MEDICAL_CHECK_INTRO, get_chronic_conditions_check_text
-
-                intro_text = MEDICAL_CHECK_INTRO
-                check_text = get_chronic_conditions_check_text(user.chronic_conditions)
-
-                skip_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✅ Без изменений", callback_data="skip_chronic_check")]
-                ])
-
-                full_text = intro_text + "\n\n" + check_text
-
-                if is_skip:
-                    await query.edit_message_text(full_text, reply_markup=skip_keyboard, parse_mode='HTML')
-                else:
-                    await update.message.reply_text(full_text, reply_markup=skip_keyboard, parse_mode='HTML')
-
-                return MealPlanStates.CHECKING_CHRONIC_CONDITIONS
-
-        # Нет хронических заболеваний - сразу спрашиваем про острые состояния
-        return await ask_acute_conditions(update, context, is_skip)
+        # Сразу переходим к генерации плана (медицинские проверки удалены)
+        return await start_meal_plan_generation(update, context, is_callback=is_skip)
 
 
 async def ask_acute_conditions(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback: bool = False) -> int:
@@ -783,78 +753,7 @@ async def skip_acute_conditions_callback(update: Update, context: ContextTypes.D
 
 async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback: bool = False) -> int:
     """Начинает процесс создания плана - показывает вопрос о расчёте цены"""
-    from app.bot.texts import (
-        MEDICAL_CHECK_COMPLETE,
-        PRICE_CALCULATION_QUESTION,
-        MEAL_PLAN_MEDICAL_DISCLAIMER,
-        MEAL_PLAN_GENERATION_DISCLAIMER
-    )
-    from app.db.session import async_session_maker
-    from app.models.user import User
-    from sqlalchemy import select
-
-    # Получаем пользователя из БД для проверки медицинских ограничений
-    telegram_id = update.effective_user.id
-    async with async_session_maker() as session:
-        result = await session.execute(
-            select(User).where(User.telegram_id == telegram_id)
-        )
-        user = result.scalar_one_or_none()
-
-        # Если у пользователя есть медицинские ограничения - показываем дисклеймер
-        if user and (user.chronic_conditions or user.removed_organs):
-            conditions_list = ""
-            if user.chronic_conditions:
-                conditions_list += "\n".join([f"• {cond}" for cond in user.chronic_conditions])
-            if user.removed_organs:
-                if conditions_list:
-                    conditions_list += "\n"
-                conditions_list += "\n".join([f"• Удален: {organ}" for organ in user.removed_organs])
-
-            disclaimer_text = MEAL_PLAN_MEDICAL_DISCLAIMER.format(
-                conditions_list=conditions_list
-            )
-
-            keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Продолжить", callback_data="confirm_medical_generation")],
-                [InlineKeyboardButton("❌ Отменить", callback_data="cancel_plan")]
-            ])
-
-            if is_callback:
-                await update.callback_query.edit_message_text(
-                    disclaimer_text,
-                    reply_markup=keyboard,
-                    parse_mode='HTML'
-                )
-            else:
-                await update.message.reply_text(
-                    disclaimer_text,
-                    reply_markup=keyboard,
-                    parse_mode='HTML'
-                )
-
-            # Сохраняем состояние для продолжения после подтверждения
-            context.user_data['awaiting_medical_confirmation'] = True
-            return MealPlanStates.ASKING_PRICE_CALCULATION
-
-        # Если нет медицинских ограничений - показываем общий дисклеймер
-        if is_callback:
-            await update.callback_query.edit_message_text(
-                MEAL_PLAN_GENERATION_DISCLAIMER,
-                parse_mode='HTML'
-            )
-        else:
-            await update.message.reply_text(
-                MEAL_PLAN_GENERATION_DISCLAIMER,
-                parse_mode='HTML'
-            )
-
-    # Показываем сообщение о завершении медицинских уточнений
-    if is_callback:
-        query = update.callback_query
-        await query.edit_message_text(MEDICAL_CHECK_COMPLETE, parse_mode='HTML')
-    else:
-        await update.message.reply_text(MEDICAL_CHECK_COMPLETE, parse_mode='HTML')
+    from app.bot.texts import PRICE_CALCULATION_QUESTION
 
     # Задаём вопрос о расчёте цены
     price_keyboard = InlineKeyboardMarkup([
@@ -862,12 +761,18 @@ async def start_meal_plan_generation(update: Update, context: ContextTypes.DEFAU
         [InlineKeyboardButton("⏩ Нет, пропустить", callback_data="price_no")]
     ])
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=PRICE_CALCULATION_QUESTION,
-        reply_markup=price_keyboard,
-        parse_mode='HTML'
-    )
+    if is_callback:
+        await update.callback_query.edit_message_text(
+            text=PRICE_CALCULATION_QUESTION,
+            reply_markup=price_keyboard,
+            parse_mode='HTML'
+        )
+    else:
+        await update.message.reply_text(
+            text=PRICE_CALCULATION_QUESTION,
+            reply_markup=price_keyboard,
+            parse_mode='HTML'
+        )
 
     return MealPlanStates.ASKING_PRICE_CALCULATION
 
@@ -983,10 +888,7 @@ async def start_generation_process(update: Update, context: ContextTypes.DEFAULT
         "special_requests": context.user_data.get("special_requests"),
         "batch_cooking": context.user_data.get("batch_cooking_enabled", False),
     }
-    medical_context = {
-        "chronic_conditions_status": context.user_data.get("chronic_conditions_status"),
-        "acute_conditions": context.user_data.get("acute_conditions")
-    }
+    medical_context = None  # Медицинская функциональность удалена
     calculate_prices = context.user_data.get("calculate_prices", False)
     shop_preference = context.user_data.get("shop_preference", "single")  # По умолчанию один магазин
     start_date = context.user_data.get("plan_start_date")
@@ -1331,23 +1233,17 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
                 "pantry_products": context.user_data.get("pantry_products_text")  # Продукты из кладовой
             }
 
-            # Собираем временные медицинские данные (Этап 4 - доработка)
-            medical_context = {
-                "chronic_conditions_status": context.user_data.get("chronic_conditions_status"),
-                "acute_conditions": context.user_data.get("acute_conditions")
-            }
-
             # Получаем дату начала плана из context (если была установлена)
             start_date = context.user_data.get("plan_start_date")
 
-            # Генерируем новый план с учетом preferences и медицинского контекста
+            # Генерируем новый план с учетом preferences
             meal_plan = await MealPlanService.generate_meal_plan(
                 session,
                 user.telegram_id,
                 period,
                 start_date=start_date,
                 preferences=preferences,
-                medical_context=medical_context
+                medical_context=None  # Медицинская функциональность удалена
             )
 
             # Получаем выбор пользователя по расчёту цены

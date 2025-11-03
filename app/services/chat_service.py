@@ -225,12 +225,6 @@ class ChatService:
             "budget_category": user.budget_category.value if user.budget_category else None,
             "preferred_cooking_time_minutes": user.preferred_cooking_time_minutes,
 
-            # Медицинские данные
-            "chronic_conditions": user.chronic_conditions or [],
-            "removed_organs": user.removed_organs or [],
-            "medical_restrictions": user.medical_restrictions or [],
-            "medical_notes": user.medical_notes,
-
             # Дневная статистика из РЕАЛЬНОГО дневника питания
             "today_calories": today_totals["calories"],
             "today_proteins": round(today_totals["proteins"], 1),

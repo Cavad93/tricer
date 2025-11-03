@@ -42,9 +42,7 @@ class MealPlanService:
                 - favorite_foods: любимые блюда/продукты
                 - additional_dislikes: нежелательные продукты
                 - special_requests: особые пожелания
-            medical_context: Временные медицинские данные (Этап 4 - доработка)
-                - chronic_conditions_status: текущее состояние хронических заболеваний
-                - acute_conditions: текущие острые состояния
+            medical_context: Не используется (устаревший параметр)
             old_plan_id: ID предыдущего плана (для внесения изменений)
             force_ai: Принудительная генерация через AI (игнорируя кэш)
 
@@ -76,8 +74,7 @@ class MealPlanService:
         # Кэш используется только если:
         # 1. Нет специальных предпочтений (favorite_foods, additional_dislikes, special_requests, pantry_products)
         # 2. Нет изменений старого плана (old_plan_id)
-        # 3. Нет особого медицинского контекста (chronic_conditions_status, acute_conditions)
-        # 4. Не установлен флаг force_ai
+        # 3. Не установлен флаг force_ai
 
         can_use_cache = not force_ai and not old_plan_id
         if preferences:
@@ -88,13 +85,6 @@ class MealPlanService:
                 preferences.get("pantry_products")
             ])
             can_use_cache = can_use_cache and not has_custom_preferences
-
-        if medical_context:
-            has_custom_medical = any([
-                medical_context.get("chronic_conditions_status"),
-                medical_context.get("acute_conditions")
-            ])
-            can_use_cache = can_use_cache and not has_custom_medical
 
         parsed_plan = None
         used_cache = False
@@ -330,11 +320,6 @@ class MealPlanService:
         special_requests = preferences.get("special_requests")
         pantry_products = preferences.get("pantry_products")  # Продукты из кладовой
 
-        # Обрабатываем временный медицинский контекст (Этап 4 - доработка)
-        medical_context = medical_context or {}
-        chronic_conditions_status = medical_context.get("chronic_conditions_status")
-        acute_conditions = medical_context.get("acute_conditions")
-
         # Маппинг бюджетных категорий
         budget_descriptions = {
             "economy": "Эконом (бюджетные продукты, простые рецепты, средняя цена продуктов: 100-150₽ на прием пищи)",
@@ -381,34 +366,6 @@ class MealPlanService:
         allergies_text = ""
         if user.allergies and len(user.allergies) > 0:
             allergies_text = f"\n❗ АЛЛЕРГИИ/ИСКЛЮЧЕНИЯ: {', '.join(user.allergies)}"
-
-        # Формируем информацию о медицинских ограничениях (Этап 4)
-        medical_info_text = ""
-        if user.chronic_conditions and len(user.chronic_conditions) > 0:
-            medical_info_text += f"\n🏥 ХРОНИЧЕСКИЕ ЗАБОЛЕВАНИЯ: {', '.join(user.chronic_conditions)}"
-            # Добавляем текущее состояние, если пользователь уточнил
-            if chronic_conditions_status and chronic_conditions_status != "no_changes":
-                medical_info_text += f"\n   📋 ТЕКУЩЕЕ СОСТОЯНИЕ: {chronic_conditions_status}"
-        if user.removed_organs and len(user.removed_organs) > 0:
-            medical_info_text += f"\n⚕️ УДАЛЕННЫЕ ОРГАНЫ: {', '.join(user.removed_organs)}"
-
-        # Добавляем информацию об острых состояниях (Этап 4 - доработка)
-        if acute_conditions:
-            medical_info_text += f"\n🌡️ ОСТРЫЕ СОСТОЯНИЯ (ВРЕМЕННЫЕ): {acute_conditions}"
-            medical_info_text += "\n   ⚠️ ВАЖНО: Учти эти временные состояния при составлении рациона! Рацион должен быть щадящим и подходящим для текущего состояния."
-
-        # Добавляем медицинские ограничения по питанию, если они есть
-        medical_restrictions_text = ""
-        if user.medical_restrictions and len(user.medical_restrictions) > 0:
-            restrictions = user.medical_restrictions
-            if restrictions.get("foods_to_avoid"):
-                medical_restrictions_text += f"\n❌ ИЗБЕГАТЬ: {', '.join(restrictions['foods_to_avoid'])}"
-            if restrictions.get("foods_to_limit"):
-                medical_restrictions_text += f"\n⚠️ ОГРАНИЧИТЬ: {', '.join(restrictions['foods_to_limit'])}"
-            if restrictions.get("foods_to_increase"):
-                medical_restrictions_text += f"\n✅ УВЕЛИЧИТЬ: {', '.join(restrictions['foods_to_increase'])}"
-            if restrictions.get("nutrients_to_focus"):
-                medical_restrictions_text += f"\n🎯 ФОКУС НА НУТРИЕНТАХ: {', '.join(restrictions['nutrients_to_focus'])}"
 
         period_text = {
             PlanPeriod.DAY: "на 1 день",
@@ -562,14 +519,10 @@ class MealPlanService:
 - Уровень активности: {activity_level_desc}
 - Цель: {goal_desc}
 - Тип питания: {diet_desc}
-- Бюджет: {budget_desc}{allergies_text}{medical_info_text}
+- Бюджет: {budget_desc}{allergies_text}
 
 ⚠️ ВАЖНО: Учитывай возраст, вес и уровень активности при расчёте микронутриентов!
    Для более активных людей и людей с большим весом потребности в некоторых микронутриентах выше.
-
-🏥 МЕДИЦИНСКИЕ ОГРАНИЧЕНИЯ (Этап 4 - КРИТИЧЕСКИ ВАЖНО):{medical_restrictions_text}
-
-⚠️ ВНИМАНИЕ: Строго соблюдай все медицинские ограничения! Это влияет на здоровье пользователя.
 
 🎯 ЦЕЛЕВЫЕ ПОКАЗАТЕЛИ НА ДЕНЬ:
 - Калории: {user.target_calories} ккал

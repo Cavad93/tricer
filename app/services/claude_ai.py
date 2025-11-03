@@ -364,25 +364,13 @@ class ClaudeAIService:
             # System prompt с ПОЛНЫМ контекстом пользователя
             preferred_name = user_context.get('preferred_name', 'друг')
 
-            # Формируем информацию о медицинских данных
+            # Формируем информацию об аллергиях и непереносимостях
             medical_info = ""
-            chronic_conditions = user_context.get('chronic_conditions', [])
-            removed_organs = user_context.get('removed_organs', [])
-            medical_restrictions = user_context.get('medical_restrictions', [])
             allergies = user_context.get('allergies', [])
 
-            if chronic_conditions or removed_organs or medical_restrictions or allergies:
-                medical_info = "\nМЕДИЦИНСКИЕ ДАННЫЕ (учитывай ОБЯЗАТЕЛЬНО!):\n"
-                if chronic_conditions:
-                    medical_info += f"- Хронические заболевания: {', '.join(chronic_conditions)}\n"
-                if removed_organs:
-                    medical_info += f"- Удаленные органы: {', '.join(removed_organs)}\n"
-                if medical_restrictions:
-                    medical_info += f"- Медицинские ограничения: {', '.join(medical_restrictions)}\n"
-                if allergies:
-                    medical_info += f"- Аллергии: {', '.join(allergies)}\n"
-                if user_context.get('medical_notes'):
-                    medical_info += f"- Примечания врача: {user_context.get('medical_notes')}\n"
+            if allergies:
+                medical_info = "\nАЛЛЕРГИИ И НЕПЕРЕНОСИМОСТЬ (учитывай ОБЯЗАТЕЛЬНО!):\n"
+                medical_info += f"- Аллергии: {', '.join(allergies)}\n"
 
             # Формируем информацию о недавних приемах пищи
             recent_meals_info = ""
@@ -815,7 +803,6 @@ class ClaudeAIService:
             meal_type = recommendation_context["meal_type"]
             current_time = recommendation_context["current_time"]
             user_prefs = recommendation_context["user_preferences"]
-            medical = recommendation_context["medical_restrictions"]
 
             # Формируем информацию о плане
             has_plan = recommendation_context["has_plan"]
@@ -847,14 +834,6 @@ class ClaudeAIService:
 ВАЖНО: Это блюдо ДОЛЖНО быть первым вариантом в твоих рекомендациях (установи from_plan: true)!
 """
 
-            # Формируем медицинские ограничения
-            medical_info = ""
-            if medical:
-                medical_info = f"\n\n🏥 Медицинские ограничения:\n"
-                for restriction_type, items in medical.items():
-                    if items:
-                        medical_info += f"- {restriction_type}: {', '.join(items)}\n"
-
             prompt = f"""Ты AI-нутрициолог помогающий с питанием. Пользователь спрашивает: "{user_message}"
 
 📊 ТЕКУЩАЯ СИТУАЦИЯ:
@@ -878,7 +857,6 @@ class ClaudeAIService:
 - Время на готовку: {user_prefs['cooking_time']} минут (если указано)
 {f"- Аллергии: {', '.join(user_prefs['allergies'])}" if user_prefs['allergies'] else ""}
 {f"- Не любит: {', '.join(user_prefs['dislikes'])}" if user_prefs['dislikes'] else ""}
-{medical_info}
 {plan_info}
 {planned_meal_info}
 
@@ -888,7 +866,7 @@ class ClaudeAIService:
 3. Второй и третий - альтернативные полезные варианты
 4. Для каждого блюда укажи точные КБЖУ
 5. Учти оставшиеся калории и макронутриенты
-6. Учти предпочтения, аллергии и медицинские ограничения
+6. Учти предпочтения и аллергии
 
 ВАЖНО: Верни ответ в формате JSON со структурой:
 {{
@@ -956,7 +934,7 @@ class ClaudeAIService:
 
         Args:
             meal_choice: Выбор пользователя (название блюда)
-            user_context: Контекст пользователя с медицинскими данными
+            user_context: Контекст пользователя с аллергиями
 
         Returns:
             Словарь с результатом проверки:
@@ -967,24 +945,21 @@ class ClaudeAIService:
             }
         """
         try:
-            medical = user_context.get("medical_restrictions", {})
+            allergies = user_context.get("allergies", [])
 
-            medical_info = ""
-            if medical:
-                medical_info = "🏥 Медицинские ограничения пользователя:\n"
-                for restriction_type, items in medical.items():
-                    if items:
-                        medical_info += f"- {restriction_type}: {', '.join(items)}\n"
+            allergy_info = ""
+            if allergies:
+                allergy_info = f"⚠️ Аллергии пользователя: {', '.join(allergies)}"
 
             prompt = f"""Проверь безопасность выбора еды для пользователя.
 
 ВЫБОР ПОЛЬЗОВАТЕЛЯ: {meal_choice}
 
-{medical_info if medical_info else "Медицинских ограничений нет."}
+{allergy_info if allergy_info else "Аллергий нет."}
 
 ТВОЯ ЗАДАЧА:
-1. Оцени, может ли данное блюдо навредить здоровью пользователя
-2. Учти все медицинские ограничения, хронические заболевания
+1. Оцени, может ли данное блюдо содержать аллергены
+2. Учти все аллергии пользователя
 3. Если есть риски - предложи безопасную альтернативу
 
 ВАЖНО: Верни ответ в формате JSON:
@@ -1046,31 +1021,28 @@ class ClaudeAIService:
             Текст с рекомендациями в поддерживающем тоне
         """
         try:
-            medical = user_context.get("medical_restrictions", {})
+            allergies = user_context.get("allergies", [])
 
-            medical_info = ""
-            if medical:
-                medical_info = "Медицинский контекст:\n"
-                for restriction_type, items in medical.items():
-                    if items:
-                        medical_info += f"- {restriction_type}: {', '.join(items)}\n"
+            allergy_info = ""
+            if allergies:
+                allergy_info = f"Аллергии пользователя: {', '.join(allergies)}\n"
 
             warnings_text = "\n".join(f"- {w}" for w in warnings)
 
-            prompt = f"""Пользователь выбрал блюдо, которое может ему навредить, но это его выбор и мы его уважаем.
+            prompt = f"""Пользователь выбрал блюдо, которое может содержать аллергены, но это его выбор и мы его уважаем.
 
 ВЫБРАННОЕ БЛЮДО: {meal_choice}
 
 ПРЕДУПРЕЖДЕНИЯ:
 {warnings_text}
 
-{medical_info if medical_info else ""}
+{allergy_info if allergy_info else ""}
 
 ТВОЯ ЗАДАЧА:
 1. Сгенерировать поддерживающее сообщение БЕЗ осуждения
 2. Признать право человека на свой выбор
-3. Дать конкретные рекомендации как минимизировать негативный эффект
-4. Привести 1-2 факта из актуальных исследований о влиянии на здоровье (с годом)
+3. Дать конкретные рекомендации как минимизировать возможную аллергическую реакцию
+4. Напомнить о важности осторожности при аллергиях
 5. Закончить позитивным настроем
 
 ТОН: Понимающий, поддерживающий, дружелюбный, без осуждения или "чтения морали"
