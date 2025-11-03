@@ -21,6 +21,114 @@ from app.db.session import async_session_maker
 from sqlalchemy import select
 
 
+def _format_top_micronutrients(micronutrients: dict, limit: int = 5) -> str:
+    """
+    Форматирует топ-N микронутриентов для отображения пользователю.
+
+    Args:
+        micronutrients: Словарь с микронутриентами (формат из Claude)
+        limit: Количество микронутриентов для отображения
+
+    Returns:
+        Отформатированная строка или пустая строка
+    """
+    if not micronutrients:
+        return ""
+
+    all_nutrients = []
+
+    # Названия витаминов для отображения
+    vitamin_names = {
+        "vitamin_a": "Витамин A",
+        "vitamin_b1": "Витамин B1",
+        "vitamin_b2": "Витамин B2",
+        "vitamin_b3": "Витамин B3",
+        "vitamin_b6": "Витамин B6",
+        "vitamin_b9": "Витамин B9",
+        "vitamin_b12": "Витамин B12",
+        "vitamin_c": "Витамин C",
+        "vitamin_d": "Витамин D",
+        "vitamin_e": "Витамин E",
+        "vitamin_k": "Витамин K",
+    }
+
+    # Названия минералов для отображения
+    mineral_names = {
+        "iron": "Железо",
+        "calcium": "Кальций",
+        "magnesium": "Магний",
+        "potassium": "Калий",
+        "sodium": "Натрий",
+        "zinc": "Цинк",
+        "phosphorus": "Фосфор",
+        "iodine": "Йод",
+        "selenium": "Селен",
+    }
+
+    # Единицы измерения
+    vitamin_units = {
+        "vitamin_a": "мкг",
+        "vitamin_b1": "мг",
+        "vitamin_b2": "мг",
+        "vitamin_b3": "мг",
+        "vitamin_b6": "мг",
+        "vitamin_b9": "мкг",
+        "vitamin_b12": "мкг",
+        "vitamin_c": "мг",
+        "vitamin_d": "мкг",
+        "vitamin_e": "мг",
+        "vitamin_k": "мкг",
+    }
+
+    mineral_units = {
+        "iron": "мг",
+        "calcium": "мг",
+        "magnesium": "мг",
+        "potassium": "мг",
+        "sodium": "мг",
+        "zinc": "мг",
+        "phosphorus": "мг",
+        "iodine": "мкг",
+        "selenium": "мкг",
+    }
+
+    # Собираем витамины
+    for key, value in micronutrients.items():
+        if key in vitamin_names and value and value > 0:
+            name = vitamin_names[key]
+            unit = vitamin_units.get(key, "мг")
+            all_nutrients.append((name, value, unit))
+
+    # Собираем минералы
+    for key, value in micronutrients.items():
+        if key in mineral_names and value and value > 0:
+            name = mineral_names[key]
+            unit = mineral_units.get(key, "мг")
+            all_nutrients.append((name, value, unit))
+
+    if not all_nutrients:
+        return ""
+
+    # Сортируем по значению (упрощенно, без % от суточной нормы)
+    all_nutrients.sort(key=lambda x: x[1], reverse=True)
+    top_nutrients = all_nutrients[:limit]
+
+    # Форматируем
+    lines = ["🌟 *Богат питательными веществами:*"]
+    for name, value, unit in top_nutrients:
+        # Форматируем значение красиво
+        if value >= 100:
+            value_str = f"{int(value)}"
+        elif value >= 10:
+            value_str = f"{value:.1f}"
+        else:
+            value_str = f"{value:.2f}"
+
+        lines.append(f"  • {name}: {value_str} {unit}")
+
+    return "\n".join(lines)
+
+
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик фото еды - распознавание и предложение добавить в дневник
@@ -691,6 +799,14 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"🧈 Жиры: {current['fats']:.0f}/{target['fats']}г\n"
                 f"🍞 Углеводы: {current['carbs']:.0f}/{target['carbs']}г\n\n"
             )
+
+            # Добавляем информацию о топ-5 микронутриентах
+            if recognized_food.get("total_micronutrients"):
+                micronutrients_text = _format_top_micronutrients(
+                    recognized_food["total_micronutrients"]
+                )
+                if micronutrients_text:
+                    success_text += micronutrients_text + "\n"
 
             # Психотерапевтический подход и проверка отклонений от плана
             deviation_detected = False

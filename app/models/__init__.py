@@ -4,6 +4,7 @@ from app.models.meal import Meal, MealFood, MealType
 from app.models.meal_plan import MealPlan, MealPlanDay, PlannedMeal, PlanPeriod
 from app.models.shopping_list import ShoppingList, ShoppingItem
 from app.models.product_price import ProductPrice
+from app.models.product import Product
 from app.models.micronutrients import DailyMicronutrients, MicronutrientTargets
 from app.models.food_correction import FoodRecognitionCorrection
 from app.models.user_consent import UserConsent
@@ -35,6 +36,7 @@ __all__ = [
     "ShoppingList",
     "ShoppingItem",
     "ProductPrice",
+    "Product",
     "DailyMicronutrients",
     "MicronutrientTargets",
     "FoodRecognitionCorrection",
