@@ -142,10 +142,19 @@ class MealPlanService:
             from app.config import settings
             ai_service = ClaudeAIService()
             try:
-                # Используем Haiku 4.5 для генерации планов (быстрее и дешевле)
-                logger.info(f"🤖 Generating meal plan with AI for user {user_id} (model: Haiku 4.5)")
+                # Выбираем модель в зависимости от сложности задачи
+                if period_type == PlanPeriod.DAY:
+                    # Простой план на день - Haiku 4.5 (быстрее и дешевле)
+                    model_to_use = settings.CLAUDE_MODEL_HAIKU_4_5
+                    model_name = "Haiku 4.5"
+                else:
+                    # Сложные планы на неделю/месяц - Sonnet 4.5 (лучшее качество)
+                    model_to_use = settings.CLAUDE_MODEL_SONNET
+                    model_name = "Sonnet 4.5"
+
+                logger.info(f"🤖 Generating {period_type.value} meal plan with AI for user {user_id} (model: {model_name})")
                 ai_response = await ai_service.async_client.messages.create(
-                    model=settings.CLAUDE_MODEL_HAIKU_4_5,
+                    model=model_to_use,
                     max_tokens=16000,
                     temperature=0.8,
                     messages=[{
