@@ -12,10 +12,12 @@ from telegram.ext import (
     ContextTypes,
 )
 from telegram.request import HTTPXRequest
-from loguru import logger
 import sys
-
 from app.config import settings
+from app.core.loguru_setup import setup_bot_logger
+
+# Настройка профессиональной системы логирования
+logger = setup_bot_logger(level=settings.LOG_LEVEL)
 from app.db.session import async_session_maker
 from sqlalchemy import select
 from app.models.user import User
@@ -155,13 +157,7 @@ from app.metrics import (
 )
 
 
-# Настройка логирования
-logger.remove()
-logger.add(
-    sys.stderr,
-    format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
-    level=settings.LOG_LEVEL,
-)
+# Логирование уже настроено через setup_bot_logger() в начале файла
 
 
 async def safe_answer_callback_query(query, text: str = None, show_alert: bool = False):

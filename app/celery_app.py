@@ -7,7 +7,10 @@ event loop и database соединениями
 from celery import Celery
 from celery.signals import worker_process_init, worker_process_shutdown, task_postrun
 from app.config import settings
-from loguru import logger
+from app.core.loguru_setup import setup_worker_logger
+
+# Настройка профессиональной системы логирования для воркера
+logger = setup_worker_logger(level=settings.LOG_LEVEL)
 
 # Создание Celery приложения
 celery_app = Celery(

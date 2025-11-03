@@ -15,7 +15,11 @@ Or with Celery CLI:
         Несколько экземпляров приведут к дублированию задач.
 """
 from app.celery_app import celery_app
-from loguru import logger
+from app.core.loguru_setup import setup_beat_logger
+from app.config import settings
+
+# Настройка профессиональной системы логирования для планировщика
+logger = setup_beat_logger(level=settings.LOG_LEVEL)
 
 
 if __name__ == '__main__':
