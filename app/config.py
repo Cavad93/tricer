@@ -18,7 +18,27 @@ class Settings(BaseSettings):
 
     # Claude API
     ANTHROPIC_API_KEY: str
-    CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+
+    # === CLAUDE MODELS CONFIGURATION ===
+    # Разные модели для разных задач для оптимизации стоимости и скорости
+
+    # Claude Sonnet 4.5 - премиум модель для сложных задач
+    # Используется для: анализ меню ресторана, сложные консультации, медицинский анализ
+    # Цена: $3/$15 per million tokens (input/output)
+    CLAUDE_MODEL_SONNET_4: str = "claude-sonnet-4-5"
+
+    # Claude Haiku 4.5 - быстрая и дешевая модель с хорошим качеством
+    # Используется для: составление планов питания, проверка дневника, веб-поиск и извлечение данных
+    # Цена: $1/$5 per million tokens (input/output) - в 3 раза дешевле
+    CLAUDE_MODEL_HAIKU_4_5: str = "claude-haiku-4-5"
+
+    # Claude Haiku 3.5 - модель для анализа фото еды
+    # Используется для: распознавание еды по фото
+    # Цена: $1/$5 per million tokens (input/output)
+    CLAUDE_MODEL_HAIKU_3_5: str = "claude-3-5-haiku-latest"
+
+    # По умолчанию (для обратной совместимости)
+    CLAUDE_MODEL: str = "claude-sonnet-4-5"
 
     # Claude API Rate Limiting
     # Anthropic tiers: Tier 1=50 req/min, Tier 2=1000, Tier 3=2000, Tier 4=4000

@@ -138,7 +138,8 @@ class ClaudeAIService:
     async def analyze_food_photo(
         self,
         image_bytes: bytes,
-        additional_context: str = ""
+        additional_context: str = "",
+        model: Optional[str] = None
     ) -> Dict:
         """
         Распознавание еды по фото через Claude Vision API
@@ -146,6 +147,7 @@ class ClaudeAIService:
         Args:
             image_bytes: Изображение в байтах
             additional_context: Дополнительный контекст для анализа
+            model: Модель Claude для использования (по умолчанию Haiku 3.5 для фото)
 
         Returns:
             Словарь с информацией о блюде
@@ -280,12 +282,14 @@ class ClaudeAIService:
 - Это приблизительная оценка на основе типичного состава
 - Единицы: витамины A,D,E в мкг; группа B в мг; минералы в мг"""
 
-            logger.info("Sending request to Claude API for food recognition")
+            # Используем Haiku 3.5 для анализа фото по умолчанию (дешевле и быстрее)
+            model_to_use = model or settings.CLAUDE_MODEL_HAIKU_3_5
+            logger.info(f"Sending request to Claude API for food recognition (model: {model_to_use})")
 
             # Отправка запроса к Claude API (с rate limiting и retry)
             response = await self._call_with_rate_limit_and_retry(
                 self.async_client.messages.create,
-                model=self.model,
+                model=model_to_use,
                 max_tokens=2000,
                 messages=[
                     {

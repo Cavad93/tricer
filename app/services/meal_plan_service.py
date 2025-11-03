@@ -152,9 +152,10 @@ class MealPlanService:
             from app.config import settings
             ai_service = ClaudeAIService()
             try:
-                logger.info(f"🤖 Generating meal plan with AI for user {user_id}")
+                # Используем Haiku 4.5 для генерации планов (быстрее и дешевле)
+                logger.info(f"🤖 Generating meal plan with AI for user {user_id} (model: Haiku 4.5)")
                 ai_response = await ai_service.async_client.messages.create(
-                    model=settings.CLAUDE_MODEL,
+                    model=settings.CLAUDE_MODEL_HAIKU_4_5,
                     max_tokens=16000,
                     temperature=0.8,
                     messages=[{
