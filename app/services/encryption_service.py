@@ -1,162 +1,169 @@
 """
-Сервис шифрования медицинских данных (152-ФЗ)
+Сервис шифрования персональных данных (152-ФЗ)
 
 Использует симметричное шифрование (Fernet) для защиты
-чувствительных персональных данных о здоровье
+всех персональных данных пользователей
 """
 
 import os
 import json
-import logging
+import base64
 from cryptography.fernet import Fernet
-from typing import Any, Optional
-
-logger = logging.getLogger(__name__)
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from typing import Any, Optional, List
+from loguru import logger
 
 
 class EncryptionService:
-    """Сервис для шифрования/дешифрования медицинских данных"""
+    """Сервис для шифрования/дешифрования персональных данных"""
 
-    def __init__(self):
-        """Инициализация сервиса с ключом шифрования"""
-        # Получаем ключ из переменных окружения
-        encryption_key = os.getenv("ENCRYPTION_KEY")
+    _cipher: Optional[Fernet] = None
 
-        if not encryption_key:
-            logger.warning(
-                "ENCRYPTION_KEY not found in environment variables! "
-                "Generating a new key..."
-            )
-            encryption_key = Fernet.generate_key().decode()
-            logger.warning(
-                f"Generated encryption key: {encryption_key}\n"
-                "IMPORTANT: Save this key to .env file as ENCRYPTION_KEY!"
-            )
+    @classmethod
+    def _get_cipher(cls) -> Fernet:
+        """Получить экземпляр Fernet cipher"""
+        if cls._cipher is None:
+            # Получаем ключ из переменных окружения или генерируем из SECRET_KEY
+            encryption_key = os.getenv("ENCRYPTION_KEY")
 
-        # Создаем Fernet cipher
-        try:
-            if isinstance(encryption_key, str):
-                encryption_key = encryption_key.encode()
-            self.cipher = Fernet(encryption_key)
-        except Exception as e:
-            logger.error(f"Failed to initialize encryption: {e}")
-            raise ValueError("Invalid encryption key")
+            if not encryption_key:
+                # Используем SECRET_KEY из settings
+                from app.config import settings
 
-    def encrypt(self, data: Any) -> Optional[bytes]:
-        """
-        Шифрует данные
+                logger.info("ENCRYPTION_KEY not found, deriving from SECRET_KEY using PBKDF2")
 
-        Args:
-            data: Данные для шифрования (str, list, dict)
-
-        Returns:
-            Зашифрованные байты или None при ошибке
-        """
-        if data is None:
-            return None
-
-        try:
-            # Конвертируем в JSON строку
-            if isinstance(data, (list, dict)):
-                json_string = json.dumps(data, ensure_ascii=False)
+                # Генерируем ключ из SECRET_KEY используя PBKDF2
+                kdf = PBKDF2(
+                    algorithm=hashes.SHA256(),
+                    length=32,
+                    salt=b'nutriai_encryption_salt_v1',
+                    iterations=100000,
+                )
+                key = base64.urlsafe_b64encode(kdf.derive(settings.SECRET_KEY.encode()))
+                cls._cipher = Fernet(key)
             else:
-                json_string = str(data)
+                # Используем предоставленный ключ
+                if isinstance(encryption_key, str):
+                    encryption_key = encryption_key.encode()
+                cls._cipher = Fernet(encryption_key)
 
-            # Шифруем
-            encrypted = self.cipher.encrypt(json_string.encode('utf-8'))
-            return encrypted
+        return cls._cipher
 
-        except Exception as e:
-            logger.error(f"Encryption error: {e}")
-            return None
-
-    def decrypt(self, encrypted_data: Optional[bytes]) -> Any:
+    @classmethod
+    def encrypt_string(cls, value: Optional[str]) -> Optional[str]:
         """
-        Дешифрует данные
+        Зашифровать строку
 
         Args:
-            encrypted_data: Зашифрованные байты
+            value: Строка для шифрования
 
         Returns:
-            Расшифрованные данные (str, list, dict) или None при ошибке
+            Зашифрованная строка (base64) или None
         """
-        if not encrypted_data:
+        if value is None or value == "":
             return None
 
         try:
-            # Дешифруем
-            decrypted_bytes = self.cipher.decrypt(encrypted_data)
-            decrypted_string = decrypted_bytes.decode('utf-8')
-
-            # Пытаемся распарсить как JSON
-            try:
-                return json.loads(decrypted_string)
-            except json.JSONDecodeError:
-                # Если не JSON, возвращаем строку
-                return decrypted_string
-
+            cipher = cls._get_cipher()
+            encrypted_bytes = cipher.encrypt(value.encode('utf-8'))
+            # Возвращаем как строку (base64)
+            return encrypted_bytes.decode('ascii')
         except Exception as e:
-            logger.error(f"Decryption error: {e}")
+            logger.error(f"Encryption error: {repr(e)}")
+            raise
+
+    @classmethod
+    def decrypt_string(cls, encrypted_value: Optional[str]) -> Optional[str]:
+        """
+        Расшифровать строку
+
+        Args:
+            encrypted_value: Зашифрованная строка (base64)
+
+        Returns:
+            Расшифрованная строка или None
+        """
+        if encrypted_value is None or encrypted_value == "":
             return None
 
-    def encrypt_str(self, text: str) -> Optional[bytes]:
-        """Шифрует строку"""
-        if not text:
+        try:
+            cipher = cls._get_cipher()
+            # Конвертируем из строки в bytes
+            decrypted_bytes = cipher.decrypt(encrypted_value.encode('ascii'))
+            return decrypted_bytes.decode('utf-8')
+        except Exception as e:
+            logger.warning(f"Decryption error (possibly unencrypted data): {repr(e)}")
+            # Возвращаем None при ошибке (данные могут быть не зашифрованы)
             return None
-        return self.encrypt(text)
 
-    def decrypt_str(self, encrypted_data: Optional[bytes]) -> Optional[str]:
-        """Дешифрует в строку"""
-        if not encrypted_data:
+    @classmethod
+    def encrypt_int(cls, value: Optional[int]) -> Optional[str]:
+        """Зашифровать целое число"""
+        if value is None:
             return None
-        result = self.decrypt(encrypted_data)
-        return str(result) if result is not None else None
+        return cls.encrypt_string(str(value))
 
-    def encrypt_list(self, items: list) -> Optional[bytes]:
-        """Шифрует список"""
-        if not items:
+    @classmethod
+    def decrypt_int(cls, encrypted_value: Optional[str]) -> Optional[int]:
+        """Расшифровать целое число"""
+        if encrypted_value is None:
             return None
-        return self.encrypt(items)
 
-    def decrypt_list(self, encrypted_data: Optional[bytes]) -> Optional[list]:
-        """Дешифрует в список"""
-        if not encrypted_data:
+        decrypted_str = cls.decrypt_string(encrypted_value)
+        if decrypted_str is None:
             return None
-        result = self.decrypt(encrypted_data)
-        return result if isinstance(result, list) else None
 
-    def encrypt_dict(self, data: dict) -> Optional[bytes]:
-        """Шифрует словарь"""
-        if not data:
+        try:
+            return int(decrypted_str)
+        except ValueError:
+            logger.error(f"Failed to convert to int: {decrypted_str}")
             return None
-        return self.encrypt(data)
 
-    def decrypt_dict(self, encrypted_data: Optional[bytes]) -> Optional[dict]:
-        """Дешифрует в словарь"""
-        if not encrypted_data:
+    @classmethod
+    def encrypt_float(cls, value: Optional[float]) -> Optional[str]:
+        """Зашифровать число с плавающей точкой"""
+        if value is None:
             return None
-        result = self.decrypt(encrypted_data)
-        return result if isinstance(result, dict) else None
+        return cls.encrypt_string(str(value))
 
+    @classmethod
+    def decrypt_float(cls, encrypted_value: Optional[str]) -> Optional[float]:
+        """Расшифровать число с плавающей точкой"""
+        if encrypted_value is None:
+            return None
 
-# Глобальный экземпляр сервиса
-_encryption_service = None
+        decrypted_str = cls.decrypt_string(encrypted_value)
+        if decrypted_str is None:
+            return None
 
+        try:
+            return float(decrypted_str)
+        except ValueError:
+            logger.error(f"Failed to convert to float: {decrypted_str}")
+            return None
 
-def get_encryption_service() -> EncryptionService:
-    """Получить глобальный экземпляр сервиса шифрования"""
-    global _encryption_service
-    if _encryption_service is None:
-        _encryption_service = EncryptionService()
-    return _encryption_service
+    @classmethod
+    def encrypt_list(cls, value: Optional[List[Any]]) -> Optional[str]:
+        """Зашифровать список"""
+        if value is None or len(value) == 0:
+            return None
 
+        json_str = json.dumps(value, ensure_ascii=False)
+        return cls.encrypt_string(json_str)
 
-# Вспомогательные функции для удобства
-def encrypt_data(data: Any) -> Optional[bytes]:
-    """Быстрое шифрование данных"""
-    return get_encryption_service().encrypt(data)
+    @classmethod
+    def decrypt_list(cls, encrypted_value: Optional[str]) -> Optional[List[Any]]:
+        """Расшифровать список"""
+        if encrypted_value is None:
+            return None
 
+        decrypted_str = cls.decrypt_string(encrypted_value)
+        if decrypted_str is None:
+            return None
 
-def decrypt_data(encrypted_data: Optional[bytes]) -> Any:
-    """Быстрое дешифрование данных"""
-    return get_encryption_service().decrypt(encrypted_data)
+        try:
+            return json.loads(decrypted_str)
+        except json.JSONDecodeError:
+            logger.error(f"Failed to decode JSON: {decrypted_str}")
+            return None

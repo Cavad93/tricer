@@ -61,22 +61,26 @@ class User(Base):
     # ID
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(Integer, unique=True, nullable=False, index=True)
-    username = Column(String(255), nullable=True)
-    first_name = Column(String(255), nullable=True)
-    last_name = Column(String(255), nullable=True)
     language_code = Column(String(10), default="ru")
-    preferred_name = Column(String(50), nullable=True)  # Имя для обращения
 
-    # Локация (для подбора цен)
-    country = Column(String(100), nullable=True)  # Страна
-    city = Column(String(100), nullable=True)  # Город
+    # Зашифрованные персональные данные (152-ФЗ)
+    username_encrypted = Column(String, nullable=True)  # Зашифрованный username
+    first_name_encrypted = Column(String, nullable=True)  # Зашифрованное имя
+    last_name_encrypted = Column(String, nullable=True)  # Зашифрованная фамилия
+    preferred_name_encrypted = Column(String, nullable=True)  # Зашифрованное имя для обращения
+
+    # Зашифрованная локация
+    country_encrypted = Column(String, nullable=True)  # Зашифрованная страна
+    city_encrypted = Column(String, nullable=True)  # Зашифрованный город
 
     # Профиль
     gender = Column(SQLEnum(Gender), nullable=True)
-    birth_year = Column(Integer, nullable=True)  # Год рождения
-    height = Column(Integer, nullable=True)  # Рост в см
-    current_weight = Column(Float, nullable=True)  # Текущий вес в кг
-    target_weight = Column(Float, nullable=True)  # Целевой вес в кг
+
+    # Зашифрованные данные профиля
+    birth_year_encrypted = Column(String, nullable=True)  # Зашифрованный год рождения
+    height_encrypted = Column(String, nullable=True)  # Зашифрованный рост
+    current_weight_encrypted = Column(String, nullable=True)  # Зашифрованный текущий вес
+    target_weight_encrypted = Column(String, nullable=True)  # Зашифрованный целевой вес
     goal = Column(SQLEnum(Goal), nullable=True)
     activity_level = Column(SQLEnum(ActivityLevel), nullable=True)
 
@@ -88,14 +92,16 @@ class User(Base):
 
     # Предпочтения
     diet_type = Column(SQLEnum(DietType), default=DietType.OMNIVORE)
-    food_exclusions = Column(JSONB, default=list)  # Исключения из рациона (категорически не хочу в рационе)
     dislikes = Column(JSONB, default=list)  # Список нелюбимых продуктов (просто не нравится)
     budget_category = Column(SQLEnum(BudgetCategory), default=BudgetCategory.NORMAL)
     preferred_cooking_time_minutes = Column(Integer, nullable=True)  # Предпочитаемое время на готовку в минутах
 
-    # Wellness данные (для подбора оптимального рациона, НЕ для диагностики)
-    chronic_conditions = Column(JSONB, default=list)  # Список хронических заболеваний для учета при планировании питания
-    removed_organs = Column(JSONB, default=list)  # Список удаленных органов для учета при планировании питания
+    # Зашифрованные персональные предпочтения
+    food_exclusions_encrypted = Column(String, nullable=True)  # Зашифрованные исключения из рациона
+
+    # Зашифрованные wellness данные (для подбора оптимального рациона, НЕ для диагностики)
+    chronic_conditions_encrypted = Column(String, nullable=True)  # Зашифрованный список хронических заболеваний
+    removed_organs_encrypted = Column(String, nullable=True)  # Зашифрованный список удаленных органов
 
     # Напоминания о приемах пищи
     reminders_enabled = Column(Boolean, default=True)  # Включены ли напоминания
@@ -129,6 +135,163 @@ class User(Base):
 
     def __repr__(self):
         return f"<User(telegram_id={self.telegram_id}, username={self.username})>"
+
+    # Свойства для автоматического шифрования/расшифрования персональных данных
+    @property
+    def username(self) -> Optional[str]:
+        """Получить расшифрованный username"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_string(self.username_encrypted)
+
+    @username.setter
+    def username(self, value: Optional[str]):
+        """Установить username (будет зашифрован)"""
+        from app.services.encryption_service import EncryptionService
+        self.username_encrypted = EncryptionService.encrypt_string(value)
+
+    @property
+    def first_name(self) -> Optional[str]:
+        """Получить расшифрованное имя"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_string(self.first_name_encrypted)
+
+    @first_name.setter
+    def first_name(self, value: Optional[str]):
+        """Установить имя (будет зашифровано)"""
+        from app.services.encryption_service import EncryptionService
+        self.first_name_encrypted = EncryptionService.encrypt_string(value)
+
+    @property
+    def last_name(self) -> Optional[str]:
+        """Получить расшифрованную фамилию"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_string(self.last_name_encrypted)
+
+    @last_name.setter
+    def last_name(self, value: Optional[str]):
+        """Установить фамилию (будет зашифрована)"""
+        from app.services.encryption_service import EncryptionService
+        self.last_name_encrypted = EncryptionService.encrypt_string(value)
+
+    @property
+    def preferred_name(self) -> Optional[str]:
+        """Получить расшифрованное имя для обращения"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_string(self.preferred_name_encrypted)
+
+    @preferred_name.setter
+    def preferred_name(self, value: Optional[str]):
+        """Установить имя для обращения (будет зашифровано)"""
+        from app.services.encryption_service import EncryptionService
+        self.preferred_name_encrypted = EncryptionService.encrypt_string(value)
+
+    @property
+    def country(self) -> Optional[str]:
+        """Получить расшифрованную страну"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_string(self.country_encrypted)
+
+    @country.setter
+    def country(self, value: Optional[str]):
+        """Установить страну (будет зашифрована)"""
+        from app.services.encryption_service import EncryptionService
+        self.country_encrypted = EncryptionService.encrypt_string(value)
+
+    @property
+    def city(self) -> Optional[str]:
+        """Получить расшифрованный город"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_string(self.city_encrypted)
+
+    @city.setter
+    def city(self, value: Optional[str]):
+        """Установить город (будет зашифрован)"""
+        from app.services.encryption_service import EncryptionService
+        self.city_encrypted = EncryptionService.encrypt_string(value)
+
+    @property
+    def birth_year(self) -> Optional[int]:
+        """Получить расшифрованный год рождения"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_int(self.birth_year_encrypted)
+
+    @birth_year.setter
+    def birth_year(self, value: Optional[int]):
+        """Установить год рождения (будет зашифрован)"""
+        from app.services.encryption_service import EncryptionService
+        self.birth_year_encrypted = EncryptionService.encrypt_int(value)
+
+    @property
+    def height(self) -> Optional[int]:
+        """Получить расшифрованный рост"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_int(self.height_encrypted)
+
+    @height.setter
+    def height(self, value: Optional[int]):
+        """Установить рост (будет зашифрован)"""
+        from app.services.encryption_service import EncryptionService
+        self.height_encrypted = EncryptionService.encrypt_int(value)
+
+    @property
+    def current_weight(self) -> Optional[float]:
+        """Получить расшифрованный текущий вес"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_float(self.current_weight_encrypted)
+
+    @current_weight.setter
+    def current_weight(self, value: Optional[float]):
+        """Установить текущий вес (будет зашифрован)"""
+        from app.services.encryption_service import EncryptionService
+        self.current_weight_encrypted = EncryptionService.encrypt_float(value)
+
+    @property
+    def target_weight(self) -> Optional[float]:
+        """Получить расшифрованный целевой вес"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_float(self.target_weight_encrypted)
+
+    @target_weight.setter
+    def target_weight(self, value: Optional[float]):
+        """Установить целевой вес (будет зашифрован)"""
+        from app.services.encryption_service import EncryptionService
+        self.target_weight_encrypted = EncryptionService.encrypt_float(value)
+
+    @property
+    def food_exclusions(self) -> Optional[list]:
+        """Получить расшифрованные исключения из рациона"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_list(self.food_exclusions_encrypted) or []
+
+    @food_exclusions.setter
+    def food_exclusions(self, value: Optional[list]):
+        """Установить исключения из рациона (будут зашифрованы)"""
+        from app.services.encryption_service import EncryptionService
+        self.food_exclusions_encrypted = EncryptionService.encrypt_list(value) if value else None
+
+    @property
+    def chronic_conditions(self) -> Optional[list]:
+        """Получить расшифрованные хронические заболевания"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_list(self.chronic_conditions_encrypted) or []
+
+    @chronic_conditions.setter
+    def chronic_conditions(self, value: Optional[list]):
+        """Установить хронические заболевания (будут зашифрованы)"""
+        from app.services.encryption_service import EncryptionService
+        self.chronic_conditions_encrypted = EncryptionService.encrypt_list(value) if value else None
+
+    @property
+    def removed_organs(self) -> Optional[list]:
+        """Получить расшифрованные удаленные органы"""
+        from app.services.encryption_service import EncryptionService
+        return EncryptionService.decrypt_list(self.removed_organs_encrypted) or []
+
+    @removed_organs.setter
+    def removed_organs(self, value: Optional[list]):
+        """Установить удаленные органы (будут зашифрованы)"""
+        from app.services.encryption_service import EncryptionService
+        self.removed_organs_encrypted = EncryptionService.encrypt_list(value) if value else None
 
     @property
     def age(self) -> int:
