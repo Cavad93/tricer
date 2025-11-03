@@ -70,6 +70,22 @@ class ProfileStates(IntEnum):
     """Состояния для управления профилем"""
     WAITING_NEW_WEIGHT = auto()  # Ожидание ввода нового веса
 
+    # Редактирование основных данных (152-ФЗ: право на исправление)
+    EDITING_NAME = auto()  # Редактирование имени
+    EDITING_HEIGHT = auto()  # Редактирование роста
+    EDITING_TARGET_WEIGHT = auto()  # Редактирование целевого веса
+    EDITING_GOAL = auto()  # Редактирование цели
+    EDITING_ACTIVITY_LEVEL = auto()  # Редактирование уровня активности
+    EDITING_DIET_TYPE = auto()  # Редактирование типа питания
+    EDITING_BUDGET = auto()  # Редактирование бюджета
+
+    # Редактирование wellness данных (фильтр контента)
+    EDITING_CHRONIC_CONDITIONS = auto()  # Редактирование хронических заболеваний
+    EDITING_REMOVED_ORGANS = auto()  # Редактирование удаленных органов
+
+    # Редактирование пищевых исключений
+    EDITING_FOOD_EXCLUSIONS = auto()  # Редактирование пищевых исключений
+
 
 class PantryStates(IntEnum):
     """Состояния для управления продуктами дома"""

@@ -466,12 +466,27 @@ async def profile_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "────────────"
         )
 
-        # Добавляем кнопки управления профилем
+        # Добавляем кнопки управления профилем (152-ФЗ: право на исправление данных)
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
+        # Получаем данные для отображения в профиле
+        chronic_conditions_text = ", ".join(user.chronic_conditions) if user.chronic_conditions else "Не указано"
+        removed_organs_text = ", ".join(user.removed_organs) if user.removed_organs else "Не указано"
+        food_exclusions_text = ", ".join(user.food_exclusions) if user.food_exclusions else "Не указано"
+
+        # Добавляем wellness и пищевые данные в текст профиля
+        profile_text += (
+            "\n"
+            "📋 *Wellness данные \\(фильтр контента\\):*\n"
+            f"• Хронические заболевания: {escape_markdown(chronic_conditions_text)}\n"
+            f"• Удаленные органы: {escape_markdown(removed_organs_text)}\n"
+            f"• Пищевые исключения: {escape_markdown(food_exclusions_text)}\n"
+        )
+
         keyboard = [
-            [InlineKeyboardButton("⚖️ Изменить вес", callback_data="change_weight")],
-            [InlineKeyboardButton("⏰ Изменить время на готовку", callback_data="change_cooking_time")],
+            [InlineKeyboardButton("✏️ Редактировать данные", callback_data="edit_profile_menu")],
+            [InlineKeyboardButton("⚖️ Изменить текущий вес", callback_data="change_weight")],
+            [InlineKeyboardButton("⏰ Время на готовку", callback_data="change_cooking_time")],
             [InlineKeyboardButton("📦 Экспорт данных", callback_data="export_data")],
             [InlineKeyboardButton("🗑️ Удалить аккаунт", callback_data="delete_account")],
             [InlineKeyboardButton("🏠 Главное меню", callback_data="main_menu")]
@@ -672,6 +687,37 @@ async def handle_new_weight(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         from app.bot.states import ProfileStates
         return ProfileStates.WAITING_NEW_WEIGHT
+
+
+async def edit_profile_menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Меню редактирования профиля (152-ФЗ: право на исправление данных)
+    """
+    query = update.callback_query
+    await query.answer()
+
+    keyboard = [
+        [InlineKeyboardButton("✏️ Имя", callback_data="edit_name"),
+         InlineKeyboardButton("📏 Рост", callback_data="edit_height")],
+        [InlineKeyboardButton("🎯 Целевой вес", callback_data="edit_target_weight"),
+         InlineKeyboardButton("🏃 Цель", callback_data="edit_goal")],
+        [InlineKeyboardButton("⚡ Активность", callback_data="edit_activity"),
+         InlineKeyboardButton("🥗 Тип питания", callback_data="edit_diet_type")],
+        [InlineKeyboardButton("💰 Бюджет", callback_data="edit_budget")],
+        [InlineKeyboardButton("📋 Хронические заболевания", callback_data="edit_chronic_conditions")],
+        [InlineKeyboardButton("🔧 Удаленные органы", callback_data="edit_removed_organs")],
+        [InlineKeyboardButton("❗ Пищевые исключения", callback_data="edit_food_exclusions")],
+        [InlineKeyboardButton("◀️ Назад в профиль", callback_data="profile")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        "✏️ <b>Редактирование профиля</b>\n\n"
+        "Выбери, что хочешь изменить:\n\n"
+        "<i>Согласно 152-ФЗ вы имеете право на исправление своих персональных данных.</i>",
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
 
 
 # Reports callback теперь обрабатывается через get_reports_conversation_handler
@@ -1165,6 +1211,68 @@ def main():
         per_message=False
     )
 
+    # ConversationHandler для редактирования профиля (152-ФЗ: право на исправление данных)
+    from app.bot.handlers.profile_editor import (
+        edit_chronic_conditions_callback, save_chronic_conditions_handler, clear_chronic_conditions_callback,
+        edit_removed_organs_callback, save_removed_organs_handler, clear_removed_organs_callback,
+        edit_food_exclusions_callback, save_food_exclusions_handler, clear_food_exclusions_callback,
+        edit_name_callback, save_name_handler,
+        edit_height_callback, save_height_handler,
+        edit_target_weight_callback, save_target_weight_handler,
+        edit_goal_callback, save_goal_callback,
+        cancel_edit_callback
+    )
+
+    profile_edit_conversation = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(edit_chronic_conditions_callback, pattern="^edit_chronic_conditions$"),
+            CallbackQueryHandler(edit_removed_organs_callback, pattern="^edit_removed_organs$"),
+            CallbackQueryHandler(edit_food_exclusions_callback, pattern="^edit_food_exclusions$"),
+            CallbackQueryHandler(edit_name_callback, pattern="^edit_name$"),
+            CallbackQueryHandler(edit_height_callback, pattern="^edit_height$"),
+            CallbackQueryHandler(edit_target_weight_callback, pattern="^edit_target_weight$"),
+            CallbackQueryHandler(edit_goal_callback, pattern="^edit_goal$"),
+        ],
+        states={
+            ProfileStates.EDITING_CHRONIC_CONDITIONS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_chronic_conditions_handler),
+                CallbackQueryHandler(clear_chronic_conditions_callback, pattern="^clear_chronic_conditions$"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_REMOVED_ORGANS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_removed_organs_handler),
+                CallbackQueryHandler(clear_removed_organs_callback, pattern="^clear_removed_organs$"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_FOOD_EXCLUSIONS: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_food_exclusions_handler),
+                CallbackQueryHandler(clear_food_exclusions_callback, pattern="^clear_food_exclusions$"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_name_handler),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_HEIGHT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_height_handler),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_TARGET_WEIGHT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, save_target_weight_handler),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+            ProfileStates.EDITING_GOAL: [
+                CallbackQueryHandler(save_goal_callback, pattern="^set_goal_"),
+                CallbackQueryHandler(profile_callback, pattern="^profile$")
+            ],
+        },
+        fallbacks=[
+            CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"),
+            CallbackQueryHandler(cancel_edit_callback, pattern="^profile$")
+        ],
+        per_message=False
+    )
+
     # ConversationHandler для управления продуктами дома
     pantry_conversation = ConversationHandler(
         entry_points=[
@@ -1211,6 +1319,7 @@ def main():
     # ВАЖНО: порядок имеет значение! ConversationHandler с более специфичными условиями должны быть первыми
     application.add_handler(onboarding_conversation)
     application.add_handler(change_weight_conversation)  # Обработчик изменения веса
+    application.add_handler(profile_edit_conversation)  # Обработчик редактирования профиля (152-ФЗ)
     application.add_handler(pantry_conversation)  # Обработчик продуктов дома
     application.add_handler(reminder_settings_conversation)  # Обработчик настройки напоминаний после создания плана
     application.add_handler(restaurant_conversation)  # Обработчик функции "Ресторан" - ПЕРЕД food_add_conversation!
@@ -1250,6 +1359,7 @@ def main():
 
     application.add_handler(CallbackQueryHandler(ai_chat_callback, pattern="^ai_chat$"))
     application.add_handler(CallbackQueryHandler(profile_callback, pattern="^profile$"))
+    application.add_handler(CallbackQueryHandler(edit_profile_menu_callback, pattern="^edit_profile_menu$"))
     application.add_handler(CallbackQueryHandler(settings_callback, pattern="^settings$"))
 
     # Callback handlers для управления конфиденциальностью (152-ФЗ)
