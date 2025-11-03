@@ -10,7 +10,7 @@ import json
 import base64
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from typing import Any, Optional, List
 from loguru import logger
 
@@ -31,10 +31,10 @@ class EncryptionService:
                 # Используем SECRET_KEY из settings
                 from app.config import settings
 
-                logger.info("ENCRYPTION_KEY not found, deriving from SECRET_KEY using PBKDF2")
+                logger.info("ENCRYPTION_KEY not found, deriving from SECRET_KEY using PBKDF2HMAC")
 
-                # Генерируем ключ из SECRET_KEY используя PBKDF2
-                kdf = PBKDF2(
+                # Генерируем ключ из SECRET_KEY используя PBKDF2HMAC
+                kdf = PBKDF2HMAC(
                     algorithm=hashes.SHA256(),
                     length=32,
                     salt=b'nutriai_encryption_salt_v1',
