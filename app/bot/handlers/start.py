@@ -140,22 +140,13 @@ async def accept_data_consent_callback(update: Update, context: ContextTypes.DEF
     context.user_data['data_consent_accepted'] = True
     context.user_data['consent_timestamp'] = datetime.utcnow().isoformat()
 
-    # Показываем согласие на обработку медицинских данных (опционально)
-    from app.bot.texts import MEDICAL_DATA_COLLECTION_DISCLAIMER
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-    keyboard = [
-        [InlineKeyboardButton("✅ Согласен", callback_data="accept_medical_data")],
-        [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_medical_data")]
-    ]
-
+    # Переходим сразу к сбору базовых данных (медицинские данные не собираем)
     await query.edit_message_text(
-        MEDICAL_DATA_COLLECTION_DISCLAIMER,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='HTML'
+        "✅ Отлично! Теперь давай познакомимся поближе.\n\n"
+        "Как тебя зовут? (Можешь указать любое имя, которым я буду тебя называть)"
     )
 
-    return OnboardingStates.MEDICAL_DATA_CONSENT
+    return OnboardingStates.PREFERRED_NAME
 
 
 async def decline_data_consent_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -170,40 +161,6 @@ async def decline_data_consent_callback(update: Update, context: ContextTypes.DE
     )
 
     return ConversationHandler.END
-
-
-async def accept_medical_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка принятия согласия на медицинские данные"""
-    query = update.callback_query
-    await query.answer()
-
-    # Сохраняем согласие
-    context.user_data['medical_data_consent_accepted'] = True
-
-    # Переходим к сбору базовых данных
-    await query.edit_message_text(
-        "✅ Отлично! Теперь давай познакомимся поближе.\n\n"
-        "Как тебя зовут? (Можешь указать любое имя, которым я буду тебя называть)"
-    )
-
-    return OnboardingStates.PREFERRED_NAME
-
-
-async def skip_medical_data_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обработка пропуска согласия на медицинские данные"""
-    query = update.callback_query
-    await query.answer()
-
-    # Не сохраняем согласие на медицинские данные
-    context.user_data['medical_data_consent_accepted'] = False
-
-    # Переходим к сбору базовых данных
-    await query.edit_message_text(
-        "Хорошо, без медицинских данных.\n\n"
-        "Как тебя зовут? (Можешь указать любое имя, которым я буду тебя называть)"
-    )
-
-    return OnboardingStates.PREFERRED_NAME
 
 
 async def preferred_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -863,10 +820,6 @@ onboarding_conversation = ConversationHandler(
         OnboardingStates.PERSONAL_DATA_CONSENT: [
             CallbackQueryHandler(accept_data_consent_callback, pattern="^accept_data_consent$"),
             CallbackQueryHandler(decline_data_consent_callback, pattern="^decline_data_consent$")
-        ],
-        OnboardingStates.MEDICAL_DATA_CONSENT: [
-            CallbackQueryHandler(accept_medical_data_callback, pattern="^accept_medical_data$"),
-            CallbackQueryHandler(skip_medical_data_callback, pattern="^skip_medical_data$")
         ],
         # Старый дисклеймер (для обратной совместимости)
         OnboardingStates.DISCLAIMER: [
