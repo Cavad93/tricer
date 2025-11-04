@@ -43,7 +43,7 @@ async def meal_plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             if user:
                 # Деактивируем старые планы
-                await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+                await MealPlanService.deactivate_old_plans(session, user.id)
 
         # Показываем выбор периода для нового плана
         text = """🍽 Создание плана питания
@@ -73,7 +73,7 @@ async def meal_plan_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return ConversationHandler.END
 
         # Проверяем активный план
-        active_plan = await MealPlanService.get_active_meal_plan(session, user.telegram_id)
+        active_plan = await MealPlanService.get_active_meal_plan(session, user.id)
 
         if active_plan:
             # Словарь для отображения периода
@@ -466,12 +466,12 @@ async def reuse_weekly_plan_yes(update: Update, context: ContextTypes.DEFAULT_TY
                 raise ValueError("Weekly plan not found")
 
             # Деактивируем старые дневные планы
-            await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+            await MealPlanService.deactivate_old_plans(session, user.id)
 
             # Копируем день из недельного плана
             daily_plan = await MealPlanService.copy_day_from_weekly_plan(
                 session,
-                user.telegram_id,
+                user.id,
                 weekly_plan,
                 day_number
             )
@@ -1052,7 +1052,7 @@ async def handle_change_request(update: Update, context: ContextTypes.DEFAULT_TY
                     return ConversationHandler.END
 
             # Деактивируем старый план
-            await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+            await MealPlanService.deactivate_old_plans(session, user.id)
 
             # Собираем preferences из context с добавлением новых пожеланий
             old_preferences = {
@@ -1222,7 +1222,7 @@ async def generate_meal_plan_with_preferences(update: Update, context: ContextTy
             user = result.scalar_one_or_none()
 
             # Деактивируем старые планы
-            await MealPlanService.deactivate_old_plans(session, user.telegram_id)
+            await MealPlanService.deactivate_old_plans(session, user.id)
 
             # Собираем preferences из context (включая batch_cooking и pantry_products)
             preferences = {

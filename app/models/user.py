@@ -1,7 +1,7 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Enum as SQLEnum
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, DateTime, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -61,7 +61,7 @@ class User(Base):
 
     # ID
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, nullable=False, index=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     language_code = Column(String(10), default="ru")
 
     # Зашифрованные персональные данные (152-ФЗ)
