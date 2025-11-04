@@ -396,6 +396,33 @@ class ClaudeAIService:
 {plan_summary}
 """
 
+            # ⚠️ КРИТИЧЕСКИ ВАЖНО: Формируем информацию о хронических заболеваниях
+            chronic_conditions_info = ""
+            chronic_conditions = user_context.get('chronic_conditions', [])
+            removed_organs = user_context.get('removed_organs', [])
+            medical_restrictions = user_context.get('medical_restrictions', [])
+
+            if chronic_conditions or removed_organs or medical_restrictions:
+                chronic_conditions_info = "\n⚠️ КРИТИЧЕСКИ ВАЖНО - WELLNESS ОГРАНИЧЕНИЯ (ВСЕГДА УЧИТЫВАЙ!):\n"
+
+                if chronic_conditions:
+                    chronic_conditions_info += f"🔴 Хронические заболевания: {', '.join(chronic_conditions)}\n"
+
+                if removed_organs:
+                    chronic_conditions_info += f"🔴 Удалённые органы: {', '.join(removed_organs)}\n"
+
+                if medical_restrictions:
+                    chronic_conditions_info += f"🔴 Медицинские ограничения: {', '.join(medical_restrictions)}\n"
+
+                chronic_conditions_info += """
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА при wellness ограничениях:
+1. ВСЕГДА проверяй каждую рекомендацию на безопасность для этих состояний
+2. ПРЕДУПРЕЖДАЙ о потенциально опасных продуктах (например: газировка/кислое при ГЭРБ, жирное при удалённом желчном)
+3. ПРЕДЛАГАЙ безопасные альтернативы
+4. Конечное решение - ВСЕГДА за пользователем
+5. При любых сомнениях - рекомендуй консультацию врача
+"""
+
             # Формируем информацию об оставшихся калориях
             remaining_info = f"""
 Оставшиеся калории/макросы на сегодня:
@@ -449,7 +476,7 @@ class ClaudeAIService:
 
 ПРЕДПОЧТЕНИЯ:
 - Диета: {user_context.get('diet_type', 'всеядный')}{extra_info}
-{exclusions_info}
+{exclusions_info}{chronic_conditions_info}
 СТАТИСТИКА СЕГОДНЯ (реальные данные из дневника):
 - Потреблено калорий: {user_context.get('today_calories', 0)} / {user_context.get('target_calories', 0)} ккал
 - Белки: {user_context.get('today_proteins', 0)}г / {user_context.get('target_proteins', 0)}г

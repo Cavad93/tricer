@@ -100,6 +100,52 @@ async def handle_text_food_input(update: Update, context: ContextTypes.DEFAULT_T
             dish_name = analysis.get("dish_name", message_text)
             has_weight = analysis.get("has_weight", False)
 
+            # ⚠️ WELLNESS CHECK: Проверяем безопасность еды для хронических заболеваний
+            wellness_warning = ""
+            if db_user.chronic_conditions or db_user.removed_organs or db_user.medical_restrictions:
+                wellness_check_prompt = f"""Проанализируй безопасность продукта "{dish_name}" для пользователя с такими ограничениями:
+
+Хронические заболевания: {', '.join(db_user.chronic_conditions) if db_user.chronic_conditions else 'нет'}
+Удалённые органы: {', '.join(db_user.removed_organs) if db_user.removed_organs else 'нет'}
+Медицинские ограничения: {', '.join(db_user.medical_restrictions) if db_user.medical_restrictions else 'нет'}
+
+ЗАДАЧА:
+1. Определи, может ли этот продукт быть ОПАСЕН для данных состояний
+2. Если ДА - объясни почему и предложи безопасную альтернативу
+3. Если НЕТ - просто ответь "безопасно"
+
+ФОРМАТ ОТВЕТА:
+{{
+    "is_dangerous": true/false,
+    "reason": "краткое объяснение почему опасно (если is_dangerous=true)",
+    "safe_alternatives": ["альтернатива1", "альтернатива2"] (если is_dangerous=true)
+}}
+
+Отвечай ТОЛЬКО валидным JSON."""
+
+                try:
+                    wellness_check_json = await claude_service.analyze_text(
+                        prompt=wellness_check_prompt,
+                        system="Ты медицинский эксперт по питанию. Анализируешь безопасность продуктов при различных заболеваниях."
+                    )
+
+                    wellness_json_match = re.search(r'\{.*\}', wellness_check_json, re.DOTALL)
+                    if wellness_json_match:
+                        import json
+                        wellness_check = json.loads(wellness_json_match.group())
+
+                        if wellness_check.get("is_dangerous"):
+                            reason = wellness_check.get("reason", "")
+                            alternatives = wellness_check.get("safe_alternatives", [])
+
+                            wellness_warning = f"\n\n⚠️ <b>ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ:</b>\n{reason}\n"
+                            if alternatives:
+                                wellness_warning += f"\n💡 <b>Безопасные альтернативы:</b> {', '.join(alternatives)}\n"
+                            wellness_warning += "\n<i>Конечное решение за тобой, но рекомендуем проконсультироваться с врачом.</i>"
+                except Exception as e:
+                    logger.warning(f"Wellness check failed for user {user.id}: {repr(e)}")
+                    # Продолжаем работу даже если wellness check не удался
+
             if has_weight:
                 # Если вес указан - показываем информацию и спрашиваем будет ли есть
                 nutrition = analysis.get("nutrition", {})
@@ -111,7 +157,8 @@ async def handle_text_food_input(update: Update, context: ContextTypes.DEFAULT_T
                     f"🔥 Калории: <b>{nutrition.get('calories', 0)} ккал</b>\n"
                     f"🥩 Белки: {nutrition.get('proteins', 0)}г\n"
                     f"🥑 Жиры: {nutrition.get('fats', 0)}г\n"
-                    f"🍞 Углеводы: {nutrition.get('carbs', 0)}г\n\n"
+                    f"🍞 Углеводы: {nutrition.get('carbs', 0)}г"
+                    f"{wellness_warning}\n\n"
                     f"❓ <b>Ты будешь это есть?</b>"
                 )
 
@@ -151,7 +198,8 @@ async def handle_text_food_input(update: Update, context: ContextTypes.DEFAULT_T
                     return
 
                 text = (
-                    f"🍽 <b>{dish_name}</b>\n\n"
+                    f"🍽 <b>{dish_name}</b>"
+                    f"{wellness_warning}\n\n"
                     f"Выбери размер порции:"
                 )
 

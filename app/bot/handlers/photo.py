@@ -343,6 +343,57 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 if warnings_text:
                                     response_text += f"\n{warnings_text}\n"
 
+                            # ⚠️ WELLNESS CHECK: Проверяем безопасность еды для хронических заболеваний
+                            if db_user.chronic_conditions or db_user.removed_organs or db_user.medical_restrictions:
+                                # Собираем все названия блюд для проверки
+                                all_food_items = ", ".join([dish['name'] for dish in dishes])
+
+                                wellness_check_prompt = f"""Проанализируй безопасность следующих продуктов: {all_food_items}
+
+Для пользователя с такими ограничениями:
+Хронические заболевания: {', '.join(db_user.chronic_conditions) if db_user.chronic_conditions else 'нет'}
+Удалённые органы: {', '.join(db_user.removed_organs) if db_user.removed_organs else 'нет'}
+Медицинские ограничения: {', '.join(db_user.medical_restrictions) if db_user.medical_restrictions else 'нет'}
+
+ЗАДАЧА:
+1. Определи, могут ли эти продукты быть ОПАСНЫ для данных состояний
+2. Если ДА - объясни почему и предложи безопасные альтернативы
+3. Если НЕТ - просто ответь "безопасно"
+
+ФОРМАТ ОТВЕТА:
+{{
+    "is_dangerous": true/false,
+    "reason": "краткое объяснение почему опасно (если is_dangerous=true)",
+    "safe_alternatives": ["альтернатива1", "альтернатива2"] (если is_dangerous=true)
+}}
+
+Отвечай ТОЛЬКО валидным JSON."""
+
+                                try:
+                                    import re
+                                    import json
+                                    wellness_check_json = await get_claude_service().analyze_text(
+                                        prompt=wellness_check_prompt,
+                                        system="Ты медицинский эксперт по питанию. Анализируешь безопасность продуктов при различных заболеваниях."
+                                    )
+
+                                    wellness_json_match = re.search(r'\{.*\}', wellness_check_json, re.DOTALL)
+                                    if wellness_json_match:
+                                        wellness_check = json.loads(wellness_json_match.group())
+
+                                        if wellness_check.get("is_dangerous"):
+                                            reason = wellness_check.get("reason", "")
+                                            alternatives = wellness_check.get("safe_alternatives", [])
+
+                                            response_text += "\n⚠️ *ВАЖНОЕ ПРЕДУПРЕЖДЕНИЕ:*\n"
+                                            response_text += f"{reason}\n"
+                                            if alternatives:
+                                                response_text += f"\n💡 *Безопасные альтернативы:* {', '.join(alternatives)}\n"
+                                            response_text += "\n_Конечное решение за тобой, но рекомендуем проконсультироваться с врачом._\n"
+                                except Exception as e:
+                                    logger.warning(f"Wellness check failed for photo user {user.id}: {repr(e)}")
+                                    # Продолжаем работу даже если wellness check не удался
+
                 except Exception as e:
                     logger.warning(f"Failed to get food warnings: {repr(e)}")
 
