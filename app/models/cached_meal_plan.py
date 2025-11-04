@@ -80,7 +80,7 @@ class CachedMealPlan(Base):
     plan_data = Column(JSONB, nullable=False)
 
     # Статус плана
-    status = Column(SQLEnum(CachedMealPlanStatus), default=CachedMealPlanStatus.ACTIVE, index=True)
+    status = Column(SQLEnum(CachedMealPlanStatus, name='cached_meal_plan_status'), default=CachedMealPlanStatus.ACTIVE, index=True)
 
     # Метаданные использования
     usage_count = Column(Integer, default=0)  # Сколько раз был использован
