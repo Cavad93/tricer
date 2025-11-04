@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import text
 from app.db.session import engine
-from app.core.config import settings
+from app.config import settings
 
 
 async def apply_migration():
