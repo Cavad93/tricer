@@ -521,9 +521,10 @@ class ClaudeAIService:
                 {"role": "user", "content": user_message}
             ]
 
-            logger.info(f"Sending chat request to Claude API")
+            logger.info(f"Sending chat request to Claude API (model: {self.model})")
 
             # Отправка запроса к Claude API (с rate limiting и retry)
+            # Используем Sonnet 4.5 для AI-чата (self.model) - сложные диалоги требуют мощной модели
             response = await self._call_with_rate_limit_and_retry(
                 self.async_client.messages.create,
                 model=self.model,
@@ -547,25 +548,32 @@ class ClaudeAIService:
         self,
         prompt: str,
         max_tokens: int = 2000,
-        system: Optional[str] = None
+        system: Optional[str] = None,
+        model: Optional[str] = None
     ) -> str:
         """
         Анализ текста с помощью Claude (общий метод)
+
+        По умолчанию использует Haiku 4.5 (быстрее и дешевле на 67% чем Sonnet).
+        Для сложных задач можно явно указать model=settings.CLAUDE_MODEL_SONNET.
 
         Args:
             prompt: Промпт для анализа
             max_tokens: Максимальное количество токенов в ответе
             system: Опциональный system prompt для переопределения поведения
+            model: Модель Claude для использования (по умолчанию Haiku 4.5)
 
         Returns:
             Ответ от Claude
         """
         try:
-            logger.info(f"Отправка текстового анализа в Claude API")
+            # Используем Haiku 4.5 по умолчанию для простых задач (экономия 67%)
+            model_to_use = model or settings.CLAUDE_MODEL_HAIKU_4_5
+            logger.info(f"Отправка текстового анализа в Claude API (model: {model_to_use})")
 
             # Подготавливаем параметры вызова
             call_params = {
-                "model": self.model,
+                "model": model_to_use,
                 "max_tokens": max_tokens,
                 "messages": [{"role": "user", "content": prompt}]
             }
