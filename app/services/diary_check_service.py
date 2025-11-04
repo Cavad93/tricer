@@ -204,15 +204,8 @@ class DiaryCheckService:
                 )
 
                 # Конвертируем MealType enum в строку для клавиатуры
-                missing_meal_str = None
-                if missing_meal_type:
-                    meal_type_to_str = {
-                        MealType.BREAKFAST: "breakfast",
-                        MealType.LUNCH: "lunch",
-                        MealType.DINNER: "dinner",
-                        MealType.SNACK: "snack"
-                    }
-                    missing_meal_str = meal_type_to_str.get(missing_meal_type)
+                # Используем .value атрибут enum вместо ручной конвертации через словарь
+                missing_meal_str = missing_meal_type.value if missing_meal_type else None
 
                 # Создаем умную адаптивную клавиатуру с учетом времени и паттернов
                 from app.bot.keyboards import smart_diary_reminder_keyboard
