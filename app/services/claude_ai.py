@@ -519,7 +519,8 @@ class ClaudeAIService:
     async def analyze_text(
         self,
         prompt: str,
-        max_tokens: int = 2000
+        max_tokens: int = 2000,
+        system: Optional[str] = None
     ) -> str:
         """
         Анализ текста с помощью Claude (общий метод)
@@ -527,6 +528,7 @@ class ClaudeAIService:
         Args:
             prompt: Промпт для анализа
             max_tokens: Максимальное количество токенов в ответе
+            system: Опциональный system prompt для переопределения поведения
 
         Returns:
             Ответ от Claude
@@ -534,13 +536,20 @@ class ClaudeAIService:
         try:
             logger.info(f"Отправка текстового анализа в Claude API")
 
+            # Подготавливаем параметры вызова
+            call_params = {
+                "model": self.model,
+                "max_tokens": max_tokens,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+
+            # Добавляем system prompt если указан
+            if system:
+                call_params["system"] = system
+
             response = await self._call_with_rate_limit_and_retry(
                 self.async_client.messages.create,
-                model=self.model,
-                max_tokens=max_tokens,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
+                **call_params
             )
 
             text_response = response.content[0].text

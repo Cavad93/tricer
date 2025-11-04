@@ -180,11 +180,10 @@ class DiaryCheckService:
 Формат: 3-4 предложения, начни с приветствия и эмодзи."""
 
             # Генерируем через AI
-            ai_response = await ClaudeAIService.chat(
-                user_id=user.id,
-                message=prompt,
-                session=session,
-                system_override="Ты заботливый AI-нутрициолог, который мягко напоминает о важности ведения дневника питания."
+            claude_service = ClaudeAIService()
+            ai_response = await claude_service.analyze_text(
+                prompt=prompt,
+                system="Ты заботливый AI-нутрициолог, который мягко напоминает о важности ведения дневника питания."
             )
 
             return ai_response.strip()
