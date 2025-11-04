@@ -35,6 +35,15 @@ async def chat_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await handle_change_request(update, context)
         return
 
+    # Проверяем, ожидается ли ввод еды
+    if context.user_data.get("awaiting_food_input"):
+        from app.bot.handlers.food_text import handle_text_food_input
+        # Убираем флаг
+        context.user_data["awaiting_food_input"] = False
+        # Перенаправляем обработку в обработчик текстового ввода еды
+        await handle_text_food_input(update, context)
+        return
+
     # Показываем индикатор "печатает..."
     await update.message.chat.send_action("typing")
 

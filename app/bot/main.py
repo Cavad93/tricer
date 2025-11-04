@@ -314,6 +314,9 @@ async def add_food_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на кнопку 'Добавить еду'"""
     query = update.callback_query
 
+    # Устанавливаем флаг что пользователь в режиме добавления еды
+    context.user_data["awaiting_food_input"] = True
+
     await safe_edit_or_send_message(
         query,
         "📸 *Добавить еду*\n\n"
@@ -1362,6 +1365,18 @@ def main():
     # Callback handlers для кнопок
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
     application.add_handler(CallbackQueryHandler(add_food_callback, pattern="^add_food$"))
+
+    # Обработчики для текстового ввода еды
+    from app.bot.handlers.food_text import (
+        handle_text_food_portion_selection,
+        handle_text_food_will_eat,
+        handle_text_food_just_info,
+        handle_text_food_meal_type
+    )
+    application.add_handler(CallbackQueryHandler(handle_text_food_portion_selection, pattern="^text_food_portion_"))
+    application.add_handler(CallbackQueryHandler(handle_text_food_will_eat, pattern="^text_food_will_eat$"))
+    application.add_handler(CallbackQueryHandler(handle_text_food_just_info, pattern="^text_food_just_info$"))
+
     application.add_handler(CallbackQueryHandler(diary_callback, pattern="^diary$"))
     application.add_handler(CallbackQueryHandler(delete_meal_callback, pattern="^delete_meal_"))
     application.add_handler(CallbackQueryHandler(diary_edit_list_callback, pattern="^diary_edit_list$"))

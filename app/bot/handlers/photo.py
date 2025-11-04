@@ -648,9 +648,16 @@ async def handle_food_intention(update: Update, context: ContextTypes.DEFAULT_TY
 async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Обработчик выбора типа приема пищи - добавление в дневник
+    Обрабатывает как еду из фото, так и текстовый ввод
     """
     query = update.callback_query
     await query.answer()
+
+    # Если есть данные о текстовой еде - перенаправляем в text food handler
+    if context.user_data.get("text_food_data"):
+        from app.bot.handlers.food_text import handle_text_food_meal_type
+        await handle_text_food_meal_type(update, context)
+        return ConversationHandler.END
 
     user = update.effective_user
     meal_type_str = query.data.replace("meal_type_", "")
@@ -671,7 +678,7 @@ async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return ConversationHandler.END
 
-    # Получаем распознанную еду из контекста
+    # Получаем распознанную еду из контекста (для фото)
     recognized_food = context.user_data.get("recognized_food")
     if not recognized_food:
         await query.edit_message_text(
