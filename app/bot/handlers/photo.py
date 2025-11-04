@@ -344,7 +344,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     response_text += f"\n{warnings_text}\n"
 
                             # ⚠️ WELLNESS CHECK: Проверяем безопасность еды для хронических заболеваний
-                            if db_user.chronic_conditions or db_user.removed_organs or db_user.medical_restrictions:
+                            if db_user.chronic_conditions or db_user.removed_organs:
                                 # Собираем все названия блюд для проверки
                                 all_food_items = ", ".join([dish['name'] for dish in dishes])
 
@@ -353,7 +353,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Для пользователя с такими ограничениями:
 Хронические заболевания: {', '.join(db_user.chronic_conditions) if db_user.chronic_conditions else 'нет'}
 Удалённые органы: {', '.join(db_user.removed_organs) if db_user.removed_organs else 'нет'}
-Медицинские ограничения: {', '.join(db_user.medical_restrictions) if db_user.medical_restrictions else 'нет'}
 
 ЗАДАЧА:
 1. Определи, могут ли эти продукты быть ОПАСНЫ для данных состояний

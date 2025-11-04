@@ -434,10 +434,10 @@ class MealPlanService:
    • Приоритет: сначала скоропортящиеся продукты (овощи, молочка, мясо), потом остальные.
 """
 
-        # Формируем секцию с wellness данными (хронические заболевания, удаленные органы, медицинские ограничения)
+        # Формируем секцию с wellness данными (хронические заболевания, удаленные органы)
         # ВАЖНО: Используем как ФИЛЬТР КОНТЕНТА, а не как лечебную диету!
         wellness_text = ""
-        if (user.chronic_conditions and len(user.chronic_conditions) > 0) or (user.removed_organs and len(user.removed_organs) > 0) or (user.medical_restrictions and len(user.medical_restrictions) > 0):
+        if (user.chronic_conditions and len(user.chronic_conditions) > 0) or (user.removed_organs and len(user.removed_organs) > 0):
             wellness_text = "\n\n🚫 ФИЛЬТР КОНТЕНТА (исключения продуктов):\n"
             wellness_text += "⚠️ КРИТИЧЕСКИ ВАЖНО: Используй эту информацию ТОЛЬКО как фильтр - какие продукты ИСКЛЮЧИТЬ из рациона!\n"
             wellness_text += "❌ НЕ подстраивай рацион под диагноз, НЕ составляй лечебную диету!\n"
@@ -463,16 +463,6 @@ class MealPlanService:
                 wellness_text += "  - ИСКЛЮЧИ продукты, которые обычно сложны для переваривания при таких изменениях\n"
                 wellness_text += "  - Это не лечение - просто избегание тяжелых для пищеварения продуктов\n"
                 wellness_text += "  - Составь обычный рацион, просто БЕЗ определенных продуктов\n\n"
-
-            if user.medical_restrictions and len(user.medical_restrictions) > 0:
-                wellness_text += "⚕️ МЕДИЦИНСКИЕ ОГРАНИЧЕНИЯ (используй как тематический фильтр):\n"
-                for restriction in user.medical_restrictions:
-                    wellness_text += f"  • {restriction}\n"
-                wellness_text += "\n"
-                wellness_text += "🚫 ЧТО ДЕЛАТЬ:\n"
-                wellness_text += "  - ИСКЛЮЧИ продукты, которые указаны в медицинских ограничениях\n"
-                wellness_text += "  - Это не лечение - просто соблюдение указанных ограничений\n"
-                wellness_text += "  - Составь обычный рацион, просто БЕЗ указанных продуктов\n\n"
 
         # Формируем секцию с персональными фактами о корреляциях
         insights_text = ""

@@ -400,9 +400,8 @@ class ClaudeAIService:
             chronic_conditions_info = ""
             chronic_conditions = user_context.get('chronic_conditions', [])
             removed_organs = user_context.get('removed_organs', [])
-            medical_restrictions = user_context.get('medical_restrictions', [])
 
-            if chronic_conditions or removed_organs or medical_restrictions:
+            if chronic_conditions or removed_organs:
                 chronic_conditions_info = "\n⚠️ КРИТИЧЕСКИ ВАЖНО - WELLNESS ОГРАНИЧЕНИЯ (ВСЕГДА УЧИТЫВАЙ!):\n"
 
                 if chronic_conditions:
@@ -410,9 +409,6 @@ class ClaudeAIService:
 
                 if removed_organs:
                     chronic_conditions_info += f"🔴 Удалённые органы: {', '.join(removed_organs)}\n"
-
-                if medical_restrictions:
-                    chronic_conditions_info += f"🔴 Медицинские ограничения: {', '.join(medical_restrictions)}\n"
 
                 chronic_conditions_info += """
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА при wellness ограничениях:

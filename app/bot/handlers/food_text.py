@@ -102,12 +102,11 @@ async def handle_text_food_input(update: Update, context: ContextTypes.DEFAULT_T
 
             # ⚠️ WELLNESS CHECK: Проверяем безопасность еды для хронических заболеваний
             wellness_warning = ""
-            if db_user.chronic_conditions or db_user.removed_organs or db_user.medical_restrictions:
+            if db_user.chronic_conditions or db_user.removed_organs:
                 wellness_check_prompt = f"""Проанализируй безопасность продукта "{dish_name}" для пользователя с такими ограничениями:
 
 Хронические заболевания: {', '.join(db_user.chronic_conditions) if db_user.chronic_conditions else 'нет'}
 Удалённые органы: {', '.join(db_user.removed_organs) if db_user.removed_organs else 'нет'}
-Медицинские ограничения: {', '.join(db_user.medical_restrictions) if db_user.medical_restrictions else 'нет'}
 
 ЗАДАЧА:
 1. Определи, может ли этот продукт быть ОПАСЕН для данных состояний
