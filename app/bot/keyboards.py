@@ -1,6 +1,7 @@
 """
 Клавиатуры для Telegram бота
 """
+from typing import Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 
 
@@ -252,3 +253,108 @@ def meal_food_list_keyboard(meal_id: int, foods: list) -> InlineKeyboardMarkup:
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Получить клавиатуру главного меню (алиас для совместимости)"""
     return main_menu_keyboard()
+
+
+def smart_diary_reminder_keyboard(current_hour: int, missing_meal_type: Optional[str] = None) -> InlineKeyboardMarkup:
+    """
+    Умная адаптивная клавиатура для напоминаний о дневнике
+
+    Адаптируется под:
+    - Время суток (определяет приоритетный прием пищи)
+    - Паттерны пропусков (добавляет ⭐ к часто пропускаемым приемам)
+
+    Раскладка:
+    ┌────────────────────────────────┐
+    │  [Приоритетный прием пищи]     │  ← Основная кнопка (время + паттерн)
+    ├────────────────┬───────────────┤
+    │ Прием пищи 1   │ Прием пищи 2  │  ← Сетка 2x2
+    ├────────────────┼───────────────┤
+    │ Прием пищи 3   │               │
+    ├────────────────────────────────┤
+    │  📊 Посмотреть дневник         │
+    ├────────────────────────────────┤
+    │  🔙 Главное меню               │
+    └────────────────────────────────┘
+
+    Args:
+        current_hour: Текущий час (0-23)
+        missing_meal_type: Тип часто пропускаемого приема пищи (breakfast/lunch/dinner) или None
+
+    Returns:
+        InlineKeyboardMarkup: Адаптивная клавиатура
+    """
+    # Определяем приоритетный прием пищи по времени суток
+    if 5 <= current_hour < 11:
+        priority_type = "breakfast"
+        priority_emoji = "☕"
+        priority_text = "Добавить завтрак"
+    elif 11 <= current_hour < 15:
+        priority_type = "lunch"
+        priority_emoji = "🍽️"
+        priority_text = "Добавить обед"
+    elif 15 <= current_hour < 22:
+        priority_type = "dinner"
+        priority_emoji = "🌙"
+        priority_text = "Добавить ужин"
+    else:  # 22-5
+        priority_type = "snack"
+        priority_emoji = "🍎"
+        priority_text = "Добавить перекус"
+
+    # Добавляем ⭐ к приоритетному приему если он часто пропускается
+    star = ""
+    if missing_meal_type and missing_meal_type == priority_type:
+        star = " ⭐"
+
+    # Формируем кнопки для других приемов пищи (сетка 2x2)
+    other_meals = []
+    meal_buttons = {
+        "breakfast": ("☕ Завтрак", "quick_add_breakfast"),
+        "lunch": ("🍽️ Обед", "quick_add_lunch"),
+        "dinner": ("🌙 Ужин", "quick_add_dinner"),
+        "snack": ("🍎 Перекус", "quick_add_snack")
+    }
+
+    # Добавляем звездочку к часто пропускаемому приему в сетке
+    for meal_type, (text, callback) in meal_buttons.items():
+        if meal_type != priority_type:  # Пропускаем приоритетный
+            # Добавляем звезду если это пропускаемый прием
+            meal_star = " ⭐" if missing_meal_type and missing_meal_type == meal_type else ""
+            other_meals.append((text + meal_star, callback))
+
+    # Строим клавиатуру
+    keyboard = [
+        # Основная кнопка (приоритетный прием)
+        [InlineKeyboardButton(
+            f"{priority_emoji} {priority_text}{star}",
+            callback_data=f"quick_add_{priority_type}"
+        )]
+    ]
+
+    # Сетка 2x2 для остальных приемов пищи
+    # Первая строка - 2 кнопки
+    if len(other_meals) >= 2:
+        keyboard.append([
+            InlineKeyboardButton(other_meals[0][0], callback_data=other_meals[0][1]),
+            InlineKeyboardButton(other_meals[1][0], callback_data=other_meals[1][1])
+        ])
+
+    # Вторая строка - 1 кнопка (или 2 если есть)
+    if len(other_meals) >= 3:
+        if len(other_meals) == 3:
+            keyboard.append([
+                InlineKeyboardButton(other_meals[2][0], callback_data=other_meals[2][1])
+            ])
+        else:  # 4 кнопки
+            keyboard.append([
+                InlineKeyboardButton(other_meals[2][0], callback_data=other_meals[2][1]),
+                InlineKeyboardButton(other_meals[3][0], callback_data=other_meals[3][1])
+            ])
+
+    # Дополнительные кнопки
+    keyboard.extend([
+        [InlineKeyboardButton("📊 Посмотреть дневник", callback_data="diary")],
+        [InlineKeyboardButton("🔙 Главное меню", callback_data="main_menu")]
+    ])
+
+    return InlineKeyboardMarkup(keyboard)

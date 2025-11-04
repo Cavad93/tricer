@@ -330,6 +330,45 @@ async def add_food_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def quick_add_meal_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Обработчик быстрого добавления еды с предвыбранным типом приема пищи
+
+    Callback data: quick_add_breakfast / quick_add_lunch / quick_add_dinner / quick_add_snack
+    """
+    query = update.callback_query
+
+    # Извлекаем тип приема пищи из callback_data (например: quick_add_breakfast -> breakfast)
+    meal_type = query.data.replace("quick_add_", "")
+
+    # Сохраняем тип приема пищи в контекст для автоматического выбора
+    context.user_data["quick_add_meal_type"] = meal_type
+    context.user_data["awaiting_food_input"] = True
+
+    # Определяем emoji и название для типа приема пищи
+    meal_type_info = {
+        "breakfast": ("☕", "Завтрак"),
+        "lunch": ("🍽️", "Обед"),
+        "dinner": ("🌙", "Ужин"),
+        "snack": ("🍎", "Перекус")
+    }
+
+    emoji, meal_name = meal_type_info.get(meal_type, ("🍽️", "Прием пищи"))
+
+    await safe_edit_or_send_message(
+        query,
+        f"{emoji} *Быстрое добавление: {meal_name}*\n\n"
+        f"Отправь мне фото своего блюда, и я автоматически:\n"
+        f"✅ Распознаю что это за еда\n"
+        f"✅ Определю размер порции\n"
+        f"✅ Посчитаю калории и БЖУ\n"
+        f"✅ Добавлю в дневник как *{meal_name}*\n\n"
+        f"Или просто напиши название блюда и вес (например: 'Гречка 200г')",
+        parse_mode="Markdown",
+        reply_markup=back_to_menu_keyboard()
+    )
+
+
 # diary_callback теперь импортируется из app.bot.handlers.diary
 
 
@@ -1365,6 +1404,12 @@ def main():
     # Callback handlers для кнопок
     application.add_handler(CallbackQueryHandler(main_menu_callback, pattern="^main_menu$"))
     application.add_handler(CallbackQueryHandler(add_food_callback, pattern="^add_food$"))
+
+    # Обработчики быстрого добавления еды (quick_add)
+    application.add_handler(CallbackQueryHandler(quick_add_meal_callback, pattern="^quick_add_breakfast$"))
+    application.add_handler(CallbackQueryHandler(quick_add_meal_callback, pattern="^quick_add_lunch$"))
+    application.add_handler(CallbackQueryHandler(quick_add_meal_callback, pattern="^quick_add_dinner$"))
+    application.add_handler(CallbackQueryHandler(quick_add_meal_callback, pattern="^quick_add_snack$"))
 
     # Обработчики для текстового ввода еды
     from app.bot.handlers.food_text import (

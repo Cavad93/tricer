@@ -672,28 +672,53 @@ async def handle_food_intention(update: Update, context: ContextTypes.DEFAULT_TY
             )
             return ConversationHandler.END
 
-        # Формируем текст напоминания
-        dishes = recognized_food["dishes"]
-        response_text = "✅ *Отлично! Добавляю в дневник.*\n\n"
+        # QUICK ADD: Проверяем есть ли предвыбранный тип приема пищи
+        quick_add_meal_type = context.user_data.get("quick_add_meal_type")
 
-        for i, dish in enumerate(dishes, 1):
-            nutrition = dish["nutrition"]
-            response_text += (
-                f"{'🍽' if i == 1 else '➕'} {dish['name']}\n"
-                f"🔥 {nutrition['calories']} ккал\n"
+        if quick_add_meal_type:
+            # Автоматически выбираем тип приема пищи без показа клавиатуры
+            logger.info(
+                f"User {update.effective_user.id} using quick_add with meal_type: {quick_add_meal_type}, "
+                f"skipping meal type selection"
             )
 
-        response_text += "\n📝 *Выбери тип приема пищи:*"
+            # Создаем фейковый callback query с нужным meal_type
+            # Сохраняем оригинальные данные callback
+            original_data = query.data
+            # Временно меняем callback data на meal_type
+            query.data = f"meal_type_{quick_add_meal_type}"
 
-        await query.edit_message_text(
-            response_text,
-            parse_mode="Markdown",
-            reply_markup=meal_type_keyboard()
-        )
+            # Очищаем quick_add флаг
+            context.user_data.pop("quick_add_meal_type", None)
 
-        logger.info(f"User {update.effective_user.id} will eat the food, showing meal type selection")
+            # Вызываем meal_type_selected напрямую
+            await meal_type_selected(update, context)
 
-        return FoodAddStates.WAITING_MEAL_TYPE
+            # Возвращаемся из conversation
+            return ConversationHandler.END
+        else:
+            # Стандартный поток - показываем клавиатуру выбора типа приема пищи
+            dishes = recognized_food["dishes"]
+            response_text = "✅ *Отлично! Добавляю в дневник.*\n\n"
+
+            for i, dish in enumerate(dishes, 1):
+                nutrition = dish["nutrition"]
+                response_text += (
+                    f"{'🍽' if i == 1 else '➕'} {dish['name']}\n"
+                    f"🔥 {nutrition['calories']} ккал\n"
+                )
+
+            response_text += "\n📝 *Выбери тип приема пищи:*"
+
+            await query.edit_message_text(
+                response_text,
+                parse_mode="Markdown",
+                reply_markup=meal_type_keyboard()
+            )
+
+            logger.info(f"User {update.effective_user.id} will eat the food, showing meal type selection")
+
+            return FoodAddStates.WAITING_MEAL_TYPE
 
 
 async def meal_type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
